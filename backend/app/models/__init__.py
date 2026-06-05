@@ -1,8 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, Integer, Boolean, Float, ForeignKey, DateTime, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import String, Text, Integer, Boolean, Float, ForeignKey, DateTime, UniqueConstraint, Index, JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,13 +12,13 @@ def new_uuid() -> str:
 
 
 def now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     username: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -34,15 +33,16 @@ class User(Base):
 class Blueprint(Base):
     __tablename__ = "blueprints"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
-    author_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    author_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text)
     difficulty: Mapped[int | None] = mapped_column(Integer)
     piece_count: Mapped[int | None] = mapped_column(Integer)
     category: Mapped[str | None] = mapped_column(String(30), index=True)
     dimensions: Mapped[str | None] = mapped_column(String(50))
-    part_list: Mapped[dict | None] = mapped_column(JSONB)
+    part_list: Mapped[dict | None] = mapped_column(JSON)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -63,8 +63,8 @@ class Blueprint(Base):
 class BlueprintImage(Base):
     __tablename__ = "blueprint_images"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
-    blueprint_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -75,24 +75,27 @@ class BlueprintImage(Base):
 class Tag(Base):
     __tablename__ = "tags"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+
+    blueprint_tags: Mapped[list["BlueprintTag"]] = relationship(back_populates="tag")
 
 
 class BlueprintTag(Base):
     __tablename__ = "blueprint_tags"
 
-    blueprint_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), primary_key=True)
-    tag_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
 
     blueprint: Mapped["Blueprint"] = relationship(back_populates="tags")
+    tag: Mapped["Tag"] = relationship(back_populates="blueprint_tags")
 
 
 class Favorite(Base):
     __tablename__ = "favorites"
 
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    blueprint_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     blueprint: Mapped["Blueprint"] = relationship(back_populates="favorites")
@@ -101,9 +104,9 @@ class Favorite(Base):
 class Comment(Base):
     __tablename__ = "comments"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
-    blueprint_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 

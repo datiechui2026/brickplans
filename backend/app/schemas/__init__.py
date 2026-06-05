@@ -65,6 +65,7 @@ class BlueprintOut(BaseModel):
     id: str
     author_id: str
     title: str
+    slug: str = ""
     description: str | None = None
     difficulty: int | None = None
     piece_count: int | None = None
@@ -75,7 +76,32 @@ class BlueprintOut(BaseModel):
     is_published: bool = False
     created_at: str
     updated_at: str
-    author: UserOut | None = None
+    author: "UserOut | None" = None
+    images: list["BlueprintImageOut"] = []
+    tags: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
+class BlueprintDetail(BaseModel):
+    """图纸详情（含收藏状态）"""
+    id: str
+    author_id: str
+    title: str
+    slug: str = ""
+    description: str | None = None
+    difficulty: int | None = None
+    piece_count: int | None = None
+    category: str | None = None
+    dimensions: str | None = None
+    part_list: dict | None = None
+    view_count: int = 0
+    favorite_count: int = 0
+    is_favorited: bool = False
+    is_published: bool = False
+    created_at: str
+    updated_at: str
+    author: "UserOut | None" = None
     images: list["BlueprintImageOut"] = []
     tags: list[str] = []
 
