@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrickPlans — 积木图纸分享 | 趣味风</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        brick: { yellow: '#FFD500', red: '#E3000B', blue: '#0051BA', green: '#00AF4C', orange: '#FF8C00', dark: '#1A1A2E' },
+      },
+      fontFamily: { display: ['"Fredoka One"', 'cursive'], body: ['"Nunito"', 'sans-serif'] },
+      borderRadius: { brick: '12px 4px 12px 4px', stud: '6px' }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', -apple-system, sans-serif; background: #FDF6E3; color: #1A1A2E; min-height: 100vh; }
+  .font-display { font-family: 'Fredoka One', cursive; }
+  .brick-card { background: #fff; border: 3px solid #1A1A2E; border-radius: 16px 4px 16px 4px; transition: transform 0.2s, box-shadow 0.2s; }
+  .brick-card:hover { transform: translateY(-4px); box-shadow: 6px 6px 0 #FFD500; }
+  .brick-btn { background: #FFD500; border: 3px solid #1A1A2E; border-radius: 10px 3px 10px 3px; font-weight: 700; transition: all 0.15s; cursor: pointer; }
+  .brick-btn:hover { transform: translate(2px, 2px); box-shadow: none; }
+  .brick-btn:active { transform: translate(3px, 3px); }
+  .brick-btn-red { background: #E3000B; color: white; border-color: #1A1A2E; }
+  .brick-btn-blue { background: #0051BA; color: white; border-color: #1A1A2E; }
+  .brick-stud { width: 12px; height: 6px; background: currentColor; border-radius: 6px 6px 0 0; opacity: 0.5; display: inline-block; margin: 0 2px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .nav-link { padding: 8px 20px; border-radius: 10px 3px 10px 3px; font-weight: 700; cursor: pointer; transition: all 0.15s; border: 2px solid transparent; }
+  .nav-link:hover { background: #FFD500; border-color: #1A1A2E; }
+  .nav-link.active { background: #FFD500; border: 3px solid #1A1A2E; }
+  .difficulty-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 2px; border: 1.5px solid #1A1A2E; }
+  .difficulty-dot.filled { background: #E3000B; }
+  .difficulty-dot.empty { background: #fff; }
+  .tag-pill { background: #0051BA; color: white; padding: 3px 12px; border-radius: 20px 4px 20px 4px; font-size: 0.75rem; font-weight: 700; border: 2px solid #1A1A2E; }
+  .hero-brick { background: linear-gradient(135deg, #FFD500 0%, #FF8C00 100%); border-bottom: 6px solid #1A1A2E; }
+  .section-title { position: relative; display: inline-block; }
+  .section-title::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 6px; background: #FFD500; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="bg-white border-b-4 border-brick-dark sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="text-3xl">🧱</div>
+      <span class="font-display text-2xl text-brick-dark">Brick<span class="text-brick-red">Plans</span></span>
+    </div>
+    <div class="flex items-center gap-2" id="nav-links">
+      <button class="nav-link active" onclick="switchPage('home')" data-page="home">🏠 首页</button>
+      <button class="nav-link" onclick="switchPage('explore')" data-page="explore">🔍 发现</button>
+      <button class="nav-link" onclick="switchPage('detail')" data-page="detail">📐 图纸</button>
+    </div>
+    <div class="flex items-center gap-3">
+      <input type="text" placeholder="搜索图纸..." class="px-4 py-2 rounded-xl border-2 border-brick-dark bg-gray-50 focus:outline-none focus:border-brick-blue w-48 text-sm">
+      <button class="brick-btn px-4 py-2 text-sm">登录</button>
+      <button class="brick-btn brick-btn-red px-4 py-2 text-sm">注册</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ==================== HOME PAGE ==================== -->
+<div class="page active" id="page-home">
+  <!-- Hero -->
+  <section class="hero-brick py-16 px-4 text-center">
+    <div class="max-w-4xl mx-auto">
+      <div class="text-6xl mb-4">🧱✨🚀</div>
+      <h1 class="font-display text-5xl md:text-6xl text-brick-dark mb-6 leading-tight">
+        分享你的创意积木<br><span class="text-brick-red">搭建无限可能</span>
+      </h1>
+      <p class="text-lg text-brick-dark/70 mb-8 max-w-2xl mx-auto">
+        全球最大的中文积木图纸社区 —— 上传你的 MOC 作品，发现海量免费图纸
+      </p>
+      <div class="flex gap-4 justify-center">
+        <button class="brick-btn brick-btn-red px-8 py-4 text-lg" onclick="switchPage('explore')">🔍 探索图纸</button>
+        <button class="brick-btn px-8 py-4 text-lg">📤 上传作品</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="max-w-7xl mx-auto px-4 -mt-8 relative z-10">
+    <div class="grid grid-cols-4 gap-4 mb-12">
+      <div class="brick-card p-6 text-center">
+        <div class="font-display text-3xl text-brick-red">12,847</div>
+        <div class="text-sm text-gray-600 mt-1">📐 图纸作品</div>
+      </div>
+      <div class="brick-card p-6 text-center">
+        <div class="font-display text-3xl text-brick-blue">5,230</div>
+        <div class="text-sm text-gray-600 mt-1">👥 创作者</div>
+      </div>
+      <div class="brick-card p-6 text-center">
+        <div class="font-display text-3xl text-brick-green">89,400</div>
+        <div class="text-sm text-gray-600 mt-1">❤️ 总收藏</div>
+      </div>
+      <div class="brick-card p-6 text-center">
+        <div class="font-display text-3xl text-brick-orange">3.2M</div>
+        <div class="text-sm text-gray-600 mt-1">🧩 零件</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hot Blueprints -->
+  <section class="max-w-7xl mx-auto px-4 mb-12">
+    <h2 class="font-display text-3xl mb-2 section-title">🔥 热门图纸</h2>
+    <p class="text-gray-500 mb-6">本周最受欢迎的积木作品</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <!-- Card 1 -->
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-48 bg-gradient-to-br from-yellow-300 to-orange-400 flex items-center justify-center relative">
+          <span class="text-6xl">🏰</span>
+          <div class="absolute top-2 right-2 tag-pill">建筑</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold text-lg mb-1">霍格沃茨城堡</h3>
+          <p class="text-gray-500 text-sm mb-3">by 积木大师</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span>
+              <span class="text-xs text-gray-400 ml-1">4/5</span>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-500">
+              <span>❤️ 2.3k</span><span>💬 89</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-48 bg-gradient-to-br from-blue-300 to-cyan-500 flex items-center justify-center relative">
+          <span class="text-6xl">🤖</span>
+          <div class="absolute top-2 right-2 tag-pill">机甲</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold text-lg mb-1">高达 RX-78-2</h3>
+          <p class="text-gray-500 text-sm mb-3">by 机械核心</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span>
+              <span class="text-xs text-gray-400 ml-1">5/5</span>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-500">
+              <span>❤️ 1.8k</span><span>💬 124</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Card 3 -->
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-48 bg-gradient-to-br from-green-300 to-emerald-500 flex items-center justify-center relative">
+          <span class="text-6xl">🐉</span>
+          <div class="absolute top-2 right-2 tag-pill">奇幻</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold text-lg mb-1">中国龙</h3>
+          <p class="text-gray-500 text-sm mb-3">by 东方匠人</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span>
+              <span class="text-xs text-gray-400 ml-1">3/5</span>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-500">
+              <span>❤️ 4.1k</span><span>💬 201</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Card 4 -->
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-48 bg-gradient-to-br from-red-300 to-pink-500 flex items-center justify-center relative">
+          <span class="text-6xl">🚗</span>
+          <div class="absolute top-2 right-2 tag-pill">车辆</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold text-lg mb-1">保时捷 911</h3>
+          <p class="text-gray-500 text-sm mb-3">by 速度玩家</p>
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span>
+              <span class="text-xs text-gray-400 ml-1">3/5</span>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-500">
+              <span>❤️ 3.2k</span><span>💬 156</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Categories -->
+  <section class="max-w-7xl mx-auto px-4 mb-12">
+    <h2 class="font-display text-3xl mb-2 section-title">📂 浏览分类</h2>
+    <p class="text-gray-500 mb-6">按主题发现你感兴趣的图纸</p>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🏰</div>
+        <div class="font-bold">建筑</div>
+        <div class="text-xs text-gray-400">3,421 图纸</div>
+      </div>
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🚗</div>
+        <div class="font-bold">车辆</div>
+        <div class="text-xs text-gray-400">2,890 图纸</div>
+      </div>
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🤖</div>
+        <div class="font-bold">机甲</div>
+        <div class="text-xs text-gray-400">1,567 图纸</div>
+      </div>
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🐉</div>
+        <div class="font-bold">奇幻</div>
+        <div class="text-xs text-gray-400">2,103 图纸</div>
+      </div>
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🛸</div>
+        <div class="font-bold">科幻</div>
+        <div class="text-xs text-gray-400">1,892 图纸</div>
+      </div>
+      <div class="brick-card p-5 text-center cursor-pointer hover:bg-brick-yellow/20">
+        <div class="text-4xl mb-2">🎨</div>
+        <div class="font-bold">场景</div>
+        <div class="text-xs text-gray-400">974 图纸</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-brick-dark text-white py-8 mt-12 text-center">
+    <div class="font-display text-2xl mb-2">🧱 BrickPlans</div>
+    <p class="text-white/60 text-sm">© 2026 BrickPlans · 积木图纸分享社区</p>
+  </footer>
+</div>
+
+<!-- ==================== EXPLORE PAGE ==================== -->
+<div class="page" id="page-explore">
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <h1 class="font-display text-3xl mb-6 section-title">🔍 发现图纸</h1>
+
+    <!-- Filters -->
+    <div class="brick-card p-5 mb-6">
+      <div class="flex flex-wrap gap-4 items-end">
+        <div class="flex-1 min-w-[200px]">
+          <label class="text-sm font-bold block mb-1">搜索</label>
+          <input type="text" placeholder="输入关键词..." class="w-full px-4 py-2 rounded-xl border-2 border-brick-dark bg-white focus:outline-none focus:border-brick-blue">
+        </div>
+        <div>
+          <label class="text-sm font-bold block mb-1">分类</label>
+          <select class="px-4 py-2 rounded-xl border-2 border-brick-dark bg-white font-bold cursor-pointer">
+            <option>全部</option><option>建筑</option><option>车辆</option><option>机甲</option><option>奇幻</option><option>科幻</option><option>场景</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm font-bold block mb-1">难度</label>
+          <select class="px-4 py-2 rounded-xl border-2 border-brick-dark bg-white font-bold cursor-pointer">
+            <option>全部难度</option><option>⭐ 入门</option><option>⭐⭐ 简单</option><option>⭐⭐⭐ 中等</option><option>⭐⭐⭐⭐ 困难</option><option>⭐⭐⭐⭐⭐ 大师</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm font-bold block mb-1">排序</label>
+          <select class="px-4 py-2 rounded-xl border-2 border-brick-dark bg-white font-bold cursor-pointer">
+            <option>🔥 最热门</option><option>🆕 最新发布</option><option>❤️ 最多收藏</option>
+          </select>
+        </div>
+        <button class="brick-btn brick-btn-blue px-6 py-2">筛选</button>
+      </div>
+    </div>
+
+    <!-- Result count -->
+    <p class="text-gray-500 mb-4 font-bold">找到 <span class="text-brick-red">1,247</span> 个图纸</p>
+
+    <!-- Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+      <!-- 8 cards -->
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-purple-300 to-indigo-500 flex items-center justify-center relative">
+          <span class="text-5xl">🏯</span>
+          <div class="absolute top-2 right-2 tag-pill">建筑</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">姬路城</h3>
+          <p class="text-gray-500 text-xs mb-2">by 和风积木 · 3,200 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 892</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-teal-300 to-green-500 flex items-center justify-center relative">
+          <span class="text-5xl">🦖</span>
+          <div class="absolute top-2 right-2 tag-pill">奇幻</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">霸王龙骨架</h3>
+          <p class="text-gray-500 text-xs mb-2">by 化石猎人 · 1,800 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 1.2k</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-orange-300 to-red-500 flex items-center justify-center relative">
+          <span class="text-5xl">🏎️</span>
+          <div class="absolute top-2 right-2 tag-pill">车辆</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">F1 赛车</h3>
+          <p class="text-gray-500 text-xs mb-2">by 速度与积木 · 2,450 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 645</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-blue-300 to-violet-500 flex items-center justify-center relative">
+          <span class="text-5xl">🚀</span>
+          <div class="absolute top-2 right-2 tag-pill">科幻</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">星际战舰</h3>
+          <p class="text-gray-500 text-xs mb-2">by 银河建造者 · 5,600 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span></div>
+            <span class="text-xs text-gray-400">❤️ 2.8k</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-pink-300 to-rose-500 flex items-center justify-center relative">
+          <span class="text-5xl">🌸</span>
+          <div class="absolute top-2 right-2 tag-pill">场景</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">樱花庭院</h3>
+          <p class="text-gray-500 text-xs mb-2">by 自然之美 · 2,100 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 423</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-gray-400 to-slate-600 flex items-center justify-center relative">
+          <span class="text-5xl">⚔️</span>
+          <div class="absolute top-2 right-2 tag-pill">机甲</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">EVA 初号机</h3>
+          <p class="text-gray-500 text-xs mb-2">by 机甲工坊 · 4,200 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 3.4k</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-amber-300 to-yellow-600 flex items-center justify-center relative">
+          <span class="text-5xl">🏗️</span>
+          <div class="absolute top-2 right-2 tag-pill">建筑</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">故宫太和殿</h3>
+          <p class="text-gray-500 text-xs mb-2">by 古建爱好者 · 8,000 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span></div>
+            <span class="text-xs text-gray-400">❤️ 5.1k</span>
+          </div>
+        </div>
+      </div>
+      <div class="brick-card overflow-hidden cursor-pointer" onclick="switchPage('detail')">
+        <div class="h-44 bg-gradient-to-br from-lime-300 to-green-600 flex items-center justify-center relative">
+          <span class="text-5xl">🦅</span>
+          <div class="absolute top-2 right-2 tag-pill">奇幻</div>
+        </div>
+        <div class="p-4">
+          <h3 class="font-bold mb-1">凤凰</h3>
+          <p class="text-gray-500 text-xs mb-2">by 神话工匠 · 1,500 零件</p>
+          <div class="flex items-center justify-between">
+            <div><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="difficulty-dot empty"></span></div>
+            <span class="text-xs text-gray-400">❤️ 978</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex justify-center gap-2">
+      <button class="brick-btn px-4 py-2 opacity-50">上一页</button>
+      <button class="brick-btn brick-btn-blue px-4 py-2">1</button>
+      <button class="brick-btn px-4 py-2">2</button>
+      <button class="brick-btn px-4 py-2">3</button>
+      <button class="brick-btn px-4 py-2">...</button>
+      <button class="brick-btn px-4 py-2">42</button>
+      <button class="brick-btn px-4 py-2">下一页</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== DETAIL PAGE ==================== -->
+<div class="page" id="page-detail">
+  <div class="max-w-5xl mx-auto px-4 py-8">
+    <!-- Back -->
+    <button class="text-gray-500 hover:text-brick-blue font-bold mb-4 flex items-center gap-1" onclick="switchPage('explore')">← 返回列表</button>
+
+    <!-- Title -->
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="font-display text-4xl text-brick-dark mb-2">霍格沃茨城堡 🏰</h1>
+        <p class="text-gray-500">by <span class="font-bold text-brick-blue">积木大师</span> · 发布于 2026-06-01 · 浏览量 12,847</p>
+      </div>
+      <div class="flex gap-3">
+        <button class="brick-btn brick-btn-red px-6 py-3 text-lg" id="fav-btn" onclick="toggleFav()">❤️ 收藏 (2.3k)</button>
+        <button class="brick-btn px-6 py-3 text-lg">📥 下载图纸</button>
+      </div>
+    </div>
+
+    <!-- Image Gallery -->
+    <div class="brick-card overflow-hidden mb-6">
+      <div class="h-80 md:h-96 bg-gradient-to-br from-yellow-200 via-orange-300 to-red-400 flex items-center justify-center relative">
+        <span class="text-8xl">🏰</span>
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+          <div class="w-3 h-3 rounded-full bg-brick-dark border-2 border-white"></div>
+          <div class="w-3 h-3 rounded-full bg-white/70 border-2 border-white"></div>
+          <div class="w-3 h-3 rounded-full bg-white/70 border-2 border-white"></div>
+          <div class="w-3 h-3 rounded-full bg-white/70 border-2 border-white"></div>
+        </div>
+        <button class="absolute left-3 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full font-bold text-xl border-2 border-brick-dark hover:bg-white">‹</button>
+        <button class="absolute right-3 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full font-bold text-xl border-2 border-brick-dark hover:bg-white">›</button>
+      </div>
+    </div>
+
+    <!-- Thumbnails -->
+    <div class="flex gap-2 mb-6 overflow-x-auto">
+      <div class="w-20 h-16 rounded-lg border-3 border-brick-yellow bg-gradient-to-br from-yellow-200 to-orange-400 flex items-center justify-center text-2xl flex-shrink-0">🏰</div>
+      <div class="w-20 h-16 rounded-lg border-2 border-gray-200 bg-gradient-to-br from-blue-200 to-indigo-400 flex items-center justify-center text-2xl flex-shrink-0">🗼</div>
+      <div class="w-20 h-16 rounded-lg border-2 border-gray-200 bg-gradient-to-br from-green-200 to-emerald-400 flex items-center justify-center text-2xl flex-shrink-0">🌳</div>
+      <div class="w-20 h-16 rounded-lg border-2 border-gray-200 bg-gradient-to-br from-purple-200 to-violet-400 flex items-center justify-center text-2xl flex-shrink-0">🪄</div>
+    </div>
+
+    <!-- Info Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <!-- Main info -->
+      <div class="md:col-span-2">
+        <!-- Meta -->
+        <div class="brick-card p-5 mb-5">
+          <h3 class="font-display text-xl mb-3">📋 作品信息</h3>
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div><span class="text-gray-500">分类：</span><span class="tag-pill">建筑</span></div>
+            <div><span class="text-gray-500">难度：</span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot filled"></span><span class="difficulty-dot empty"></span><span class="ml-1 font-bold">4/5</span></div>
+            <div><span class="text-gray-500">零件数：</span><span class="font-bold">6,800 个</span></div>
+            <div><span class="text-gray-500">尺寸：</span><span class="font-bold">48×64×52 studs</span></div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-1">
+            <span class="tag-pill">#魔法</span><span class="tag-pill">#城堡</span><span class="tag-pill">#哈利波特</span><span class="tag-pill">#奇幻建筑</span>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="brick-card p-5 mb-5">
+          <h3 class="font-display text-xl mb-3">📝 作品描述</h3>
+          <p class="text-gray-700 leading-relaxed">
+            这是一款高度还原的霍格沃茨城堡 MOC 作品，包含主塔楼、大礼堂、天文塔等多个经典场景。
+            整体采用灰色和沙绿色为主色调，细节丰富，适合有中等搭建经验的积木爱好者。
+            图纸包含完整的零件清单和分步搭建说明（PDF），推荐使用正版积木零件还原。
+          </p>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div>
+        <!-- Part list preview -->
+        <div class="brick-card p-5 mb-4">
+          <h3 class="font-display text-lg mb-3">🧩 零件清单</h3>
+          <div class="space-y-2 text-sm max-h-48 overflow-y-auto">
+            <div class="flex justify-between py-1 border-b border-gray-100"><span class="font-mono">3001</span><span>2×4 砖块 (浅灰)</span><span class="font-bold">×420</span></div>
+            <div class="flex justify-between py-1 border-b border-gray-100"><span class="font-mono">3002</span><span>2×3 砖块 (沙绿)</span><span class="font-bold">×185</span></div>
+            <div class="flex justify-between py-1 border-b border-gray-100"><span class="font-mono">3622</span><span>1×3 砖块 (深灰)</span><span class="font-bold">×230</span></div>
+            <div class="flex justify-between py-1 border-b border-gray-100"><span class="font-mono">3005</span><span>1×1 砖块 (透明蓝)</span><span class="font-bold">×96</span></div>
+            <div class="flex justify-between py-1 border-b border-gray-100"><span class="font-mono">3023</span><span>1×2 板 (深褐)</span><span class="font-bold">×310</span></div>
+          </div>
+          <button class="text-brick-blue font-bold text-sm mt-2 hover:underline">查看全部 127 种零件 →</button>
+        </div>
+
+        <!-- Author card -->
+        <div class="brick-card p-5 text-center">
+          <div class="w-16 h-16 rounded-full bg-brick-yellow border-3 border-brick-dark mx-auto mb-2 flex items-center justify-center text-2xl">🧑‍🔧</div>
+          <div class="font-bold text-lg">积木大师</div>
+          <div class="text-gray-500 text-sm mb-2">🏆 资深创作者</div>
+          <div class="flex justify-center gap-4 text-sm text-gray-500 mb-3">
+            <span>📐 47 作品</span><span>❤️ 12.4k 收藏</span>
+          </div>
+          <button class="brick-btn brick-btn-blue px-4 py-1 text-sm w-full">关注</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comments -->
+    <div class="brick-card p-5">
+      <h3 class="font-display text-xl mb-4">💬 评论 (89)</h3>
+      <!-- Comment form -->
+      <div class="flex gap-3 mb-6 pb-6 border-b-3 border-gray-100">
+        <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">😊</div>
+        <div class="flex-1">
+          <textarea placeholder="写下你的评论..." class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brick-blue focus:outline-none resize-none h-20 text-sm"></textarea>
+          <button class="brick-btn px-4 py-1 text-sm mt-2">发表评论</button>
+        </div>
+      </div>
+      <!-- Comment items -->
+      <div class="space-y-4">
+        <div class="flex gap-3">
+          <div class="w-10 h-10 rounded-full bg-green-200 flex items-center justify-center flex-shrink-0 font-bold">🧒</div>
+          <div>
+            <div class="font-bold text-sm">积木小萌新</div>
+            <div class="text-xs text-gray-400 mb-1">2 小时前</div>
+            <p class="text-gray-700 text-sm">太震撼了！照着图纸搭了两周终于完成了，效果超棒 👍</p>
+            <div class="flex gap-3 mt-1 text-xs text-gray-400"><span>👍 32</span><span>回复</span></div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center flex-shrink-0 font-bold">👩</div>
+          <div>
+            <div class="font-bold text-sm">建筑师Linda</div>
+            <div class="text-xs text-gray-400 mb-1">5 小时前</div>
+            <p class="text-gray-700 text-sm">零件清单里的透明蓝砖块可以用透明浅蓝替代吗？数量不太够</p>
+            <div class="flex gap-3 mt-1 text-xs text-gray-400"><span>👍 8</span><span>回复</span></div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="w-10 h-10 rounded-full bg-brick-yellow/30 flex items-center justify-center flex-shrink-0 font-bold">🧑‍🔧</div>
+          <div>
+            <div class="font-bold text-sm">积木大师 <span class="text-xs bg-brick-blue text-white px-2 py-0.5 rounded-full ml-1">作者</span></div>
+            <div class="text-xs text-gray-400 mb-1">3 小时前</div>
+            <p class="text-gray-700 text-sm">@建筑师Linda 可以的！颜色接近的透明砖都能用，只要尺寸对就行 😄</p>
+            <div class="flex gap-3 mt-1 text-xs text-gray-400"><span>👍 15</span><span>回复</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector('[data-page="' + name + '"]').classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function toggleFav() {
+  const btn = document.getElementById('fav-btn');
+  if (btn.textContent.includes('收藏')) {
+    btn.textContent = '❤️ 已收藏 (2.3k)';
+    btn.classList.add('brick-btn-blue');
+    btn.classList.remove('brick-btn-red');
+  } else {
+    btn.textContent = '❤️ 收藏 (2.3k)';
+    btn.classList.add('brick-btn-red');
+    btn.classList.remove('brick-btn-blue');
+  }
+}
+</script>
+
+</body>
+</html>

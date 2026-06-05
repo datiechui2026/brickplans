@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrickPlans — 积木图纸分享 | 简约画廊风</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        accent: '#6366F1', accentHover: '#4F46E5',
+        surface: '#FFFFFF', bg: '#F8FAFC', muted: '#94A3B8',
+        fg: '#0F172A', subtle: '#475569'
+      },
+      fontFamily: { display: ['"DM Serif Display"', 'Georgia', 'serif'], body: ['"Inter"', '-apple-system', 'sans-serif'] }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #F8FAFC; color: #0F172A; -webkit-font-smoothing: antialiased; }
+  .font-display { font-family: 'DM Serif Display', Georgia, serif; }
+  .card { background: #fff; border-radius: 16px; overflow: hidden; transition: transform 0.25s, box-shadow 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+  .card:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.1), 0 6px 12px rgba(0,0,0,0.06); }
+  .btn { padding: 10px 24px; border-radius: 12px; font-weight: 600; font-size: 0.9rem; transition: all 0.15s; cursor: pointer; border: none; }
+  .btn-primary { background: #6366F1; color: white; }
+  .btn-primary:hover { background: #4F46E5; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.35); }
+  .btn-outline { background: white; color: #0F172A; border: 1.5px solid #E2E8F0; }
+  .btn-outline:hover { border-color: #6366F1; color: #6366F1; }
+  .btn-ghost { background: transparent; color: #475569; }
+  .btn-ghost:hover { background: #F1F5F9; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .nav-link { padding: 8px 16px; border-radius: 10px; font-weight: 500; font-size: 0.9rem; cursor: pointer; transition: all 0.15s; color: #475569; }
+  .nav-link:hover { background: #F1F5F9; color: #0F172A; }
+  .nav-link.active { background: #EEF2FF; color: #6366F1; font-weight: 600; }
+  .tag { background: #EEF2FF; color: #6366F1; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; }
+  .difficulty-star { color: #F59E0B; font-size: 0.85rem; }
+  .difficulty-star.empty { color: #E2E8F0; }
+  input[type="text"], select, textarea { border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 10px 16px; font-size: 0.9rem; font-family: 'Inter', sans-serif; transition: border-color 0.15s; outline: none; }
+  input[type="text"]:focus, select:focus, textarea:focus { border-color: #6366F1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-10">
+      <a class="font-display text-2xl text-fg flex items-center gap-2" href="#">
+        <span class="w-9 h-9 bg-accent rounded-xl flex items-center justify-center text-white text-sm font-bold">BP</span>
+        BrickPlans
+      </a>
+      <div class="flex items-center gap-1" id="nav-links">
+        <button class="nav-link active" onclick="switchPage('home')" data-page="home">首页</button>
+        <button class="nav-link" onclick="switchPage('explore')" data-page="explore">发现</button>
+        <button class="nav-link" onclick="switchPage('detail')" data-page="detail">图纸</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <input type="text" placeholder="搜索图纸..." class="w-44 text-sm bg-gray-50">
+      <button class="btn btn-ghost text-sm">登录</button>
+      <button class="btn btn-primary text-sm">注册</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ==================== HOME PAGE ==================== -->
+<div class="page active" id="page-home">
+  <!-- Hero -->
+  <section class="max-w-7xl mx-auto px-6 pt-20 pb-16">
+    <div class="max-w-3xl">
+      <div class="inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-1.5 rounded-full text-sm font-medium mb-6">
+        🎉 新上线 — 已有 12,847 个图纸等你探索
+      </div>
+      <h1 class="font-display text-6xl md:text-7xl leading-tight mb-6 text-fg">
+        把你的积木创意<br><span class="text-accent italic">分享给全世界</span>
+      </h1>
+      <p class="text-lg text-subtle mb-8 max-w-xl leading-relaxed">
+        一个专注积木 MOC 图纸的社区。上传作品、浏览灵感、交流搭建心得。
+      </p>
+      <div class="flex gap-3">
+        <button class="btn btn-primary px-8 py-3 text-base" onclick="switchPage('explore')">浏览图纸</button>
+        <button class="btn btn-outline px-8 py-3 text-base">上传作品</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured with large images -->
+  <section class="max-w-7xl mx-auto px-6 mb-20">
+    <div class="flex items-end justify-between mb-8">
+      <div>
+        <h2 class="font-display text-4xl mb-2">🔥 热门作品</h2>
+        <p class="text-muted">本周最受关注的积木图纸</p>
+      </div>
+      <button class="btn btn-ghost text-accent font-semibold" onclick="switchPage('explore')">查看全部 →</button>
+    </div>
+
+    <!-- Hero featured card (2/3 width) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div class="lg:col-span-2 card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[21/9] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 flex items-center justify-center relative overflow-hidden">
+          <span class="text-8xl opacity-90 group-hover:scale-110 transition-transform duration-500">🏰</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+          <div class="absolute bottom-6 left-6 text-white">
+            <span class="tag bg-white/20 text-white backdrop-blur-sm mb-3 inline-block">建筑</span>
+            <h3 class="font-display text-3xl mb-1">霍格沃茨城堡</h3>
+            <p class="text-white/80 text-sm">by 积木大师 · 6,800 零件 · ❤️ 2.3k</p>
+          </div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-6xl opacity-90 group-hover:scale-110 transition-transform duration-500">🤖</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
+          <div class="absolute bottom-4 left-4 text-white">
+            <span class="tag bg-white/20 text-white backdrop-blur-sm mb-2 inline-block">机甲</span>
+            <h3 class="font-display text-xl mb-1">高达 RX-78-2</h3>
+            <p class="text-white/70 text-xs">❤️ 1.8k</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Secondary grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-square bg-gradient-to-br from-emerald-300 to-teal-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🐉</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+          <div class="absolute bottom-3 left-3 text-white text-sm font-semibold">中国龙</div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-square bg-gradient-to-br from-orange-300 to-red-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🚗</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+          <div class="absolute bottom-3 left-3 text-white text-sm font-semibold">保时捷 911</div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-square bg-gradient-to-br from-violet-300 to-purple-700 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🛸</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+          <div class="absolute bottom-3 left-3 text-white text-sm font-semibold">星际战舰</div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-square bg-gradient-to-br from-amber-200 to-yellow-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🏯</span>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+          <div class="absolute bottom-3 left-3 text-white text-sm font-semibold">姬路城</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Categories row -->
+  <section class="max-w-7xl mx-auto px-6 mb-20">
+    <h2 class="font-display text-4xl mb-8">📂 按分类浏览</h2>
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🏰</div><div class="font-semibold">建筑</div><div class="text-xs text-muted mt-1">3,421</div>
+      </div>
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🚗</div><div class="font-semibold">车辆</div><div class="text-xs text-muted mt-1">2,890</div>
+      </div>
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🤖</div><div class="font-semibold">机甲</div><div class="text-xs text-muted mt-1">1,567</div>
+      </div>
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🐉</div><div class="font-semibold">奇幻</div><div class="text-xs text-muted mt-1">2,103</div>
+      </div>
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🛸</div><div class="font-semibold">科幻</div><div class="text-xs text-muted mt-1">1,892</div>
+      </div>
+      <div class="card p-6 text-center cursor-pointer hover:bg-accent/5 transition-colors border border-transparent hover:border-accent/20">
+        <div class="text-3xl mb-3">🎨</div><div class="font-semibold">场景</div><div class="text-xs text-muted mt-1">974</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats banner -->
+  <section class="bg-fg text-white py-16">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+      <div><div class="font-display text-4xl mb-1">12,847</div><div class="text-white/60 text-sm">📐 图纸作品</div></div>
+      <div><div class="font-display text-4xl mb-1">5,230</div><div class="text-white/60 text-sm">👥 创作者</div></div>
+      <div><div class="font-display text-4xl mb-1">89.4k</div><div class="text-white/60 text-sm">❤️ 总收藏</div></div>
+      <div><div class="font-display text-4xl mb-1">3.2M</div><div class="text-white/60 text-sm">🧩 零件</div></div>
+    </div>
+  </section>
+
+  <footer class="bg-white border-t border-gray-100 py-10 text-center text-sm text-muted">
+    <div class="font-display text-xl text-fg mb-1">BrickPlans</div>
+    <p>© 2026 BrickPlans · 积木图纸分享社区</p>
+  </footer>
+</div>
+
+<!-- ==================== EXPLORE PAGE ==================== -->
+<div class="page" id="page-explore">
+  <div class="max-w-7xl mx-auto px-6 py-10">
+    <div class="mb-8">
+      <h1 class="font-display text-4xl mb-2">发现图纸</h1>
+      <p class="text-muted">浏览社区中的积木创作</p>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="card p-5 mb-6 flex flex-wrap gap-3 items-end">
+      <div class="flex-1 min-w-[200px]">
+        <label class="text-xs font-semibold text-subtle uppercase tracking-wide mb-1.5 block">搜索</label>
+        <input type="text" placeholder="关键词..." class="w-full">
+      </div>
+      <div><label class="text-xs font-semibold text-subtle uppercase tracking-wide mb-1.5 block">分类</label>
+        <select class="w-32"><option>全部</option><option>建筑</option><option>车辆</option><option>机甲</option><option>奇幻</option><option>科幻</option></select></div>
+      <div><label class="text-xs font-semibold text-subtle uppercase tracking-wide mb-1.5 block">难度</label>
+        <select class="w-36"><option>全部难度</option><option>⭐ 入门</option><option>⭐⭐⭐ 中等</option><option>⭐⭐⭐⭐⭐ 大师</option></select></div>
+      <div><label class="text-xs font-semibold text-subtle uppercase tracking-wide mb-1.5 block">排序</label>
+        <select class="w-36"><option>🔥 最热门</option><option>🆕 最新</option><option>❤️ 最多收藏</option></select></div>
+      <button class="btn btn-primary">筛选</button>
+    </div>
+
+    <!-- Results -->
+    <p class="text-sm text-muted mb-5">找到 <span class="text-fg font-semibold">1,247</span> 个结果</p>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mb-10">
+      <!-- 8 cards in gallery style -->
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-purple-300 to-indigo-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🏯</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">建筑</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">姬路城</h3>
+          <p class="text-xs text-muted mb-2">by 和风积木 · 3,200 零件</p>
+          <div class="flex items-center justify-between"><span class="difficulty-star">★★★★</span><span class="difficulty-star empty">★</span><span class="text-xs text-muted ml-auto">❤️ 892</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-teal-300 to-green-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🦖</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">奇幻</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">霸王龙骨架</h3>
+          <p class="text-xs text-muted mb-2">by 化石猎人 · 1,800 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★</span><span class="difficulty-star empty">★★</span><span class="text-xs text-muted ml-auto">❤️ 1.2k</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-orange-300 to-red-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🏎️</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">车辆</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">F1 赛车</h3>
+          <p class="text-xs text-muted mb-2">by 速度与积木 · 2,450 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★</span><span class="difficulty-star empty">★★</span><span class="text-xs text-muted ml-auto">❤️ 645</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-blue-300 to-violet-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🚀</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">科幻</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">星际战舰</h3>
+          <p class="text-xs text-muted mb-2">by 银河建造者 · 5,600 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★★★</span><span class="text-xs text-muted ml-auto">❤️ 2.8k</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-pink-300 to-rose-600 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🌸</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">场景</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">樱花庭院</h3>
+          <p class="text-xs text-muted mb-2">by 自然之美 · 2,100 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★</span><span class="difficulty-star empty">★★★</span><span class="text-xs text-muted ml-auto">❤️ 423</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-gray-400 to-slate-700 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">⚔️</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">机甲</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">EVA 初号机</h3>
+          <p class="text-xs text-muted mb-2">by 机甲工坊 · 4,200 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★★</span><span class="difficulty-star empty">★</span><span class="text-xs text-muted ml-auto">❤️ 3.4k</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-amber-300 to-yellow-700 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🏗️</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">建筑</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">故宫太和殿</h3>
+          <p class="text-xs text-muted mb-2">by 古建爱好者 · 8,000 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★★★</span><span class="text-xs text-muted ml-auto">❤️ 5.1k</span></div>
+        </div>
+      </div>
+      <div class="card cursor-pointer group" onclick="switchPage('detail')">
+        <div class="aspect-[4/3] bg-gradient-to-br from-lime-300 to-green-700 flex items-center justify-center relative overflow-hidden">
+          <span class="text-5xl group-hover:scale-110 transition-transform duration-300">🦅</span>
+          <div class="absolute top-3 left-3"><span class="tag bg-white/20 text-white backdrop-blur-sm">奇幻</span></div>
+        </div>
+        <div class="p-4"><h3 class="font-semibold mb-1">凤凰</h3>
+          <p class="text-xs text-muted mb-2">by 神话工匠 · 1,500 零件</p>
+          <div class="flex items-center"><span class="difficulty-star">★★★</span><span class="difficulty-star empty">★★</span><span class="text-xs text-muted ml-auto">❤️ 978</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex justify-center gap-2">
+      <button class="btn btn-outline px-4 py-2 text-sm opacity-50">上一页</button>
+      <button class="btn btn-primary px-4 py-2 text-sm">1</button>
+      <button class="btn btn-outline px-4 py-2 text-sm">2</button>
+      <button class="btn btn-outline px-4 py-2 text-sm">3</button>
+      <button class="btn btn-outline px-4 py-2 text-sm">...</button>
+      <button class="btn btn-outline px-4 py-2 text-sm">42</button>
+      <button class="btn btn-outline px-4 py-2 text-sm">下一页</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== DETAIL PAGE ==================== -->
+<div class="page" id="page-detail">
+  <div class="max-w-5xl mx-auto px-6 py-10">
+    <button class="text-muted hover:text-accent font-medium text-sm mb-6 flex items-center gap-1" onclick="switchPage('explore')">← 返回列表</button>
+
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">
+      <div>
+        <span class="tag mb-3 inline-block">建筑</span>
+        <h1 class="font-display text-5xl mb-3">霍格沃茨城堡</h1>
+        <div class="flex items-center gap-3 text-sm text-muted">
+          <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-xs">JM</div>
+          <span class="font-medium text-fg">积木大师</span>
+          <span>·</span>
+          <span>2026-06-01</span>
+          <span>·</span>
+          <span>👁️ 12,847</span>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button class="btn btn-primary px-6 py-3" id="fav-btn2" onclick="toggleFav2()">❤️ 收藏 (2.3k)</button>
+        <button class="btn btn-outline px-6 py-3">📥 下载图纸</button>
+      </div>
+    </div>
+
+    <!-- Image Gallery -->
+    <div class="card overflow-hidden mb-4">
+      <div class="aspect-[16/9] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 flex items-center justify-center relative group">
+        <span class="text-[10rem] opacity-90">🏰</span>
+        <button class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/90 flex items-center justify-center text-xl font-semibold shadow-lg hover:bg-white transition-colors opacity-0 group-hover:opacity-100">‹</button>
+        <button class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/90 flex items-center justify-center text-xl font-semibold shadow-lg hover:bg-white transition-colors opacity-0 group-hover:opacity-100">›</button>
+        <div class="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5">
+          <div class="w-2.5 h-2.5 rounded-full bg-white"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-white/40"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-white/40"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-white/40"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thumbnail strip -->
+    <div class="flex gap-3 mb-10 overflow-x-auto pb-2">
+      <div class="w-24 h-18 rounded-xl overflow-hidden border-2 border-accent bg-gradient-to-br from-indigo-300 to-purple-500 flex items-center justify-center text-3xl flex-shrink-0">🏰</div>
+      <div class="w-24 h-18 rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-br from-blue-200 to-indigo-400 flex items-center justify-center text-3xl flex-shrink-0 opacity-70 hover:opacity-100 cursor-pointer">🗼</div>
+      <div class="w-24 h-18 rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-br from-green-200 to-emerald-400 flex items-center justify-center text-3xl flex-shrink-0 opacity-70 hover:opacity-100 cursor-pointer">🌳</div>
+      <div class="w-24 h-18 rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-br from-purple-200 to-violet-400 flex items-center justify-center text-3xl flex-shrink-0 opacity-70 hover:opacity-100 cursor-pointer">🪄</div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+      <div class="md:col-span-2 space-y-6">
+        <div class="card p-6">
+          <h3 class="font-display text-2xl mb-4">📋 作品信息</h3>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div><span class="text-muted">分类</span><div class="font-semibold mt-0.5"><span class="tag">建筑</span></div></div>
+            <div><span class="text-muted">难度</span><div class="font-semibold mt-0.5 text-amber-500">★★★★☆ 4/5</div></div>
+            <div><span class="text-muted">零件数</span><div class="font-semibold mt-0.5">6,800 个</div></div>
+            <div><span class="text-muted">尺寸</span><div class="font-semibold mt-0.5">48×64×52 studs</div></div>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-1.5">
+            <span class="tag">#魔法</span><span class="tag">#城堡</span><span class="tag">#哈利波特</span><span class="tag">#奇幻建筑</span>
+          </div>
+        </div>
+
+        <div class="card p-6">
+          <h3 class="font-display text-2xl mb-4">📝 作品描述</h3>
+          <p class="text-subtle leading-relaxed">
+            这是一款高度还原的霍格沃茨城堡 MOC 作品，包含主塔楼、大礼堂、天文塔等多个经典场景。
+            整体采用灰色和沙绿色为主色调，细节丰富，适合有中等搭建经验的积木爱好者。
+            图纸包含完整的零件清单和分步搭建说明（PDF），推荐使用正版积木零件还原。
+          </p>
+        </div>
+
+        <!-- Comments -->
+        <div class="card p-6">
+          <h3 class="font-display text-2xl mb-5">💬 评论 <span class="text-muted text-base font-normal">(89)</span></h3>
+          <div class="flex gap-3 mb-6 pb-6 border-b border-gray-100">
+            <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 text-muted">😊</div>
+            <div class="flex-1">
+              <textarea placeholder="写下你的评论..." class="w-full resize-none h-20 text-sm"></textarea>
+              <button class="btn btn-primary px-4 py-1.5 text-sm mt-2">发表评论</button>
+            </div>
+          </div>
+          <div class="space-y-5">
+            <div class="flex gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 font-bold text-green-700 text-sm">萌</div>
+              <div>
+                <div class="flex items-center gap-2 mb-0.5"><span class="font-semibold text-sm">积木小萌新</span><span class="text-xs text-muted">2 小时前</span></div>
+                <p class="text-subtle text-sm">太震撼了！照着图纸搭了两周终于完成了，效果超棒 👍</p>
+                <div class="flex gap-4 mt-1.5 text-xs text-muted"><button class="hover:text-fg">👍 32</button><button class="hover:text-fg">回复</button></div>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 font-bold text-purple-700 text-sm">L</div>
+              <div>
+                <div class="flex items-center gap-2 mb-0.5"><span class="font-semibold text-sm">建筑师Linda</span><span class="text-xs text-muted">5 小时前</span></div>
+                <p class="text-subtle text-sm">零件清单里的透明蓝砖块可以用透明浅蓝替代吗？数量不太够</p>
+                <div class="flex gap-4 mt-1.5 text-xs text-muted"><button class="hover:text-fg">👍 8</button><button class="hover:text-fg">回复</button></div>
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 font-bold text-amber-700 text-sm">大</div>
+              <div>
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="font-semibold text-sm">积木大师</span>
+                  <span class="text-xs bg-accent text-white px-2 py-0.5 rounded-full font-medium">作者</span>
+                  <span class="text-xs text-muted">3 小时前</span>
+                </div>
+                <p class="text-subtle text-sm">@建筑师Linda 可以的！颜色接近的透明砖都能用，只要尺寸对就行 😄</p>
+                <div class="flex gap-4 mt-1.5 text-xs text-muted"><button class="hover:text-fg">👍 15</button><button class="hover:text-fg">回复</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-4">
+        <div class="card p-5">
+          <h3 class="font-semibold mb-3">🧩 零件清单预览</h3>
+          <div class="space-y-2 text-sm max-h-56 overflow-y-auto">
+            <div class="flex justify-between py-1.5 border-b border-gray-50"><span class="font-mono text-xs text-muted">3001</span><span>2×4 砖块 (浅灰)</span><span class="font-semibold ml-auto">×420</span></div>
+            <div class="flex justify-between py-1.5 border-b border-gray-50"><span class="font-mono text-xs text-muted">3002</span><span>2×3 砖块 (沙绿)</span><span class="font-semibold ml-auto">×185</span></div>
+            <div class="flex justify-between py-1.5 border-b border-gray-50"><span class="font-mono text-xs text-muted">3622</span><span>1×3 砖块 (深灰)</span><span class="font-semibold ml-auto">×230</span></div>
+            <div class="flex justify-between py-1.5 border-b border-gray-50"><span class="font-mono text-xs text-muted">3005</span><span>1×1 砖块 (透明蓝)</span><span class="font-semibold ml-auto">×96</span></div>
+            <div class="flex justify-between py-1.5"><span class="font-mono text-xs text-muted">3023</span><span>1×2 板 (深褐)</span><span class="font-semibold ml-auto">×310</span></div>
+          </div>
+          <button class="text-accent font-medium text-sm mt-3 hover:underline">查看全部 127 种 →</button>
+        </div>
+
+        <div class="card p-5 text-center">
+          <div class="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-3 text-2xl">🧑‍🔧</div>
+          <div class="font-semibold text-lg">积木大师</div>
+          <div class="text-xs text-muted mb-2">🏆 资深创作者</div>
+          <div class="flex justify-center gap-4 text-xs text-muted mb-4">
+            <span>📐 47 作品</span><span>❤️ 12.4k 收藏</span>
+          </div>
+          <button class="btn btn-outline w-full py-2 text-sm">关注</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector('[data-page="' + name + '"]').classList.add('active');
+  window.scrollTo(0, 0);
+}
+function toggleFav2() {
+  const btn = document.getElementById('fav-btn2');
+  if (btn.textContent.includes('收藏')) {
+    btn.textContent = '❤️ 已收藏 (2.3k)';
+    btn.classList.remove('btn-primary'); btn.classList.add('btn-outline');
+    btn.style.borderColor = '#6366F1'; btn.style.color = '#6366F1';
+  } else {
+    btn.textContent = '❤️ 收藏 (2.3k)';
+    btn.classList.add('btn-primary'); btn.classList.remove('btn-outline');
+    btn.style.borderColor = ''; btn.style.color = '';
+  }
+}
+</script>
+
+</body>
+</html>
