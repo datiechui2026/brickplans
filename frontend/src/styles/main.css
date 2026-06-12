@@ -595,6 +595,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .comment-author { font-weight: 700; font-size: 0.9rem; }
 .comment-time { font-size: 0.75rem; color: var(--text-sec); margin-left: auto; }
+.comment-reply { margin-left: 28px; padding-left: 12px; border-left: 3px solid rgba(255,107,53,.25); }
+.comment-reply-btn {
+  margin-top: 6px; padding: 0; border: none; background: transparent;
+  color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.reply-input-row { display: flex; gap: 8px; margin: 10px 0 10px 28px; }
+.reply-input-row input { flex: 1; padding: 9px 12px; border: 1.5px solid #e5e5e5; border-radius: 10px; }
+.nav-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px; background: #ef4444; color: #fff; font-size: 11px; font-weight: 800;
+}
+.notifications-card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.notification-item { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.notification-item:last-child { border-bottom: none; }
+.notification-item.unread { background: #fff7ed; }
+.notification-main { flex: 1; min-width: 0; }
+.notification-title { font-weight: 800; color: var(--text); }
+.notification-excerpt { margin-top: 4px; color: var(--text-sec); font-size: 13px; }
+.notification-time { margin-top: 6px; color: var(--text-sec); font-size: 12px; }
 
 /* ═══════════════════════════════════════════
    PROFILE PAGE

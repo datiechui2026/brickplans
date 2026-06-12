@@ -13,7 +13,7 @@ from app.api.deps import get_current_user, bearer
 from app.core.database import get_db
 from app.core.security import decode_token
 from jose.exceptions import ExpiredSignatureError, JWTError
-from app.models import User, Blueprint, BlueprintImage, Favorite, Comment, Tag, BlueprintTag, Like
+from app.models import User, Blueprint, BlueprintImage, Favorite, Comment, Tag, BlueprintTag, Like, Notification
 from app.schemas import (
     BlueprintCreate, BlueprintUpdate, BlueprintOut, BlueprintDetail,
     BlueprintListOut, CommentCreate, CommentOut, UserOut,
@@ -330,6 +330,14 @@ async def favorite_blueprint(
 
     fav = Favorite(user_id=current_user.id, blueprint_id=blueprint_id)
     db.add(fav)
+    _add_notification(
+        db,
+        user_id=bp.author_id,
+        actor_id=current_user.id,
+        type="favorite",
+        blueprint_id=blueprint_id,
+        payload={"blueprint_title": bp.title},
+    )
     await db.commit()
     return {"detail": "Favorited"}
 
@@ -378,6 +386,14 @@ async def like_blueprint(
     like = Like(user_id=current_user.id, blueprint_id=blueprint_id)
     db.add(like)
     bp.like_count += 1
+    _add_notification(
+        db,
+        user_id=bp.author_id,
+        actor_id=current_user.id,
+        type="like",
+        blueprint_id=blueprint_id,
+        payload={"blueprint_title": bp.title},
+    )
     await db.commit()
     return {"detail": "Liked", "like_count": bp.like_count}
 
@@ -419,12 +435,44 @@ async def create_comment(
     if not bp:
         raise HTTPException(status_code=404, detail="Blueprint not found")
 
+    parent = None
+    if payload.parent_id:
+        parent = await db.get(Comment, payload.parent_id)
+        if not parent or parent.blueprint_id != blueprint_id:
+            raise HTTPException(status_code=404, detail="Parent comment not found")
+        if parent.parent_id:
+            raise HTTPException(status_code=400, detail="Only one-level replies are supported")
+
     comment = Comment(
         blueprint_id=blueprint_id,
         user_id=current_user.id,
+        parent_id=payload.parent_id,
         content=payload.content,
     )
     db.add(comment)
+    await db.flush()
+
+    if parent:
+        _add_notification(
+            db,
+            user_id=parent.user_id,
+            actor_id=current_user.id,
+            type="comment_reply",
+            blueprint_id=blueprint_id,
+            comment_id=comment.id,
+            payload={"blueprint_title": bp.title, "comment_excerpt": payload.content[:80]},
+        )
+    else:
+        _add_notification(
+            db,
+            user_id=bp.author_id,
+            actor_id=current_user.id,
+            type="comment",
+            blueprint_id=blueprint_id,
+            comment_id=comment.id,
+            payload={"blueprint_title": bp.title, "comment_excerpt": payload.content[:80]},
+        )
+
     await db.commit()
     # Re-query with eager-loaded user
     result = await db.execute(
@@ -452,6 +500,28 @@ async def list_comments(
 
 
 # ────────────────────────── Helpers ──────────────────────────
+
+def _add_notification(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    actor_id: str,
+    type: str,
+    blueprint_id: str | None = None,
+    comment_id: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    if user_id == actor_id:
+        return
+    db.add(Notification(
+        user_id=user_id,
+        actor_id=actor_id,
+        type=type,
+        blueprint_id=blueprint_id,
+        comment_id=comment_id,
+        payload=payload,
+    ))
+
 
 def _to_blueprint_out(bp: Blueprint,
                        favorite_count: int = 0,
@@ -528,6 +598,7 @@ def _to_comment_out(comment: Comment) -> dict:
         "id": comment.id,
         "blueprint_id": comment.blueprint_id,
         "user_id": comment.user_id,
+        "parent_id": comment.parent_id,
         "content": comment.content,
         "created_at": comment.created_at.isoformat() if comment.created_at else "",
         "user": user,

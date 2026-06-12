@@ -28,6 +28,7 @@ const state = {
   page: 'home',
   detailId: null,
   editId: null,
+  notificationUnreadCount: 0,
   flashMessage: null,
   explore: { page: 1, q: '', category: '', sort: 'new', tag: '', items: [], total: 0 },
   user: api.getCurrentUser(),
@@ -191,6 +192,15 @@ function $id(id) { return document.getElementById(id); }
 // ═══════════════════════════════════════════
 // Navbar
 // ═══════════════════════════════════════════
+async function refreshNotificationBadge() {
+  if (!state.user?.id) return;
+  try {
+    const data = await api.getUnreadNotificationCount();
+    state.notificationUnreadCount = data.unread_count || 0;
+    renderNavbarIntoDOM();
+  } catch { /* ignore */ }
+}
+
 function renderNavbar() {
   const brandEl = h('a', {
     className: 'nav-brand',
@@ -202,6 +212,10 @@ function renderNavbar() {
 
   // Upload button — shows login modal if not logged in
   if (state.user?.id) {
+    actions.push(h('button', { className: 'btn btn-ghost', onclick: () => navigate('notifications') },
+      '🔔 通知',
+      state.notificationUnreadCount > 0 ? h('span', { className: 'nav-dot' }, String(Math.min(state.notificationUnreadCount, 99))) : null,
+    ));
     actions.push(h('button', { className: 'btn btn-ghost', onclick: () => navigate('upload') }, '📤 上传图纸'));
   } else {
     actions.push(h('button', { className: 'btn btn-ghost', onclick: () => showModal('login') }, '📤 上传图纸'));
@@ -1312,6 +1326,60 @@ async function loadDetail(id) {
     );
 
     // Load comments
+    const renderComment = (c) => h('div', { className: `comment${c.parent_id ? ' comment-reply' : ''}` },
+      h('div', { className: 'comment-header' },
+        h('div', { className: 'comment-avatar' }, (c.user?.username || '?')[0].toUpperCase()),
+        h('div', { className: 'comment-author' }, c.user?.username || '匿名'),
+        c.created_at ? h('div', { className: 'comment-time' },
+          new Date(c.created_at).toLocaleDateString('zh-CN'),
+        ) : null,
+      ),
+      h('div', { className: 'comment-text' }, c.content),
+      state.user?.id ? h('button', {
+        className: 'comment-reply-btn',
+        onclick: () => showReplyBox(c.id, c.user?.username || '匿名'),
+      }, '回复') : null,
+    );
+
+    const showReplyBox = (parentId, username) => {
+      const oldBox = document.querySelector('.reply-input-row');
+      if (oldBox) oldBox.remove();
+      const replyBox = h('div', { className: 'reply-input-row' },
+        h('input', {
+          type: 'text',
+          className: 'comment-input',
+          placeholder: `回复 ${username}...`,
+          onkeydown: async (e) => {
+            if (e.key === 'Enter') {
+              await submitReply(parentId, e.target);
+            }
+          },
+        }),
+        h('button', { className: 'btn btn-primary btn-sm', onclick: async (e) => submitReply(parentId, e.target.previousElementSibling) }, '发送'),
+        h('button', { className: 'btn btn-ghost btn-sm', onclick: () => replyBox.remove() }, '取消'),
+      );
+      const commentsEl = $id('detail-comments');
+      const target = commentsEl?.querySelector(`[data-comment-id="${parentId}"]`);
+      if (target) target.insertAdjacentElement('afterend', replyBox);
+    };
+
+    const submitReply = async (parentId, input) => {
+      const content = input?.value?.trim();
+      if (!content) return;
+      try {
+        const newComment = await api.createComment(id, content, parentId);
+        const commentsEl = $id('detail-comments');
+        const target = commentsEl?.querySelector(`[data-comment-id="${parentId}"]`);
+        const node = renderComment(newComment);
+        node.dataset.commentId = newComment.id;
+        if (target) target.insertAdjacentElement('afterend', node);
+        input.closest('.reply-input-row')?.remove();
+        showToast('回复已发布', 'success');
+      } catch (e) {
+        alert('回复失败: ' + (e.message || '请稍后重试'));
+      }
+    };
+
     try {
       const comments = await api.listComments(id);
       const commentsEl = $id('detail-comments');
@@ -1325,18 +1393,9 @@ async function loadDetail(id) {
           );
         } else {
           comments.forEach(c => {
-            commentsEl.appendChild(
-              h('div', { className: 'comment' },
-                h('div', { className: 'comment-header' },
-                  h('div', { className: 'comment-avatar' }, (c.user?.username || '?')[0].toUpperCase()),
-                  h('div', { className: 'comment-author' }, c.user?.username || '匿名'),
-                  c.created_at ? h('div', { className: 'comment-time' },
-                    new Date(c.created_at).toLocaleDateString('zh-CN'),
-                  ) : null,
-                ),
-                h('div', { className: 'comment-text' }, c.content),
-              ),
-            );
+            const node = renderComment(c);
+            node.dataset.commentId = c.id;
+            commentsEl.appendChild(node);
           });
         }
       }
@@ -1369,19 +1428,9 @@ async function loadDetail(id) {
                 // Remove empty state if present
                 const emptyEl = commentsEl.querySelector('.empty');
                 if (emptyEl) emptyEl.remove();
-                commentsEl.insertBefore(
-                  h('div', { className: 'comment' },
-                    h('div', { className: 'comment-header' },
-                      h('div', { className: 'comment-avatar' }, (newComment.user?.username || '?')[0].toUpperCase()),
-                      h('div', { className: 'comment-author' }, newComment.user?.username || '匿名'),
-                      newComment.created_at ? h('div', { className: 'comment-time' },
-                        new Date(newComment.created_at).toLocaleDateString('zh-CN'),
-                      ) : null,
-                    ),
-                    h('div', { className: 'comment-text' }, newComment.content),
-                  ),
-                  commentsEl.firstChild,
-                );
+                const node = renderComment(newComment);
+                node.dataset.commentId = newComment.id;
+                commentsEl.insertBefore(node, commentsEl.firstChild);
                 input.value = '';
               } catch (e) {
                 alert('发表失败: ' + (e.message || '请稍后重试'));
@@ -1428,6 +1477,77 @@ async function loadDetail(id) {
     window._retryDetail = () => loadDetail(id);
     showToast('加载图纸详情失败', 'error');
   }
+}
+
+// ── Upload ──
+async function renderNotifications() {
+  if (!state.user?.id) {
+    navigate('home');
+    showModal('login');
+    return;
+  }
+
+  const container = $id('page-notifications');
+  container.innerHTML = '';
+  container.appendChild(
+    h('div', { className: 'main', style: { maxWidth: '760px' } },
+      h('div', { className: 'page-header' },
+        h('h1', {}, '🔔 站内通知'),
+        h('p', {}, '评论、回复、点赞和收藏都会在这里提醒你'),
+      ),
+      h('div', { id: 'notifications-list', className: 'notifications-card' },
+        h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
+      ),
+    ),
+  );
+
+  try {
+    const data = await api.listNotifications({ size: 50 });
+    const listEl = $id('notifications-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const items = data.items || [];
+    if (!items.length) {
+      listEl.appendChild(h('div', { className: 'empty', style: { padding: '32px' } },
+        h('div', { className: 'empty-icon' }, '📭'),
+        h('p', {}, '暂无通知'),
+      ));
+    } else {
+      items.forEach(item => listEl.appendChild(renderNotificationItem(item)));
+    }
+    if (data.unread_count > 0) {
+      await api.markNotificationsRead();
+      state.notificationUnreadCount = 0;
+      renderNavbarIntoDOM();
+    }
+  } catch (e) {
+    const listEl = $id('notifications-list');
+    if (listEl) listEl.innerHTML = `<div class="error-block"><p>加载通知失败：${e.message}</p></div>`;
+  }
+}
+
+function renderNotificationItem(item) {
+  const actor = item.actor?.username || '有人';
+  const title = item.payload?.blueprint_title || '你的作品';
+  const messageMap = {
+    comment: `${actor} 评论了《${title}》`,
+    comment_reply: `${actor} 回复了你的评论`,
+    like: `${actor} 点赞了《${title}》`,
+    favorite: `${actor} 收藏了《${title}》`,
+  };
+  const message = messageMap[item.type] || `${actor} 有新的互动`;
+  const excerpt = item.payload?.comment_excerpt;
+  return h('div', { className: `notification-item${item.is_read ? '' : ' unread'}` },
+    h('div', { className: 'notification-main' },
+      h('div', { className: 'notification-title' }, message),
+      excerpt ? h('div', { className: 'notification-excerpt' }, excerpt) : null,
+      h('div', { className: 'notification-time' }, item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : ''),
+    ),
+    item.blueprint_id ? h('button', {
+      className: 'btn btn-ghost btn-sm',
+      onclick: () => navigate('detail', { id: item.blueprint_id }),
+    }, '查看') : null,
+  );
 }
 
 // ── Upload ──
@@ -2896,7 +3016,7 @@ function render() {
   const app = document.getElementById('app');
 
   // Ensure page containers exist
-  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy'];
+  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications'];
   if (!app.querySelector('#page-home')) {
     app.innerHTML = '';
     renderNavbarIntoDOM();
@@ -2945,7 +3065,15 @@ function render() {
       resetMeta();
       renderPrivacyPage();
       break;
+    case 'notifications':
+      resetMeta();
+      renderNotifications();
+      break;
     default: resetMeta(); renderErrorPage(404); break;
+  }
+
+  if (state.user?.id && state.page !== 'notifications') {
+    refreshNotificationBadge();
   }
 }
 

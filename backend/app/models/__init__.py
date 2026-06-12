@@ -31,6 +31,11 @@ class User(Base):
     comments: Mapped[list["Comment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     reports: Mapped[list["Report"]] = relationship(back_populates="reporter", cascade="all, delete-orphan")
     likes: Mapped[list["Like"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[list["Notification"]] = relationship(
+        foreign_keys="Notification.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class Blueprint(Base):
@@ -129,11 +134,39 @@ class Comment(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    parent_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("comments.id", ondelete="CASCADE"))
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     blueprint: Mapped["Blueprint"] = relationship(back_populates="comments")
     user: Mapped["User"] = relationship(back_populates="comments")
+    parent: Mapped["Comment | None"] = relationship(remote_side="Comment.id", back_populates="replies")
+    replies: Mapped[list["Comment"]] = relationship(back_populates="parent", cascade="all, delete-orphan")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"))
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    blueprint_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"))
+    comment_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("comments.id", ondelete="CASCADE"))
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="notifications")
+    actor: Mapped["User | None"] = relationship(foreign_keys=[actor_id])
+    blueprint: Mapped["Blueprint | None"] = relationship()
+    comment: Mapped["Comment | None"] = relationship()
+
+    __table_args__ = (
+        Index("idx_notifications_user_read_created", "user_id", "is_read", "created_at"),
+        Index("idx_notifications_user_created", "user_id", "created_at"),
+    )
 
 
 class Report(Base):

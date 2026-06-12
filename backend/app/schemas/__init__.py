@@ -134,17 +134,45 @@ class BlueprintListOut(BaseModel):
 
 class CommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
+    parent_id: str | None = None
 
 
 class CommentOut(BaseModel):
     id: str
     blueprint_id: str
     user_id: str
+    parent_id: str | None = None
     content: str
     created_at: str
     user: UserOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ── Notification ──
+
+class NotificationOut(BaseModel):
+    id: str
+    user_id: str
+    actor_id: str | None = None
+    type: str
+    blueprint_id: str | None = None
+    comment_id: str | None = None
+    payload: dict | None = None
+    is_read: bool = False
+    created_at: str
+    read_at: str | None = None
+    actor: UserOut | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class NotificationListOut(BaseModel):
+    items: list[NotificationOut]
+    total: int
+    unread_count: int
+    page: int
+    page_size: int
 
 
 # ── Report ──

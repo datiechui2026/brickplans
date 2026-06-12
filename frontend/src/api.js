@@ -179,10 +179,12 @@ export async function listComments(blueprintId) {
   return request(`/api/blueprints/${blueprintId}/comments`);
 }
 
-export async function createComment(blueprintId, content) {
+export async function createComment(blueprintId, content, parentId = null) {
+  const payload = { content };
+  if (parentId) payload.parent_id = parentId;
   return request(`/api/blueprints/${blueprintId}/comments`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -312,6 +314,20 @@ export async function unlikeBlueprint(id) {
 // ── Stats ──
 export async function getStats() {
   return request('/api/stats');
+}
+
+// ── Notifications ──
+export async function listNotifications({ page = 1, size = 20 } = {}) {
+  const params = new URLSearchParams({ page, size });
+  return request(`/api/notifications?${params}`);
+}
+
+export async function getUnreadNotificationCount() {
+  return request('/api/notifications/unread-count');
+}
+
+export async function markNotificationsRead() {
+  return request('/api/notifications/mark-read', { method: 'POST' });
 }
 
 // ── Admin ──

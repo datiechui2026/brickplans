@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.core.database import get_engine, Base
+from app.core.database import get_engine
+from app.core.migrations import prepare_database
 from app.api import auth
 from app.api import blueprints
 from app.api import images
@@ -16,6 +17,7 @@ from app.api import users
 from app.api import seo
 from app.api import stats
 from app.api import admin
+from app.api import notifications
 
 settings = get_settings()
 
@@ -23,8 +25,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await prepare_database(engine)
     yield
     await engine.dispose()
 
@@ -52,6 +53,7 @@ app.include_router(users.router)
 app.include_router(seo.router)
 app.include_router(stats.router)
 app.include_router(admin.router)
+app.include_router(notifications.router)
 
 # Mount uploads directory for serving uploaded images
 uploads_path = Path(__file__).resolve().parent.parent / "uploads"

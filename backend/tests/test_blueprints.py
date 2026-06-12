@@ -332,6 +332,80 @@ class TestComment:
         })
         assert response.status_code == 401
 
+    async def test_comment_creates_author_notification(self, client: AsyncClient):
+        author_token = await _register_and_login(client, "notif_author", "notif_author@test.com")
+        commenter_token = await _register_and_login(client, "notif_commenter", "notif_commenter@test.com")
+        author_headers = {"Authorization": f"Bearer {author_token}"}
+        commenter_headers = {"Authorization": f"Bearer {commenter_token}"}
+
+        create_resp = await client.post("/api/blueprints", json={
+            "title": "Notify Me",
+            "description": "Notification test",
+        }, headers=author_headers)
+        bp_id = create_resp.json()["id"]
+
+        comment_resp = await client.post(f"/api/blueprints/{bp_id}/comments", json={
+            "content": "作者你好",
+        }, headers=commenter_headers)
+        assert comment_resp.status_code == 201
+        assert comment_resp.json()["parent_id"] is None
+
+        notifications_resp = await client.get("/api/notifications", headers=author_headers)
+        assert notifications_resp.status_code == 200
+        data = notifications_resp.json()
+        assert data["unread_count"] == 1
+        assert data["items"][0]["type"] == "comment"
+        assert data["items"][0]["blueprint_id"] == bp_id
+        assert data["items"][0]["payload"]["comment_excerpt"] == "作者你好"
+        assert data["items"][0]["actor"]["username"] == "notif_commenter"
+
+    async def test_reply_creates_parent_comment_notification(self, client: AsyncClient):
+        author_token = await _register_and_login(client, "reply_author", "reply_author@test.com")
+        commenter_token = await _register_and_login(client, "reply_commenter", "reply_commenter@test.com")
+        replier_token = await _register_and_login(client, "reply_replier", "reply_replier@test.com")
+        author_headers = {"Authorization": f"Bearer {author_token}"}
+        commenter_headers = {"Authorization": f"Bearer {commenter_token}"}
+        replier_headers = {"Authorization": f"Bearer {replier_token}"}
+
+        create_resp = await client.post("/api/blueprints", json={"title": "Reply MOC"}, headers=author_headers)
+        bp_id = create_resp.json()["id"]
+        parent_resp = await client.post(f"/api/blueprints/{bp_id}/comments", json={
+            "content": "第一条评论",
+        }, headers=commenter_headers)
+        parent_id = parent_resp.json()["id"]
+
+        reply_resp = await client.post(f"/api/blueprints/{bp_id}/comments", json={
+            "content": "回复你一下",
+            "parent_id": parent_id,
+        }, headers=replier_headers)
+        assert reply_resp.status_code == 201
+        assert reply_resp.json()["parent_id"] == parent_id
+
+        notifications_resp = await client.get("/api/notifications", headers=commenter_headers)
+        data = notifications_resp.json()
+        assert data["unread_count"] == 1
+        assert data["items"][0]["type"] == "comment_reply"
+        assert data["items"][0]["actor"]["username"] == "reply_replier"
+
+    async def test_mark_notifications_read(self, client: AsyncClient):
+        author_token = await _register_and_login(client, "read_author", "read_author@test.com")
+        liker_token = await _register_and_login(client, "read_liker", "read_liker@test.com")
+        author_headers = {"Authorization": f"Bearer {author_token}"}
+        liker_headers = {"Authorization": f"Bearer {liker_token}"}
+
+        create_resp = await client.post("/api/blueprints", json={"title": "Read Later"}, headers=author_headers)
+        bp_id = create_resp.json()["id"]
+        like_resp = await client.post(f"/api/blueprints/{bp_id}/like", headers=liker_headers)
+        assert like_resp.status_code == 201
+
+        count_resp = await client.get("/api/notifications/unread-count", headers=author_headers)
+        assert count_resp.json()["unread_count"] == 1
+
+        mark_resp = await client.post("/api/notifications/mark-read", headers=author_headers)
+        assert mark_resp.status_code == 200
+        count_resp = await client.get("/api/notifications/unread-count", headers=author_headers)
+        assert count_resp.json()["unread_count"] == 0
+
 
 # ────────────────────────── Helpers ──────────────────────────
 
