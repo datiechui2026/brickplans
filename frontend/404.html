@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 — BrickPlans</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>" />
+  <style>
+    :root {
+      --brick-yellow: #FFD500; --brick-red: #E3000B;
+      --brick-blue: #0051BA; --brick-green: #00AF4C;
+      --brick-orange: #FF8C00; --brick-dark: #1A1A2E;
+      --text-muted: #666;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family:
+        "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
+        "WenQuanYi Micro Hei", "Noto Sans CJK SC",
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #FFD500 0%, #FF8C00 30%, #FDF6E3 70%);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 40px 24px; color: #1A1A2E;
+    }
+    .icon { font-size: 6rem; margin-bottom: 16px; }
+    h1 { font-size: 4rem; margin-bottom: 8px; }
+    p { font-size: 1.2rem; color: #666; margin-bottom: 32px; max-width: 480px; line-height: 1.6; font-weight: 600; }
+    a {
+      display: inline-block; padding: 14px 32px;
+      border-radius: 10px 3px 10px 3px; font-weight: 700; font-size: 1.1rem;
+      text-decoration: none; cursor: pointer; transition: all 0.15s;
+      border: 3px solid #1A1A2E; background: #FFD500; color: #1A1A2E;
+    }
+    a:hover { transform: translate(2px, 2px); }
+    a:active { transform: translate(3px, 3px); }
+
+    /* Blocklister — Chinese font smoke test */
+    .blocklister {
+      max-width: 640px; margin: 40px auto 0; padding: 20px;
+      background: rgba(255,255,255,0.6); border-radius: 12px;
+      border: 2px solid #1A1A2E; text-align: left; font-size: 0.85rem;
+    }
+    .blocklister h3 { margin-bottom: 8px; font-size: 0.9rem; color: #666; }
+    .blocklister-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+    .blocklister-item { padding: 2px 6px; border-radius: 4px; background: #fff; border: 1px solid #ddd; font-weight: 600; }
+    .blocklister-item.ok { color: #00AF4C; }
+    .blocklister-item.missing { color: #E3000B; }
+    @media (max-width: 480px) {
+      h1 { font-size: 2.5rem; }
+      p { font-size: 1rem; }
+      .icon { font-size: 4rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">🔍</div>
+  <h1>404</h1>
+  <p>你要找的图纸可能被拆掉了...</p>
+  <a href="/">🧱 返回首页</a>
+
+  <!-- Blocklister — Chinese font smoke test -->
+  <div class="blocklister">
+    <h3>🔤 中文字体渲染测试 (Blocklister)</h3>
+    <div class="blocklister-grid" id="bl-grid"></div>
+  </div>
+  <script>
+    // Blocklister: test rendering of various Chinese Unicode blocks
+    const samples = {
+      'CJK 基础 (常用字)': '的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处队南给色光门即保治北造百规热领七海口东导器压志世金增争济阶油思术极交受联什认六共权收证改清己美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近矿千周委素技备半办青省列习响约支般史感劳便团往酸历市克何除消构府称太准精值号率族维划选标写存候毛亲快效斯院查江型眼王按格养易置派层片始却专状育厂京识适属圆包火住调满县局照参红细引听该铁价严</div>',
+      'CJK 扩展A (生僻字)': '㐀㐁㐂㐃㐄㐅㐆㐇㐈㐉㐊㐋㐌㐍㐎㐏㐐㐑㐒㐓㐔㐕㐖㐗㐘㐙㐚㐛㐜㐝㐞㐟㐠㐡㐢㐣㐤㐥㐦㐧㐨㐩㐪㐫㐬㐭㐮㐯㐰㐱㐲㐳㐴㐵㐶㐷㐸㐹㐺㐻㐼㐽㐾㐿',
+      'CJK 兼容 (兼容字)': '豈更車賈滑串句龜龜契金喇奈懶癩羅蘿螺裸邏樂洛烙珞落酪駱亂卵欄爛蘭鸞嵐濫藍襤拉臘蠟廊朗浪狼郎來冷勞',
+      '全角标点符号': '，。！？；：“”‘’【】（）《》…—～·',
+      '中文数字': '〇一二三四五六七八九十百千万亿',
+      '偏旁部首': '丿丨丶乛亅匚冂冖冫勹匸卩厶夂宀宀',
+      '日文假名 (对比)': 'あいうえおかきくけこさしすせそたちつてと',
+      '韩文 (对比)': '가나다라마바사아자차카타파하',
+    };
+    const grid = document.getElementById('bl-grid');
+    for (const [label, text] of Object.entries(samples)) {
+      const item = document.createElement('div');
+      item.className = 'blocklister-item ok';
+      item.title = label;
+      const preview = text.slice(0, 18);
+      const hasMissing = [...preview].some(ch => {
+        const w = document.createElement('span');
+        w.textContent = ch;
+        w.style.fontFamily = 'monospace';
+        document.body.appendChild(w);
+        const isTofu = w.offsetWidth < 3;
+        document.body.removeChild(w);
+        return isTofu;
+      });
+      item.className = 'blocklister-item ' + (hasMissing ? 'missing' : 'ok');
+      item.textContent = `${label}: ${preview}…`;
+      grid.appendChild(item);
+    }
+  </script>
+</body>
+</html>

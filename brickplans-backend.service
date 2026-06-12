@@ -1,0 +1,17 @@
+[Unit]
+Description=BrickPlans FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/project/brickplans/backend
+Environment=PATH=/home/ubuntu/project/brickplans/backend/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/ubuntu/project/brickplans/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

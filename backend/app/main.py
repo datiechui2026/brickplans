@@ -1,12 +1,21 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.database import get_engine, Base
 from app.api import auth
 from app.api import blueprints
+from app.api import images
+from app.api import reports
+from app.api import tags
+from app.api import users
+from app.api import seo
+from app.api import stats
+from app.api import admin
 
 settings = get_settings()
 
@@ -36,6 +45,18 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(blueprints.router)
+app.include_router(images.router)
+app.include_router(reports.router)
+app.include_router(tags.router)
+app.include_router(users.router)
+app.include_router(seo.router)
+app.include_router(stats.router)
+app.include_router(admin.router)
+
+# Mount uploads directory for serving uploaded images
+uploads_path = Path(__file__).resolve().parent.parent / "uploads"
+uploads_path.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 
 
 @app.get("/api/health")

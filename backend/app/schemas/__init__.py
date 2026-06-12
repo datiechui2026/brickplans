@@ -14,16 +14,6 @@ class UserLogin(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
 # ── User ──
 
 class UserOut(BaseModel):
@@ -32,9 +22,21 @@ class UserOut(BaseModel):
     email: str
     avatar_url: str | None = None
     bio: str | None = None
+    is_admin: bool = False
     created_at: str
 
     model_config = {"from_attributes": True}
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserOut | None = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 # ── Blueprint ──
@@ -47,7 +49,7 @@ class BlueprintCreate(BaseModel):
     category: str | None = None
     dimensions: str | None = None
     part_list: dict | None = None
-    is_published: bool = False
+    is_published: bool = True
 
 
 class BlueprintUpdate(BaseModel):
@@ -73,6 +75,10 @@ class BlueprintOut(BaseModel):
     dimensions: str | None = None
     part_list: dict | None = None
     view_count: int = 0
+    like_count: int = 0
+    favorite_count: int = 0
+    is_liked: bool = False
+    cover_url: str | None = None
     is_published: bool = False
     created_at: str
     updated_at: str
@@ -139,3 +145,34 @@ class CommentOut(BaseModel):
     user: UserOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ── Report ──
+
+class ReportCreate(BaseModel):
+    blueprint_id: str
+    reason: str = Field(min_length=1, max_length=20)
+    detail: str | None = None
+
+
+class ReportOut(BaseModel):
+    id: str
+    reporter_id: str
+    blueprint_id: str
+    reason: str
+    detail: str | None = None
+    status: str
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+# ── Stats ──
+
+class StatsResponse(BaseModel):
+    total_blueprints: int = 0
+    total_users: int = 0
+    total_favorites: int = 0
+    total_pieces: int = 0
+    total_views: int = 0
+    total_likes: int = 0

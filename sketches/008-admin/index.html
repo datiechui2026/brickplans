@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 · BrickPlans</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f7; --card-bg: #ffffff;
+    --text: #1d1d1f; --text-sec: #86868b;
+    --accent: #ff6b35; --accent-hv: #e55a2b;
+    --radius: 16px; --shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255,255,255,.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; text-decoration: none; color: var(--text); }
+  .nav-badge {
+    font-size: 11px; font-weight: 700; padding: 2px 8px;
+    border-radius: 4px; background: var(--accent); color: #fff;
+    margin-left: 4px;
+  }
+
+  .main { max-width: 1160px; margin: 0 auto; padding: 24px 24px 80px; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 20px;
+    border-bottom: 2px solid #eee;
+  }
+  .tab-btn {
+    font-size: 14px; font-weight: 700; padding: 10px 24px;
+    border: none; background: transparent; color: var(--text-sec);
+    cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all .15s;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 11px; font-weight: 800;
+    margin-left: 6px;
+  }
+
+  /* Search */
+  .search-row {
+    display: flex; gap: 12px; margin-bottom: 20px; align-items: center;
+  }
+  .search-input {
+    flex: 1; padding: 10px 14px; border: 1.5px solid #e5e5e5;
+    border-radius: 10px; font-size: 14px; background: #fff;
+    outline: none; transition: border .15s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600; padding: 8px 16px;
+    border-radius: 10px; border: none; cursor: pointer; transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hv); }
+  .btn-success { background: #22c55e; color: #fff; }
+  .btn-success:hover { background: #16a34a; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-ghost { background: transparent; color: var(--text-sec); }
+  .btn-sm { font-size: 12px; padding: 5px 10px; border-radius: 8px; }
+
+  /* Table card */
+  .table-card {
+    background: var(--card-bg); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; padding: 12px 16px;
+    font-size: 11px; font-weight: 700; color: var(--text-sec);
+    text-transform: uppercase; letter-spacing: .5px;
+    background: #fafafa; border-bottom: 1px solid #f0f0f0;
+  }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #f5f5f5; }
+  tr:hover td { background: #fafafa; }
+  .cell-title { font-weight: 700; }
+  .cell-title a { color: var(--text); text-decoration: none; }
+  .cell-title a:hover { color: var(--accent); }
+  .cell-thumb { width: 52px; height: 39px; border-radius: 6px; object-fit: cover; background: #e8eaed; }
+  .status-badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 2px 10px; border-radius: 20px;
+  }
+  .status-pending { background: #fef3c7; color: #92400e; }
+  .status-published { background: #dcfce7; color: #166534; }
+  .status-rejected { background: #fee2e2; color: #991b1b; }
+  .status-draft { background: #f0f0f0; color: #666; }
+
+  .actions-cell { display: flex; gap: 4px; }
+
+  /* Stats row */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-box {
+    background: var(--card-bg); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 18px; text-align: center;
+  }
+  .stat-box .number { font-size: 24px; font-weight: 800; color: var(--accent); }
+  .stat-box .label { font-size: 12px; color: var(--text-sec); font-weight: 600; }
+  .stat-box.warn .number { color: #f59e0b; }
+
+  /* Pagination */
+  .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 24px; }
+  .page-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    border: 1.5px solid #e5e5e5; background: #fff;
+    font-weight: 600; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-sec);
+  }
+  .page-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+  @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } table { font-size: 11px; } th, td { padding: 8px 10px; } }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="nav-brand" href="#">🧱 BrickPlans<span class="nav-badge">管理</span></a>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a href="#" style="color:var(--text-sec);text-decoration:none;font-size:13px;">← 返回前台</a>
+  </div>
+</nav>
+
+<main class="main">
+
+  <h1 style="font-size:24px;font-weight:800;margin-bottom:20px;">🔧 管理后台</h1>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-box warn"><div class="number">3</div><div class="label">⏳ 待审核</div></div>
+    <div class="stat-box"><div class="number">27</div><div class="label">📐 总作品</div></div>
+    <div class="stat-box"><div class="number">12</div><div class="label">👥 用户数</div></div>
+    <div class="stat-box"><div class="number">62</div><div class="label">👁 总浏览</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active">⏳ 待审核 <span class="badge">3</span></button>
+    <button class="tab-btn">📐 全部作品</button>
+    <button class="tab-btn">👥 用户管理</button>
+  </div>
+
+  <!-- Search -->
+  <div class="search-row">
+    <input class="search-input" type="text" placeholder="搜索作品标题或作者...">
+    <button class="btn btn-primary">🔍 搜索</button>
+  </div>
+
+  <!-- Pending Review Table -->
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>封面</th>
+          <th>标题</th>
+          <th>作者</th>
+          <th>分类</th>
+          <th>难度</th>
+          <th>提交时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><img class="cell-thumb" src="https://images.unsplash.com/photo-1605721911519-3dfeb3be25e7?w=104&h=78&fit=crop"></td>
+          <td class="cell-title"><a href="#">霍格沃茨城堡</a></td>
+          <td>魔法建筑师</td>
+          <td>建筑</td>
+          <td>⭐⭐⭐⭐ 困难</td>
+          <td style="color:var(--text-sec);">2026-06-06</td>
+          <td class="actions-cell">
+            <button class="btn btn-success btn-sm">✅ 通过</button>
+            <button class="btn btn-danger btn-sm">❌ 拒绝</button>
+          </td>
+        </tr>
+        <tr>
+          <td><img class="cell-thumb" src="https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=104&h=78&fit=crop"></td>
+          <td class="cell-title"><a href="#">经典太空飞船</a></td>
+          <td>积木大师Jack</td>
+          <td>科幻</td>
+          <td>⭐⭐⭐ 中等</td>
+          <td style="color:var(--text-sec);">2026-06-05</td>
+          <td class="actions-cell">
+            <button class="btn btn-success btn-sm">✅ 通过</button>
+            <button class="btn btn-danger btn-sm">❌ 拒绝</button>
+          </td>
+        </tr>
+        <tr>
+          <td><img class="cell-thumb" src="https://images.unsplash.com/photo-1560185007-5f0bb1866cab?w=104&h=78&fit=crop"></td>
+          <td class="cell-title"><a href="#">深夜便利店</a></td>
+          <td>城市建造者</td>
+          <td>场景</td>
+          <td>⭐ 简单</td>
+          <td style="color:var(--text-sec);">2026-06-04</td>
+          <td class="actions-cell">
+            <button class="btn btn-success btn-sm">✅ 通过</button>
+            <button class="btn btn-danger btn-sm">❌ 拒绝</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    <button class="page-btn active">1</button>
+    <button class="page-btn">2</button>
+  </div>
+
+</main>
+
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

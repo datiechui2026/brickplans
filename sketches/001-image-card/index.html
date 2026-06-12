@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡片样式 · 大图卡片 + 难度</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f2f5;
+    padding: 40px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    color: #1d1d1f;
+  }
+  .section-label {
+    width: 100%;
+    max-width: 1100px;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #1d1d1f;
+  }
+  .card {
+    width: 260px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.1);
+  }
+  .card-image-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    overflow: hidden;
+    background: #e8eaed;
+  }
+  .card-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* 难度标签 — 左上角 */
+  .card-difficulty {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,.25);
+    letter-spacing: .5px;
+  }
+  /* 零件数标签 — 右上角 */
+  .card-pieces {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(255,255,255,.85);
+    color: #555;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .card-body {
+    padding: 12px 14px 14px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .card-author {
+    font-size: 12px;
+    color: #999;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .card-author img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  .card-stats {
+    display: flex;
+    gap: 14px;
+    font-size: 12px;
+    color: #888;
+  }
+  .card-stats span {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  /* 无图占位 */
+  .card-placeholder {
+    width: 100%;
+    aspect-ratio: 4/3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    color: rgba(255,255,255,.8);
+  }
+</style>
+</head>
+<body>
+
+<div class="section-label">🔥 热门推荐 · 大图卡片 + 难度 + 零件数</div>
+
+<!-- Card 1: 中等难度 -->
+<div class="card" onclick="alert('跳转详情')">
+  <div class="card-image-wrap">
+    <img class="card-image" src="https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=400&h=300&fit=crop" alt="太空飞船" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#6366f1,#8b5cf6)'">
+    <span class="card-difficulty" style="background:rgba(245,158,11,.75);">⭐⭐⭐ 中等</span>
+    <span class="card-pieces">🧩 450片</span>
+  </div>
+  <div class="card-body">
+    <div class="card-title">经典太空飞船 — 星际巡洋舰</div>
+    <div class="card-author">
+      <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=jack" alt="">
+      <span>积木大师Jack</span>
+    </div>
+    <div class="card-stats">
+      <span>👁 2.3k</span>
+      <span>❤️ 186</span>
+      <span>⭐ 52</span>
+    </div>
+  </div>
+</div>
+
+<!-- Card 2: 困难 -->
+<div class="card" onclick="alert('跳转详情')">
+  <div class="card-image-wrap">
+    <img class="card-image" src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=300&fit=crop" alt="城堡" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#f59e0b,#ef4444)'">
+    <span class="card-difficulty" style="background:rgba(239,68,68,.75);">⭐⭐⭐⭐ 困难</span>
+    <span class="card-pieces">🧩 1200片</span>
+  </div>
+  <div class="card-body">
+    <div class="card-title">中世纪城堡 — 国王的堡垒</div>
+    <div class="card-author">
+      <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=lily" alt="">
+      <span>Lily积木屋</span>
+    </div>
+    <div class="card-stats">
+      <span>👁 1.8k</span>
+      <span>❤️ 142</span>
+      <span>⭐ 38</span>
+    </div>
+  </div>
+</div>
+
+<!-- Card 3: 简单（无图） -->
+<div class="card" onclick="alert('跳转详情')">
+  <div class="card-image-wrap" style="background:linear-gradient(135deg,#06b6d4,#3b82f6);">
+    <span class="card-placeholder">🕌</span>
+    <span class="card-difficulty" style="background:rgba(34,197,94,.75);">⭐ 简单</span>
+    <span class="card-pieces">🧩 150片</span>
+  </div>
+  <div class="card-body">
+    <div class="card-title">泰姬陵复刻版 — 纯白宫殿</div>
+    <div class="card-author">
+      <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=max" alt="">
+      <span>Max建造者</span>
+    </div>
+    <div class="card-stats">
+      <span>👁 890</span>
+      <span>❤️ 67</span>
+      <span>⭐ 21</span>
+    </div>
+  </div>
+</div>
+
+<!-- Card 4: 专家 -->
+<div class="card" onclick="alert('跳转详情')">
+  <div class="card-image-wrap">
+    <img class="card-image" src="https://images.unsplash.com/photo-1518331483807-f6adb0e1ad23?w=400&h=300&fit=crop" alt="机甲" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#10b981,#059669)'">
+    <span class="card-difficulty" style="background:rgba(168,85,247,.75);">⭐⭐⭐⭐⭐ 专家</span>
+    <span class="card-pieces">🧩 3200片</span>
+  </div>
+  <div class="card-body">
+    <div class="card-title">机甲战士 MK-III — 可动关节</div>
+    <div class="card-author">
+      <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=alex" alt="">
+      <span>Alex拼搭笔记</span>
+    </div>
+    <div class="card-stats">
+      <span>👁 3.1k</span>
+      <span>❤️ 274</span>
+      <span>⭐ 89</span>
+    </div>
+  </div>
+</div>
+
+<!-- 难度色表 -->
+<div style="width:100%;max-width:1100px;margin-top:30px;padding:16px;background:#fff;border-radius:12px;font-size:13px;color:#666;">
+  <strong style="color:#1d1d1f;">难度色标：</strong>
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#22c55e;margin:0 4px 0 12px;vertical-align:middle;"></span> ⭐ 简单
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#3b82f6;margin:0 4px 0 12px;vertical-align:middle;"></span> ⭐⭐ 初级
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#f59e0b;margin:0 4px 0 12px;vertical-align:middle;"></span> ⭐⭐⭐ 中等
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#ef4444;margin:0 4px 0 12px;vertical-align:middle;"></span> ⭐⭐⭐⭐ 困难
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#a855f7;margin:0 4px 0 12px;vertical-align:middle;"></span> ⭐⭐⭐⭐⭐ 专家
+</div>
+
+</body>
+</html>

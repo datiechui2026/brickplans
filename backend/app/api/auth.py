@@ -1,13 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import random
+import uuid as uuid_lib
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 from app.models import User
 from app.schemas import UserRegister, UserLogin, TokenResponse, RefreshRequest, UserOut
+from app.api.deps import get_current_user
+from app.api.blueprints import _to_user_out
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Request schemas for user settings
+class UserUpdateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=30)
+    bio: str | None = None
+    avatar_url: str | None = None
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+# Allowed avatar image types and max size (2MB)
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -27,13 +49,16 @@ async def register(payload: UserRegister, db: AsyncSession = Depends(get_db)):
         email=payload.email,
         password_hash=hash_password(payload.password),
     )
+    # Pick random preset avatar (01-20)
+    preset_num = random.randint(1, 20)
+    user.avatar_url = f"/avatars/presets/{preset_num:02d}.png"
     db.add(user)
     await db.flush()
 
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
 
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token, user=_to_user_out(user))
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -47,7 +72,7 @@ async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
 
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token, user=_to_user_out(user))
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -66,6 +91,102 @@ async def refresh(payload: RefreshRequest):
 
 
 @router.get("/me", response_model=UserOut)
-async def get_me(db: AsyncSession = Depends(get_db)):
-    # TODO: extract user from JWT after middleware is in place
-    raise HTTPException(status_code=501, detail="Not implemented")
+async def get_me(current_user: User = Depends(get_current_user)):
+    return _to_user_out(current_user)
+
+
+@router.put("/me", response_model=UserOut)
+async def update_me(
+    payload: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update current user's username and/or bio."""
+    if payload.username is not None and payload.username != current_user.username:
+        # Check uniqueness: another user shouldn't have this username
+        result = await db.execute(
+            select(User).where(User.username == payload.username, User.id != current_user.id)
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Username already taken")
+        current_user.username = payload.username
+
+    if payload.bio is not None:
+        current_user.bio = payload.bio
+
+    if payload.avatar_url is not None:
+        current_user.avatar_url = payload.avatar_url
+
+    await db.commit()
+    await db.refresh(current_user)
+    return _to_user_out(current_user)
+
+
+@router.put("/password")
+async def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change password. Verify current password, then set new one."""
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    current_user.password_hash = hash_password(payload.new_password)
+    await db.commit()
+    return {"message": "Password updated"}
+
+
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload avatar image. Max 2MB, jpg/png/webp/gif only."""
+    # Validate content type
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file.content_type}. Allowed: jpg, png, webp, gif",
+        )
+
+    # Read and validate size
+    contents = await file.read()
+    if len(contents) > MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB.")
+
+    # Determine extension
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+    ext = ext_map.get(file.content_type, ".png")
+
+    # Ensure uploads/avatars directory exists
+    uploads_dir = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate UUID filename
+    filename = f"{uuid_lib.uuid4()}{ext}"
+    file_path = uploads_dir / filename
+
+    # Save file
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    # Update user's avatar_url
+    avatar_url = f"/uploads/avatars/{filename}"
+    current_user.avatar_url = avatar_url
+    await db.commit()
+    await db.refresh(current_user)
+
+    return {"avatar_url": avatar_url}
+
+
+@router.get("/avatars")
+def get_preset_avatars():
+    """Return list of preset avatar URLs (public)."""
+    return {
+        "avatars": [
+            {"id": f"preset-{i:02d}", "url": f"/avatars/presets/{i:02d}.png"}
+            for i in range(1, 21)
+        ]
+    }

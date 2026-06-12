@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>500 — BrickPlans</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>" />
+  <style>
+    :root {
+      --brick-yellow: #FFD500; --brick-red: #E3000B;
+      --brick-blue: #0051BA; --brick-green: #00AF4C;
+      --brick-orange: #FF8C00; --brick-dark: #1A1A2E;
+      --text-muted: #666;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family:
+        "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
+        "WenQuanYi Micro Hei", "Noto Sans CJK SC",
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #E3000B 0%, #FF8C00 50%, #FDF6E3 100%);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 40px 24px; color: #1A1A2E;
+    }
+    .icon { font-size: 6rem; margin-bottom: 16px; }
+    h1 { font-size: 4rem; margin-bottom: 8px; }
+    p { font-size: 1.2rem; color: #666; margin-bottom: 32px; max-width: 480px; line-height: 1.6; font-weight: 600; }
+    a {
+      display: inline-block; padding: 14px 32px;
+      border-radius: 10px 3px 10px 3px; font-weight: 700; font-size: 1.1rem;
+      text-decoration: none; cursor: pointer; transition: all 0.15s;
+      border: 3px solid #1A1A2E; background: #FFD500; color: #1A1A2E;
+    }
+    a:hover { transform: translate(2px, 2px); }
+    a:active { transform: translate(3px, 3px); }
+    @media (max-width: 480px) {
+      h1 { font-size: 2.5rem; }
+      p { font-size: 1rem; }
+      .icon { font-size: 4rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">💥</div>
+  <h1>500</h1>
+  <p>服务器出了点问题，积木塔倒了！<br>请稍后再试。</p>
+  <a href="/">🧱 返回首页</a>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://brickplans.com/sitemap.xml

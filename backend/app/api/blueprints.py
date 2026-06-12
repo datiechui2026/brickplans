@@ -12,7 +12,8 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, bearer
 from app.core.database import get_db
 from app.core.security import decode_token
-from app.models import User, Blueprint, BlueprintImage, Favorite, Comment, Tag, BlueprintTag
+from jose.exceptions import ExpiredSignatureError, JWTError
+from app.models import User, Blueprint, BlueprintImage, Favorite, Comment, Tag, BlueprintTag, Like
 from app.schemas import (
     BlueprintCreate, BlueprintUpdate, BlueprintOut, BlueprintDetail,
     BlueprintListOut, CommentCreate, CommentOut, UserOut,
@@ -41,7 +42,10 @@ async def _optional_user(
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
     token = auth_header.split(" ", 1)[1]
-    claims = decode_token(token)
+    try:
+        claims = decode_token(token)
+    except (ExpiredSignatureError, JWTError):
+        return None
     if claims.get("type") != "access":
         return None
     user_id = claims.get("sub")
@@ -100,6 +104,11 @@ async def get_blueprint(
     blueprint = result.scalar_one_or_none()
     if not blueprint:
         raise HTTPException(status_code=404, detail="Blueprint not found")
+
+    # If unpublished and requesting user is NOT the author, return 404
+    if not blueprint.is_published:
+        if not current_user or current_user.id != blueprint.author_id:
+            raise HTTPException(status_code=404, detail="Blueprint not found")
 
     # Check if current user has favorited (before commit)
     is_fav = False
@@ -186,12 +195,18 @@ async def list_blueprints(
     q: Optional[str] = Query(default=None, description="搜索关键词"),
     category: Optional[str] = Query(default=None),
     sort: Optional[str] = Query(default="new", description="new | popular"),
+    tag: Optional[str] = Query(default=None, description="按标签名筛选"),
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(_optional_user),
 ):
     base_query = select(Blueprint).options(
         selectinload(Blueprint.author),
         selectinload(Blueprint.tags).selectinload(BlueprintTag.tag),
+        selectinload(Blueprint.images),
     )
+
+    # Only show published blueprints on public listings
+    base_query = base_query.where(Blueprint.is_published == True)
 
     # Search
     if q:
@@ -205,6 +220,12 @@ async def list_blueprints(
     # Category filter
     if category:
         base_query = base_query.where(Blueprint.category == category)
+
+    # Tag filter
+    if tag:
+        base_query = base_query.where(
+            Blueprint.tags.any(BlueprintTag.tag.has(Tag.name == tag))
+        )
 
     # Count
     count_query = select(func.count()).select_from(base_query.subquery())
@@ -223,8 +244,61 @@ async def list_blueprints(
     result = await db.execute(base_query)
     blueprints = result.scalars().all()
 
+    # Compute per-blueprint counts in bulk
+    bp_ids = [bp.id for bp in blueprints]
+    items = []
+    if bp_ids:
+        # Bulk favorite/like counts
+        fav_counts = {}
+        like_counts = {}
+        user_liked = set()
+        user_favorited = set()
+
+        fav_rows = (await db.execute(
+            select(Favorite.blueprint_id, func.count().label("cnt"))
+            .where(Favorite.blueprint_id.in_(bp_ids))
+            .group_by(Favorite.blueprint_id)
+        )).all()
+        for row in fav_rows:
+            fav_counts[row.blueprint_id] = row.cnt
+
+        like_rows = (await db.execute(
+            select(Like.blueprint_id, func.count().label("cnt"))
+            .where(Like.blueprint_id.in_(bp_ids))
+            .group_by(Like.blueprint_id)
+        )).all()
+        for row in like_rows:
+            like_counts[row.blueprint_id] = row.cnt
+
+        if current_user:
+            liked_rows = (await db.execute(
+                select(Like.blueprint_id).where(
+                    Like.blueprint_id.in_(bp_ids),
+                    Like.user_id == current_user.id,
+                )
+            )).scalars().all()
+            user_liked = set(liked_rows)
+
+            fav_user_rows = (await db.execute(
+                select(Favorite.blueprint_id).where(
+                    Favorite.blueprint_id.in_(bp_ids),
+                    Favorite.user_id == current_user.id,
+                )
+            )).scalars().all()
+            user_favorited = set(fav_user_rows)
+
+        for bp in blueprints:
+            items.append(_to_blueprint_out(bp,
+                favorite_count=fav_counts.get(bp.id, 0),
+                like_count=like_counts.get(bp.id, 0),
+                is_liked=bp.id in user_liked,
+                is_favorited=bp.id in user_favorited,
+            ))
+    else:
+        items = [_to_blueprint_out(bp) for bp in blueprints]
+
     return BlueprintListOut(
-        items=[_to_blueprint_out(bp) for bp in blueprints],
+        items=items,
         total=total,
         page=page,
         page_size=size,
@@ -280,6 +354,58 @@ async def unfavorite_blueprint(
     await db.commit()
 
 
+# ────────────────────────── LIKE ──────────────────────────
+
+@router.post("/{blueprint_id}/like", status_code=201)
+async def like_blueprint(
+    blueprint_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    bp = await db.get(Blueprint, blueprint_id)
+    if not bp:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+
+    existing = await db.execute(
+        select(Like).where(
+            Like.user_id == current_user.id,
+            Like.blueprint_id == blueprint_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Already liked")
+
+    like = Like(user_id=current_user.id, blueprint_id=blueprint_id)
+    db.add(like)
+    bp.like_count += 1
+    await db.commit()
+    return {"detail": "Liked", "like_count": bp.like_count}
+
+
+@router.delete("/{blueprint_id}/like", status_code=204)
+async def unlike_blueprint(
+    blueprint_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Like).where(
+            Like.user_id == current_user.id,
+            Like.blueprint_id == blueprint_id,
+        )
+    )
+    like = result.scalar_one_or_none()
+    if not like:
+        raise HTTPException(status_code=404, detail="Not liked")
+
+    bp = await db.get(Blueprint, blueprint_id)
+    if bp and bp.like_count > 0:
+        bp.like_count -= 1
+
+    await db.delete(like)
+    await db.commit()
+
+
 # ────────────────────────── COMMENTS ──────────────────────────
 
 @router.post("/{blueprint_id}/comments", response_model=CommentOut, status_code=201)
@@ -327,9 +453,25 @@ async def list_comments(
 
 # ────────────────────────── Helpers ──────────────────────────
 
-def _to_blueprint_out(bp: Blueprint) -> dict:
+def _to_blueprint_out(bp: Blueprint,
+                       favorite_count: int = 0,
+                       like_count: int = 0,
+                       is_liked: bool = False,
+                       is_favorited: bool = False) -> dict:
     tags = _get_tag_names(bp)
     author = _try_get_author(bp)
+    moderation_status = "审核中" if not bp.is_published else None
+
+    # Compute cover_url
+    images = _try_get_images(bp)
+    cover_url = None
+    for img in images:
+        if img.get("is_cover"):
+            cover_url = img["url"]
+            break
+    if not cover_url and images:
+        cover_url = images[0]["url"]
+
     return {
         "id": bp.id,
         "author_id": bp.author_id,
@@ -342,12 +484,17 @@ def _to_blueprint_out(bp: Blueprint) -> dict:
         "dimensions": bp.dimensions,
         "part_list": bp.part_list,
         "view_count": bp.view_count,
+        "like_count": bp.like_count if not like_count else like_count,
+        "favorite_count": favorite_count,
+        "is_liked": is_liked,
+        "cover_url": cover_url,
         "is_published": bp.is_published,
         "created_at": bp.created_at.isoformat() if bp.created_at else "",
         "updated_at": bp.updated_at.isoformat() if bp.updated_at else "",
         "author": author,
-        "images": [],
+        "images": images,
         "tags": tags,
+        "moderation_status": moderation_status,
     }
 
 
@@ -365,6 +512,7 @@ def _to_user_out(user: User) -> dict:
         "email": user.email,
         "avatar_url": user.avatar_url,
         "bio": user.bio,
+        "is_admin": user.is_admin,
         "created_at": user.created_at.isoformat() if user.created_at else "",
     }
 
@@ -415,3 +563,25 @@ def _try_get_author(bp: Blueprint) -> dict | None:
         return _to_user_out(author)
     except Exception:
         return None
+
+
+def _try_get_images(bp: Blueprint) -> list[dict]:
+    """Safely get images list. Returns empty list if images not loaded."""
+    try:
+        images = bp.images
+    except Exception:
+        return []
+    if not images:
+        return []
+    result = []
+    for img in images:
+        try:
+            result.append({
+                "id": img.id,
+                "url": img.url,
+                "sort_order": img.sort_order,
+                "is_cover": img.is_cover,
+            })
+        except Exception:
+            continue
+    return result

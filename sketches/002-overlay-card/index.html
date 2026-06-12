@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡片样式方案B：叠加信息卡片</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f2f5;
+    padding: 40px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    color: #1d1d1f;
+  }
+  .section-label {
+    width: 100%;
+    max-width: 1100px;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #1d1d1f;
+  }
+  .card {
+    width: 260px;
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    position: relative;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.15);
+  }
+  .card-bg {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    display: block;
+    background: #e8eaed;
+  }
+  .card-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 40px 14px 14px;
+    background: linear-gradient(transparent, rgba(0,0,0,.75));
+    color: #fff;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 4px;
+    text-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  .card-meta {
+    font-size: 12px;
+    opacity: .85;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-author {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .card-author img {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255,255,255,.4);
+  }
+  .card-stats {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+  }
+
+  /* No-image fallback */
+  .card-placeholder {
+    width: 100%;
+    aspect-ratio: 4/3;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-direction: column;
+    padding-bottom: 24px;
+    color: rgba(255,255,255,.9);
+  }
+  .card-placeholder .emoji {
+    font-size: 3rem;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="section-label">🔥 热门推荐 · 方案B：叠加信息卡片</div>
+
+<!-- Card 1 -->
+<div class="card" onclick="alert('跳转详情')">
+  <img class="card-bg" src="https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=400&h=300&fit=crop" alt="太空飞船" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+  <div class="card-placeholder" style="display:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+    <span class="emoji">🚀</span>
+    <span style="font-size:13px;">太空飞船</span>
+  </div>
+  <div class="card-overlay">
+    <div class="card-title">经典太空飞船 — 星际巡洋舰</div>
+    <div class="card-meta">
+      <div class="card-author">
+        <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=jack" alt="">
+        <span>积木大师Jack</span>
+      </div>
+      <div class="card-stats">
+        <span>👁2.3k</span>
+        <span>❤️186</span>
+        <span>⭐52</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Card 2 -->
+<div class="card" onclick="alert('跳转详情')">
+  <img class="card-bg" src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=300&fit=crop" alt="城堡" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+  <div class="card-placeholder" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444);">
+    <span class="emoji">🏰</span>
+    <span style="font-size:13px;">中世纪城堡</span>
+  </div>
+  <div class="card-overlay">
+    <div class="card-title">中世纪城堡 — 国王的堡垒</div>
+    <div class="card-meta">
+      <div class="card-author">
+        <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=lily" alt="">
+        <span>Lily积木屋</span>
+      </div>
+      <div class="card-stats">
+        <span>👁1.8k</span>
+        <span>❤️142</span>
+        <span>⭐38</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Card 3: 无封面图 -->
+<div class="card" onclick="alert('跳转详情')">
+  <div class="card-placeholder" style="background:linear-gradient(135deg,#06b6d4,#3b82f6);">
+    <span class="emoji">🕌</span>
+    <span style="font-size:13px;">泰姬陵</span>
+  </div>
+  <div class="card-overlay">
+    <div class="card-title">泰姬陵复刻版 — 纯白宫殿</div>
+    <div class="card-meta">
+      <div class="card-author">
+        <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=max" alt="">
+        <span>Max建造者</span>
+      </div>
+      <div class="card-stats">
+        <span>👁890</span>
+        <span>❤️67</span>
+        <span>⭐21</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Card 4 -->
+<div class="card" onclick="alert('跳转详情')">
+  <img class="card-bg" src="https://images.unsplash.com/photo-1518331483807-f6adb0e1ad23?w=400&h=300&fit=crop" alt="机甲" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+  <div class="card-placeholder" style="display:none;background:linear-gradient(135deg,#10b981,#059669);">
+    <span class="emoji">🤖</span>
+    <span style="font-size:13px;">机甲战士</span>
+  </div>
+  <div class="card-overlay">
+    <div class="card-title">机甲战士 MK-III — 可动关节</div>
+    <div class="card-meta">
+      <div class="card-author">
+        <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=alex" alt="">
+        <span>Alex拼搭笔记</span>
+      </div>
+      <div class="card-stats">
+        <span>👁3.1k</span>
+        <span>❤️274</span>
+        <span>⭐89</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -16,6 +16,12 @@ frontend/.vite/
 .env
 .env.local
 *.env.local
+*.env.production
+frontend/.env.production
+
+# Runtime data
+*.db
+backend/uploads/
 
 # IDE
 .idea/

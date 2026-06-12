@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrickPlans · 发现图纸</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --text: #1d1d1f;
+    --text-sec: #86868b;
+    --accent: #ff6b35;
+    --accent-hv: #e55a2b;
+    --radius: 16px;
+    --shadow: 0 1px 4px rgba(0,0,0,.04);
+    --input-bg: #f5f5f7;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+
+  /* Navbar */
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; text-decoration: none; color: var(--text); }
+  .nav-actions { display: flex; align-items: center; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; padding: 8px 18px;
+    border-radius: 10px; border: none; cursor: pointer; transition: all .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hv); }
+  .btn-ghost { background: transparent; color: var(--text-sec); }
+  .btn-ghost:hover { background: rgba(0,0,0,.04); color: var(--text); }
+
+  .main { max-width: 1160px; margin: 0 auto; padding: 24px 24px 80px; }
+
+  /* Page header */
+  .page-header { margin-bottom: 24px; }
+  .page-header h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  .page-header p { color: var(--text-sec); font-size: 14px; }
+
+  /* Search + filter bar */
+  .filter-bar {
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+    background: var(--card-bg); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-group label { font-size: 11px; font-weight: 700; color: var(--text-sec); text-transform: uppercase; letter-spacing: .5px; }
+  .filter-group input,
+  .filter-group select {
+    font-size: 14px; padding: 10px 14px;
+    border: 1.5px solid #e5e5e5; border-radius: 10px;
+    background: var(--input-bg); color: var(--text);
+    outline: none; transition: border .15s;
+  }
+  .filter-group input:focus,
+  .filter-group select:focus { border-color: var(--accent); }
+  .filter-group input { width: 240px; }
+  .filter-group select { width: 120px; }
+
+  /* Result info */
+  .result-info {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .result-count { font-size: 14px; color: var(--text-sec); font-weight: 600; }
+
+  /* Card grid */
+  .card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  /* Card */
+  .card {
+    background: var(--card-bg); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+    box-shadow: var(--shadow);
+  }
+  .card:hover { transform: translateY(-6px); box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+  .card-img-wrap {
+    position: relative; width: 100%; aspect-ratio: 4/3;
+    overflow: hidden; background: #e8eaed;
+  }
+  .card-img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s; }
+  .card:hover .card-img { transform: scale(1.06); }
+  .card-diff {
+    position: absolute; top: 10px; left: 10px;
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.2);
+  }
+  .card-parts {
+    position: absolute; top: 10px; right: 10px;
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    background: rgba(255,255,255,.88); color: #555;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .card-body { padding: 12px 14px 14px; }
+  .card-title { font-size: 14px; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 6px; }
+  .card-author { font-size: 12px; color: var(--text-sec); display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .card-author img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+  .card-stats { display: flex; gap: 14px; font-size: 12px; color: #999; }
+  .card-stats span { display: flex; align-items: center; gap: 3px; }
+
+  /* No-image placeholder */
+  .card-noimg { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: rgba(255,255,255,.85); }
+
+  /* Pagination */
+  .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 32px; }
+  .page-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    border: 1.5px solid #e5e5e5; background: #fff;
+    font-weight: 600; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-sec);
+  }
+  .page-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Tags section */
+  .tags-section { margin-bottom: 20px; }
+  .tags-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  .tag-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 600; padding: 5px 12px;
+    border-radius: 20px; border: 1.5px solid #e5e5e5;
+    background: #fff; color: var(--text-sec); cursor: pointer;
+    margin: 0 6px 6px 0; transition: all .15s;
+  }
+  .tag-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .tag-count { color: var(--accent); }
+
+  @media (max-width: 1024px) { .card-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 768px)  { .card-grid { grid-template-columns: repeat(2, 1fr); } .filter-bar { flex-direction: column; } .filter-group input { width: 100%; } }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="nav-brand" href="#">🧱 BrickPlans</a>
+  <div class="nav-actions">
+    <button class="btn btn-ghost">📤 上传图纸</button>
+    <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=user" style="width:32px;height:32px;border-radius:50%;cursor:pointer" alt="">
+  </div>
+</nav>
+
+<main class="main">
+  <div class="page-header">
+    <h1>🔍 发现图纸</h1>
+    <p>浏览社区中的积木创作</p>
+  </div>
+
+  <!-- Search / Filter Bar -->
+  <div class="filter-bar">
+    <div class="filter-group" style="flex:1;">
+      <label>🔍 搜索</label>
+      <input type="text" placeholder="关键词、作者、标签..." value="城堡">
+    </div>
+    <div class="filter-group">
+      <label>📂 分类</label>
+      <select>
+        <option>全部</option>
+        <option>建筑</option>
+        <option>机甲</option>
+        <option>车辆</option>
+        <option>科幻</option>
+        <option>场景</option>
+        <option>奇幻</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>↕️ 排序</label>
+      <select>
+        <option>🆕 最新</option>
+        <option selected>🔥 最热门</option>
+      </select>
+    </div>
+    <button class="btn btn-primary">筛选</button>
+  </div>
+
+  <!-- Hot Tags -->
+  <div class="tags-section">
+    <div class="tags-title">🏷️ 热门标签</div>
+    <span class="tag-pill">城堡 <span class="tag-count">5</span></span>
+    <span class="tag-pill">机甲 <span class="tag-count">7</span></span>
+    <span class="tag-pill">科幻 <span class="tag-count">4</span></span>
+    <span class="tag-pill">中世纪 <span class="tag-count">3</span></span>
+    <span class="tag-pill">大型 <span class="tag-count">6</span></span>
+    <span class="tag-pill">入门 <span class="tag-count">8</span></span>
+  </div>
+
+  <!-- Result count -->
+  <div class="result-info">
+    <span class="result-count">共找到 <strong style="color:var(--text)">27</strong> 个作品</span>
+  </div>
+
+  <!-- Card Grid -->
+  <div class="card-grid">
+    <!-- 8 cards with difficulty tags -->
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#6366f1,#8b5cf6)'">
+        <span class="card-diff" style="background:rgba(34,197,94,.75);">⭐ 简单</span>
+        <span class="card-parts">🧩 300片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">微型的积木城堡</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=a">积木小匠</div>
+        <div class="card-stats"><span>👁 38</span><span>❤️ 2</span><span>⭐ 1</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#ef4444,#b91c1c)'">
+        <span class="card-diff" style="background:rgba(239,68,68,.75);">⭐⭐⭐⭐ 困难</span>
+        <span class="card-parts">🧩 2500片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">海盗湾</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=b">海洋建造师</div>
+        <div class="card-stats"><span>👁 6</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1518331483807-f6adb0e1ad23?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#a855f7,#7c3aed)'">
+        <span class="card-diff" style="background:rgba(168,85,247,.75);">⭐⭐⭐⭐⭐ 专家</span>
+        <span class="card-parts">🧩 4500片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">太空基地</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=c">星际建筑师</div>
+        <div class="card-stats"><span>👁 4</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap" style="background:linear-gradient(135deg,#06b6d4,#3b82f6);">
+        <span class="card-noimg">🎡</span>
+        <span class="card-diff" style="background:rgba(245,158,11,.75);">⭐⭐⭐ 中等</span>
+        <span class="card-parts">🧩 2000片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">迷你游乐场</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=d">游乐达人</div>
+        <div class="card-stats"><span>👁 3</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1605721911519-3dfeb3be25e7?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#f59e0b,#ef4444)'">
+        <span class="card-diff" style="background:rgba(239,68,68,.75);">⭐⭐⭐⭐ 困难</span>
+        <span class="card-parts">🧩 6800片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">霍格沃茨城堡</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=e">魔法建筑师</div>
+        <div class="card-stats"><span>👁 2</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1560185007-5f0bb1866cab?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#f59e0b,#d97706)'">
+        <span class="card-diff" style="background:rgba(34,197,94,.75);">⭐ 简单</span>
+        <span class="card-parts">🧩 400片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">深夜便利店</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=f">城市建造者</div>
+        <div class="card-stats"><span>👁 2</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1558060370-d644479cb6f7?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#06b6d4,#0891b2)'">
+        <span class="card-diff" style="background:rgba(245,158,11,.75);">⭐⭐⭐ 中等</span>
+        <span class="card-parts">🧩 1200片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">忍者机甲</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=g">机甲狂热者</div>
+        <div class="card-stats"><span>👁 1</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+    <div class="card" onclick="alert('跳转详情')">
+      <div class="card-img-wrap">
+        <img class="card-img" src="https://images.unsplash.com/photo-1604079628040-94301f3eb2a2?w=400&h=300&fit=crop" onerror="this.style.display='none';this.parentElement.style.background='linear-gradient(135deg,#ef4444,#dc2626)'">
+        <span class="card-diff" style="background:rgba(239,68,68,.75);">⭐⭐⭐⭐ 困难</span>
+        <span class="card-parts">🧩 2600片</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">动物合体机甲-狮王</div>
+        <div class="card-author"><img src="https://api.dicebear.com/7.x/thumbs/svg?seed=h">机甲大亨</div>
+        <div class="card-stats"><span>👁 1</span><span>❤️ 0</span><span>⭐ 0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    <span class="page-btn active">1</span>
+    <span class="page-btn">2</span>
+    <span class="page-btn">3</span>
+    <span class="page-btn">4</span>
+    <span class="page-btn">→</span>
+  </div>
+</main>
+
+</body>
+</html>

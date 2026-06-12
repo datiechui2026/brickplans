@@ -24,10 +24,13 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     bio: Mapped[str | None] = mapped_column(Text)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     blueprints: Mapped[list["Blueprint"]] = relationship(back_populates="author", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reports: Mapped[list["Report"]] = relationship(back_populates="reporter", cascade="all, delete-orphan")
+    likes: Mapped[list["Like"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Blueprint(Base):
@@ -44,15 +47,18 @@ class Blueprint(Base):
     dimensions: Mapped[str | None] = mapped_column(String(50))
     part_list: Mapped[dict | None] = mapped_column(JSON)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     author: Mapped["User"] = relationship(back_populates="blueprints")
-    images: Mapped[list["BlueprintImage"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
+    images: Mapped[list["BlueprintImage"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan", order_by="BlueprintImage.sort_order")
     tags: Mapped[list["BlueprintTag"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
     comments: Mapped[list["Comment"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
     favorites: Mapped[list["Favorite"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
+    likes: Mapped[list["Like"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
+    reports: Mapped[list["Report"]] = relationship(back_populates="blueprint", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_blueprints_created", "created_at"),
@@ -101,6 +107,22 @@ class Favorite(Base):
     blueprint: Mapped["Blueprint"] = relationship(back_populates="favorites")
 
 
+class Like(Base):
+    __tablename__ = "likes"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+    user: Mapped["User"] = relationship(back_populates="likes")
+    blueprint: Mapped["Blueprint"] = relationship(back_populates="likes")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "blueprint_id", name="uq_like_user_blueprint"),
+    )
+
+
 class Comment(Base):
     __tablename__ = "comments"
 
@@ -112,3 +134,22 @@ class Comment(Base):
 
     blueprint: Mapped["Blueprint"] = relationship(back_populates="comments")
     user: Mapped["User"] = relationship(back_populates="comments")
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
+    reporter_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str] = mapped_column(String(20), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+    reporter: Mapped["User"] = relationship(back_populates="reports")
+    blueprint: Mapped["Blueprint"] = relationship(back_populates="reports")
+
+    __table_args__ = (
+        UniqueConstraint("reporter_id", "blueprint_id", name="uq_report_reporter_blueprint"),
+    )

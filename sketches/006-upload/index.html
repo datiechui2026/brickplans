@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上传图纸 · BrickPlans</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f7; --card-bg: #ffffff;
+    --text: #1d1d1f; --text-sec: #86868b;
+    --accent: #ff6b35; --accent-hv: #e55a2b;
+    --radius: 16px; --shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255,255,255,.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; text-decoration: none; color: var(--text); }
+  .nav-actions { display: flex; align-items: center; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; padding: 8px 18px;
+    border-radius: 10px; border: none; cursor: pointer; transition: all .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hv); transform: scale(1.02); }
+  .btn-ghost { background: transparent; color: var(--text-sec); }
+  .btn-ghost:hover { background: rgba(0,0,0,.04); color: var(--text); }
+  .btn-lg { padding: 12px 32px; font-size: 16px; border-radius: 12px; }
+
+  .main { max-width: 720px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  .form-card {
+    background: var(--card-bg); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 32px;
+  }
+  .form-card h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+  .form-card .subtitle { font-size: 14px; color: var(--text-sec); margin-bottom: 28px; }
+
+  .form-group { margin-bottom: 20px; }
+  .form-label {
+    display: block; font-size: 13px; font-weight: 700;
+    margin-bottom: 6px; color: var(--text);
+  }
+  .form-label .required { color: var(--accent); margin-left: 2px; }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; padding: 10px 14px;
+    border: 1.5px solid #e5e5e5; border-radius: 10px;
+    font-size: 14px; font-family: inherit;
+    background: #f5f5f7; color: var(--text);
+    outline: none; transition: border .15s;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--accent); background: #fff;
+  }
+  .form-textarea { min-height: 100px; resize: vertical; line-height: 1.6; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* Image upload area */
+  .upload-area {
+    border: 2px dashed #ddd; border-radius: var(--radius);
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; background: #fafafa;
+  }
+  .upload-area:hover { border-color: var(--accent); background: #fff5f0; }
+  .upload-area .icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-area .text { font-size: 14px; color: var(--text-sec); }
+  .upload-area .text strong { color: var(--accent); }
+
+  /* Image previews */
+  .preview-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    margin-top: 12px;
+  }
+  .preview-item {
+    position: relative; aspect-ratio: 4/3; border-radius: 10px;
+    overflow: hidden; background: #e8eaed;
+  }
+  .preview-item img { width: 100%; height: 100%; object-fit: cover; }
+  .preview-item .cover-badge {
+    position: absolute; bottom: 6px; left: 6px;
+    font-size: 10px; font-weight: 700; padding: 2px 8px;
+    border-radius: 4px; background: var(--accent); color: #fff;
+  }
+  .preview-item .remove-btn {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(0,0,0,.5); color: #fff; border: none;
+    font-size: 12px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .preview-item .remove-btn:hover { background: #ef4444; }
+
+  /* Tags */
+  .tag-input-wrap { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 600; padding: 4px 10px;
+    border-radius: 20px; background: #f0f0f0; color: var(--text);
+  }
+  .tag-chip .remove { cursor: pointer; color: #999; }
+  .tag-chip .remove:hover { color: #ef4444; }
+
+  .submit-row { margin-top: 28px; display: flex; gap: 12px; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="nav-brand" href="#">🧱 BrickPlans</a>
+  <div class="nav-actions">
+    <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=user" style="width:32px;height:32px;border-radius:50%;cursor:pointer" alt="">
+  </div>
+</nav>
+
+<main class="main">
+  <div class="form-card">
+    <h1>📤 上传图纸</h1>
+    <p class="subtitle">分享你的积木创作到社区</p>
+
+    <!-- 标题 -->
+    <div class="form-group">
+      <label class="form-label">作品名称 <span class="required">*</span></label>
+      <input class="form-input" type="text" placeholder="给你的作品起个名字" value="经典太空飞船">
+    </div>
+
+    <!-- 图片上传 -->
+    <div class="form-group">
+      <label class="form-label">图片 <span class="required">*</span></label>
+      <div class="upload-area" onclick="alert('选择文件...')">
+        <div class="icon">🖼️</div>
+        <div class="text"><strong>点击选择图片</strong> 或拖拽到此处</div>
+        <div style="font-size:12px;color:#aaa;margin-top:4px;">支持 JPG/PNG/WebP，每张 ≤10MB，第一张为封面</div>
+      </div>
+      <div class="preview-grid">
+        <div class="preview-item">
+          <img src="https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=200&h=150&fit=crop" alt="">
+          <span class="cover-badge">封面</span>
+          <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+        </div>
+        <div class="preview-item">
+          <img src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=200&h=150&fit=crop" alt="">
+          <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+        </div>
+        <div class="preview-item">
+          <img src="https://images.unsplash.com/photo-1518331483807-f6adb0e1ad23?w=200&h=150&fit=crop" alt="">
+          <button class="remove-btn" onclick="this.parentElement.remove()">×</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分类 + 难度 + 零件数 -->
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">分类 <span class="required">*</span></label>
+        <select class="form-select">
+          <option>请选择</option>
+          <option>建筑</option>
+          <option>机甲</option>
+          <option selected>科幻</option>
+          <option>车辆</option>
+          <option>场景</option>
+          <option>奇幻</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">难度</label>
+        <select class="form-select">
+          <option>⭐ 简单</option>
+          <option>⭐⭐ 初级</option>
+          <option selected>⭐⭐⭐ 中等</option>
+          <option>⭐⭐⭐⭐ 困难</option>
+          <option>⭐⭐⭐⭐⭐ 专家</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">零件数量</label>
+        <input class="form-input" type="number" placeholder="0" value="450">
+      </div>
+      <div class="form-group">
+        <label class="form-label">成品尺寸</label>
+        <input class="form-input" type="text" placeholder="例: 30×20×15 cm" value="30×20×15 cm">
+      </div>
+    </div>
+
+    <!-- 简介 -->
+    <div class="form-group">
+      <label class="form-label">作品简介</label>
+      <textarea class="form-textarea" placeholder="描述你的作品，分享创作灵感和拼搭心得...">这是一款经典的太空飞船积木设计，灵感来源于经典科幻电影中的星际巡洋舰。模型包含450个零件，适合中等水平的玩家。</textarea>
+    </div>
+
+    <!-- 标签 -->
+    <div class="form-group">
+      <label class="form-label">标签</label>
+      <div class="tag-input-wrap">
+        <span class="tag-chip">科幻 <span class="remove" onclick="this.parentElement.remove()">×</span></span>
+        <span class="tag-chip">飞船 <span class="remove" onclick="this.parentElement.remove()">×</span></span>
+        <span class="tag-chip">太空 <span class="remove" onclick="this.parentElement.remove()">×</span></span>
+        <input style="border:none;outline:none;font-size:13px;padding:4px;min-width:80px;background:transparent;" placeholder="添加标签...">
+      </div>
+    </div>
+
+    <!-- 提交 -->
+    <div class="submit-row">
+      <button class="btn btn-primary btn-lg" onclick="alert('发布成功!')">📤 发布作品</button>
+      <button class="btn btn-ghost" onclick="alert('保存为草稿')">💾 保存草稿</button>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
