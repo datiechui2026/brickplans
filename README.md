@@ -120,7 +120,11 @@ curl http://127.0.0.1:8310/api/health
 curl -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8310/
 ```
 
-更多细节见 `docs/deployment.md`。
+更多细节见：
+
+- `docs/deployment.md`：生产部署手册。
+- `docs/production-initialization.md`：上线初始化、测试数据清理、管理员创建。
+- `docs/release-v1.0.0.md`：v1.0.0 发布清单和打包说明。
 
 ## 数据与备份
 
