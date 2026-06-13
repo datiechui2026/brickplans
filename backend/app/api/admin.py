@@ -42,7 +42,13 @@ def _to_admin_blueprint_out(bp: Blueprint) -> dict:
     images = []
     try:
         for img in (bp.images or []):
-            images.append({"id": img.id, "url": img.url, "sort_order": img.sort_order, "is_cover": img.is_cover})
+            images.append({
+                "id": img.id,
+                "url": img.url,
+                "object_key": img.object_key,
+                "sort_order": img.sort_order,
+                "is_cover": img.is_cover,
+            })
     except Exception:
         pass
 

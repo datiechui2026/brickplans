@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Storage: local | tencent_cos
+    storage_backend: str = "local"
+
+    # Tencent COS
+    tencent_cos_secret_id: str = ""
+    tencent_cos_secret_key: str = ""
+    tencent_cos_bucket: str = ""
+    tencent_cos_region: str = ""
+    tencent_cos_public_base_url: str = ""
+
     # MinIO / S3
     s3_endpoint: str = "http://minio:9000"
     s3_access_key: str = "minioadmin"

@@ -1,7 +1,6 @@
 import os
 import random
 import uuid as uuid_lib
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy import select
@@ -9,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 from app.models import User
-from app.schemas import UserRegister, UserLogin, TokenResponse, RefreshRequest, UserOut
+from app.schemas import UserRegister, UserLogin, TokenResponse, UserOut, RefreshRequest
+from app.services.storage import get_storage
 from app.api.deps import get_current_user
 from app.api.blueprints import _to_user_out
 
@@ -156,25 +156,11 @@ async def upload_avatar(
     if len(contents) > MAX_AVATAR_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB.")
 
-    # Determine extension
-    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
-    ext = ext_map.get(file.content_type, ".png")
-
-    # Ensure uploads/avatars directory exists
-    uploads_dir = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
-    # Generate UUID filename
-    filename = f"{uuid_lib.uuid4()}{ext}"
-    file_path = uploads_dir / filename
-
-    # Save file
-    with open(file_path, "wb") as f:
-        f.write(contents)
+    filename = file.filename or f"{uuid_lib.uuid4()}.png"
+    stored = await get_storage().upload(contents, filename, file.content_type or "image/png", prefix="avatars")
 
     # Update user's avatar_url
-    avatar_url = f"/uploads/avatars/{filename}"
-    current_user.avatar_url = avatar_url
+    current_user.avatar_url = stored.url
     await db.commit()
     await db.refresh(current_user)
 

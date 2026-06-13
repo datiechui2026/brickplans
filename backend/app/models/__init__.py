@@ -77,6 +77,7 @@ class BlueprintImage(Base):
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_uuid)
     blueprint_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("blueprints.id", ondelete="CASCADE"), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
+    object_key: Mapped[str | None] = mapped_column(String(500), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
 

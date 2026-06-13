@@ -75,10 +75,11 @@ async def upload_images(
 
     storage = get_storage()
     for sort_order, (file, content) in enumerate(zip(files, contents)):
-        url = await storage.upload(content, file.filename or "image", file.content_type or "image/png")
+        stored = await storage.upload(content, file.filename or "image", file.content_type or "image/png", prefix="blueprints")
         db.add(BlueprintImage(
             blueprint_id=blueprint_id,
-            url=url,
+            url=stored.url,
+            object_key=stored.object_key,
             sort_order=sort_order,
         ))
 
@@ -93,7 +94,16 @@ async def upload_images(
     images = result.scalars().all()
     await db.commit()
 
-    return [{"id": img.id, "url": img.url, "sort_order": img.sort_order, "is_cover": img.is_cover} for img in images]
+    return [
+        {
+            "id": img.id,
+            "url": img.url,
+            "object_key": img.object_key,
+            "sort_order": img.sort_order,
+            "is_cover": img.is_cover,
+        }
+        for img in images
+    ]
 
 
 @router.put("/{blueprint_id}/images/{image_id}/cover")
@@ -179,7 +189,7 @@ async def delete_image(
     # Delete from storage
     storage = get_storage()
     try:
-        await storage.delete(image.url)
+        await storage.delete(image.object_key or image.url)
     except Exception:
         pass  # best-effort: storage delete can fail without blocking DB cleanup
 

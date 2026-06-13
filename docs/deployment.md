@@ -14,7 +14,7 @@
 | 前端监听 | `0.0.0.0:8310` |
 | 前端静态目录 | `/home/ubuntu/project/brickplans/frontend/dist` |
 | SQLite 数据库 | `/home/ubuntu/project/brickplans/backend/brickplans.db` |
-| 上传目录 | `/home/ubuntu/project/brickplans/backend/uploads/` |
+| 图片存储 | 默认本地 `/home/ubuntu/project/brickplans/backend/uploads/`；生产推荐 Tencent COS |
 | nginx 配置 | `/etc/nginx/sites-available/brickplans` |
 | systemd unit | `/etc/systemd/system/brickplans-backend.service` |
 
@@ -91,7 +91,20 @@ DATABASE_URL=sqlite+aiosqlite:////home/ubuntu/project/brickplans/backend/brickpl
 DATABASE_URL_SYNC=sqlite:////home/ubuntu/project/brickplans/backend/brickplans.db
 SECRET_KEY=<上一步生成的长随机字符串>
 CORS_ORIGINS=["https://YOUR_DOMAIN"]
+
+# 图片存储：本地模式
+STORAGE_BACKEND=local
+
+# 图片存储：腾讯云 COS 模式，启用时把 STORAGE_BACKEND 改成 tencent_cos
+# STORAGE_BACKEND=tencent_cos
+# TENCENT_COS_SECRET_ID=<COS SecretId>
+# TENCENT_COS_SECRET_KEY=<COS SecretKey>
+# TENCENT_COS_BUCKET=<bucket-appid，例如 brickplans-1250000000>
+# TENCENT_COS_REGION=<地域，例如 ap-guangzhou>
+# TENCENT_COS_PUBLIC_BASE_URL=<访问域名，例如 https://brickplans-1250000000.cos.ap-guangzhou.myqcloud.com 或 CDN 域名>
 ```
+
+启用 COS 后，作品图片会上传到 `blueprints/<uuid>.<ext>`，头像会上传到 `avatars/<uuid>.<ext>`；`blueprint_images.object_key` 保存 COS object key，`blueprint_images.url` 保存前端可访问 URL。
 
 本机 8310 端口试运行时可以临时用：
 

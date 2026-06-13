@@ -87,6 +87,8 @@ class TestUploadImage:
         assert len(data) == 1
         assert data[0]["url"].startswith("/uploads/")
         assert data[0]["url"].endswith(".png")
+        assert data[0]["object_key"].startswith("blueprints/")
+        assert data[0]["url"] == f"/uploads/{data[0]['object_key']}"
         assert "id" in data[0]
 
         # 验证图片关联到蓝图
@@ -117,6 +119,7 @@ class TestUploadImage:
         assert len(data) == 3
         for img in data:
             assert img["url"].startswith("/uploads/")
+            assert img["object_key"].startswith("blueprints/")
 
         # 验证蓝图详情包含 3 张图
         detail_resp = await client.get(f"/api/blueprints/{bp_id}")
