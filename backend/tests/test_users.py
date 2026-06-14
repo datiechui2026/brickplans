@@ -15,6 +15,7 @@ class TestGetUserProfile:
             "password": "secret123",
         })
         token = reg.json()["access_token"]
+        user_id = reg.json()["user"]["id"]
 
         # Create a blueprint
         await client.post("/api/blueprints", json={
@@ -26,16 +27,34 @@ class TestGetUserProfile:
             "is_published": True,
         }, headers={"Authorization": f"Bearer {token}"})
 
-        # Get profile
-        resp = await client.get("/api/users/profileuser")
+        # Get profile by stable user id
+        resp = await client.get(f"/api/users/{user_id}")
         assert resp.status_code == 200
         data = resp.json()
+        assert data["id"] == user_id
         assert data["username"] == "profileuser"
         assert data["email"] == "profile@example.com"
         assert data["blueprint_count"] == 1
         assert data["favorite_count"] == 0
-        assert "id" in data
         assert "created_at" in data
+
+    async def test_user_id_profile_survives_username_change(self, client):
+        reg = await client.post("/api/auth/register", json={
+            "username": "oldname",
+            "email": "rename@example.com",
+            "password": "secret123",
+        })
+        token = reg.json()["access_token"]
+        user_id = reg.json()["user"]["id"]
+
+        update = await client.put("/api/auth/me", json={"username": "newname"}, headers={
+            "Authorization": f"Bearer {token}",
+        })
+        assert update.status_code == 200
+
+        resp = await client.get(f"/api/users/{user_id}")
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "newname"
 
 
 class TestUserBlueprints:
@@ -47,6 +66,7 @@ class TestUserBlueprints:
             "password": "secret123",
         })
         token = reg.json()["access_token"]
+        user_id = reg.json()["user"]["id"]
 
         for i in range(2):
             await client.post("/api/blueprints", json={
@@ -56,7 +76,7 @@ class TestUserBlueprints:
                 "is_published": True,
             }, headers={"Authorization": f"Bearer {token}"})
 
-        resp = await client.get("/api/users/bpuser/blueprints?size=10")
+        resp = await client.get(f"/api/users/{user_id}/blueprints?size=10")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
@@ -83,6 +103,7 @@ class TestUserFavorites:
             "password": "secret123",
         })
         token2 = reg2.json()["access_token"]
+        fan_id = reg2.json()["user"]["id"]
 
         # Author creates a blueprint
         bp = await client.post("/api/blueprints", json={
@@ -98,7 +119,7 @@ class TestUserFavorites:
                           headers={"Authorization": f"Bearer {token2}"})
 
         # Check fan's favorites
-        resp = await client.get("/api/users/fan1/favorites")
+        resp = await client.get(f"/api/users/{fan_id}/favorites")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1

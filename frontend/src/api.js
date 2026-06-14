@@ -273,18 +273,18 @@ export async function createReport(blueprintId, reason, detail) {
     body: JSON.stringify({ blueprint_id: blueprintId, reason, detail }),
   });
 }
-export async function getUserProfile(username) {
-  return request(`/api/users/${username}`);
+export async function getUserProfile(userId) {
+  return request(`/api/users/${encodeURIComponent(userId)}`);
 }
 
-export async function getUserBlueprints(username, { page = 1, size = 12 } = {}) {
+export async function getUserBlueprints(userId, { page = 1, size = 12 } = {}) {
   const params = new URLSearchParams({ page, size });
-  return request(`/api/users/${username}/blueprints?${params}`);
+  return request(`/api/users/${encodeURIComponent(userId)}/blueprints?${params}`);
 }
 
-export async function getUserFavorites(username, { page = 1, size = 12 } = {}) {
+export async function getUserFavorites(userId, { page = 1, size = 12 } = {}) {
   const params = new URLSearchParams({ page, size });
-  return request(`/api/users/${username}/favorites?${params}`);
+  return request(`/api/users/${encodeURIComponent(userId)}/favorites?${params}`);
 }
 
 // ── User Profile & Settings ──

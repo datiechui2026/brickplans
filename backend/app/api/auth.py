@@ -164,7 +164,7 @@ async def upload_avatar(
     await db.commit()
     await db.refresh(current_user)
 
-    return {"avatar_url": stored.url}
+    return {"avatar_url": stored.url, "object_key": stored.object_key, "user": _to_user_out(current_user)}
 
 
 @router.get("/avatars")

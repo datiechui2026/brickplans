@@ -33,7 +33,7 @@ const state = {
   explore: { page: 1, q: '', category: '', sort: 'new', tag: '', items: [], total: 0 },
   user: api.getCurrentUser(),
   userLoaded: !api.isLoggedIn(),
-  userProfile: { username: null, tab: 'blueprints', page: 1 },
+  userProfile: { id: null, username: null, tab: 'blueprints', page: 1 },
 };
 
 // ═══════════════════════════════════════════
@@ -106,11 +106,13 @@ function resetMeta() {
 // ═══════════════════════════════════════════
 function buildHash(page, params = {}) {
   let hash = `#/${page}`;
-  if (page === 'user' && params.username) {
+  if (page === 'user' && params.id) {
+    hash += `/${encodeURIComponent(params.id)}`;
+  } else if (page === 'user' && params.username) {
     hash += `/${encodeURIComponent(params.username)}`;
   }
   const qs = [];
-  if (params.id) qs.push(`id=${encodeURIComponent(params.id)}`);
+  if (params.id && page !== 'user') qs.push(`id=${encodeURIComponent(params.id)}`);
   if (params.q) qs.push(`q=${encodeURIComponent(params.q)}`);
   if (params.category) qs.push(`category=${encodeURIComponent(params.category)}`);
   if (params.tag) qs.push(`tag=${encodeURIComponent(params.tag)}`);
@@ -126,10 +128,10 @@ function parseHash() {
   if (query) {
     new URLSearchParams(query).forEach((v, k) => { params[k] = v; });
   }
-  // Parse user/username paths
+  // Parse user/{id} paths. Legacy user/{username} URLs are still accepted by the API.
   const parts = path.split('/');
   if (parts[0] === 'user' && parts[1]) {
-    return { page: 'user', params: { ...params, username: decodeURIComponent(parts[1]) } };
+    return { page: 'user', params: { ...params, id: decodeURIComponent(parts[1]) } };
   }
   return { page: path, params };
 }
@@ -138,8 +140,10 @@ function applyState(page, params = {}) {
   state.page = page;
   if (params.id) state.detailId = params.id;
   if (page === 'edit' && params.id) state.editId = params.id;
-  if (page === 'user' && params.username) {
-    state.userProfile = { ...state.userProfile, username: params.username };
+  if (page === 'user' && params.id) {
+    state.userProfile = { ...state.userProfile, id: params.id };
+  } else if (page === 'user' && params.username) {
+    state.userProfile = { ...state.userProfile, id: params.username, username: params.username };
   }
   if (params.q !== undefined) { state.explore.q = params.q; }
   else if (page !== 'explore') { state.explore.q = ''; }
@@ -249,7 +253,7 @@ function renderNavbar() {
       src: avatarUrl,
       alt: state.user.username || '用户',
       title: '个人主页',
-      onclick: () => navigate('user', { username: state.user.username }),
+      onclick: () => navigate('user', { id: state.user.id }),
     }));
   } else {
     actions.push(h('button', { className: 'btn btn-primary btn-sm', onclick: () => showModal('login') }, '登录'));
@@ -1213,7 +1217,7 @@ async function loadDetail(id) {
               h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.preventDefault(); navigate('edit', { id: bp.id }); } }, '✏️ 编辑'),
             ) : null,
             bp.author ? h('div', { className: 'author-row',
-              onclick: () => navigate('user', { username: bp.author.username }),
+              onclick: () => navigate('user', { id: bp.author.id }),
             },
               h('img', { src: bp.author.avatar_url || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author.username || 'anon')}`, alt: '' }),
               h('div', {},
@@ -2022,17 +2026,18 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
 async function renderUserProfile() {
   const container = $id('page-user');
   container.innerHTML = '';
-  const username = state.userProfile.username;
-  if (!username) {
+  const userId = state.userProfile.id;
+  if (!userId) {
     container.innerHTML = '<div style="text-align:center;padding:80px 20px"><p style="font-size:3rem;margin-bottom:16px">🧱</p><p style="font-size:1.1rem;color:var(--text-sec);margin-bottom:24px">未指定用户</p><button class="btn btn-primary" onclick="location.hash=\'#/home\'">返回首页</button></div>';
     return;
   }
   container.appendChild(h('p', {}, 'Loading...'));
   try {
-    const profile = await api.getUserProfile(username);
+    const profile = await api.getUserProfile(userId);
+    state.userProfile = { ...state.userProfile, id: profile.id, username: profile.username };
     const items = state.userProfile.tab === 'favorites'
-      ? await api.getUserFavorites(username, { page: state.userProfile.page })
-      : await api.getUserBlueprints(username, { page: state.userProfile.page });
+      ? await api.getUserFavorites(profile.id, { page: state.userProfile.page })
+      : await api.getUserBlueprints(profile.id, { page: state.userProfile.page });
     container.innerHTML = '';
     const dateStr = profile.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }) : '';
     const avatarUrl = profile.avatar_url;
@@ -2040,7 +2045,7 @@ async function renderUserProfile() {
       ? h('img', { src: avatarUrl, className: 'profile-avatar' })
       : h('div', { className: 'profile-avatar', style: { background: 'var(--accent)', fontSize: '2rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' } }, (profile.username || '?')[0].toUpperCase());
 
-    const isOwnProfile = state.user && state.user.username === profile.username;
+    const isOwnProfile = state.user && state.user.id === profile.id;
 
     container.appendChild(h('div', { className: 'main' },
       // Profile header
@@ -2203,7 +2208,6 @@ function openAvatarPicker(profile) {
             }
             try {
               const result = await api.uploadAvatar(file);
-              await api.updateProfile({ avatar_url: result.avatar_url });
               closeAvatarPicker(profile);
               showToast('头像已更新', 'success');
               profile.avatar_url = result.avatar_url;
@@ -2288,7 +2292,14 @@ function openSettings(profile) {
           h('span', { style: { color: 'var(--text-sec)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); openAvatarPicker(profile); } }, '🎨 预设'),
           h('span', { style: { color: 'var(--accent)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); document.getElementById('settings-avatar-input')?.click(); } }, '📁 本地上传'),
         ),
-        h('input', { type: 'file', id: 'settings-avatar-input', accept: 'image/jpeg,image/png,image/webp,image/gif', style: { display: 'none' }, onchange: handleAvatarUpload }),
+        h('input', {
+          type: 'file',
+          id: 'settings-avatar-input',
+          accept: 'image/jpeg,image/png,image/webp,image/gif',
+          style: { display: 'none' },
+          onclick: (e) => e.stopPropagation(),
+          onchange: handleAvatarUpload,
+        }),
       );
       avatarPreview.onclick = () => openAvatarPicker(profile);
 
@@ -2375,9 +2386,16 @@ async function handleSaveSettings() {
 
   try {
     const data = await api.updateProfile({ username: username || undefined, bio: bio || undefined });
+    state.user = data;
+    state.userProfile = { ...state.userProfile, id: data.id, username: data.username };
+    try {
+      const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
+      localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user: data }));
+    } catch { /* ignore */ }
     closeSettings();
+    renderNavbarIntoDOM();
     showToast('资料已更新', 'success');
-    // Refresh the profile page
+    // Refresh the profile page without changing the stable user id route
     renderUserProfile();
   } catch (e) {
     if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
@@ -2421,8 +2439,14 @@ async function handleAvatarUpload(e) {
     }
     // Sync to navbar + localStorage
     _syncUserAvatar(data.avatar_url);
-    // Update the profile in state
-    const profile = await api.getUserProfile(state.user.username || state.userProfile.username);
+    if (data.user) {
+      state.user = data.user;
+      try {
+        const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
+        localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user: data.user }));
+      } catch { /* ignore */ }
+      renderNavbarIntoDOM();
+    }
     showToast('头像已更新', 'success');
     // Re-render the profile behind the scenes
     setTimeout(() => renderUserProfile(), 300);
@@ -2826,7 +2850,7 @@ async function handleSaveEditBlueprint(id) {
     }
 
     showToast('图纸已更新', 'success');
-    navigate('user', { username: state.user?.username });
+    navigate('user', { id: state.user?.id });
   } catch (e) {
     if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
   }
@@ -3120,8 +3144,8 @@ function render() {
     case 'upload': resetMeta(); renderUpload(); break;
     case 'user':
       resetMeta();
-      if (!state.userProfile.username && state.user?.username) {
-        navigate('user', { username: state.user.username });
+      if (!state.userProfile.id && state.user?.id) {
+        navigate('user', { id: state.user.id });
         break;
       }
       renderUserProfile(); break;

@@ -2,7 +2,7 @@
 用户 API：个人主页 — 用户信息、作品集、收藏
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,17 +21,23 @@ def _to_profile(user: User, bp_count: int, fav_count: int) -> dict:
     return data
 
 
-@router.get("/{username}")
-async def get_user_profile(
-    username: str,
-    db: AsyncSession = Depends(get_db),
-):
+async def _get_user_by_identifier(db: AsyncSession, identifier: str) -> User:
+    """Find a user by stable id first, falling back to legacy username URLs."""
     result = await db.execute(
-        select(User).where(User.username == username)
+        select(User).where(or_(User.id == identifier, User.username == identifier))
     )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.get("/{user_id}")
+async def get_user_profile(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _get_user_by_identifier(db, user_id)
 
     # Stats
     bp_count_result = await db.execute(
@@ -50,20 +56,14 @@ async def get_user_profile(
     return _to_profile(user, bp_count, fav_count)
 
 
-@router.get("/{username}/blueprints", response_model=BlueprintListOut)
+@router.get("/{user_id}/blueprints", response_model=BlueprintListOut)
 async def get_user_blueprints(
-    username: str,
+    user_id: str,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=12, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    # Find user
-    user_result = await db.execute(
-        select(User).where(User.username == username)
-    )
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await _get_user_by_identifier(db, user_id)
 
     # Count
     count_q = select(func.count()).where(
@@ -96,20 +96,14 @@ async def get_user_blueprints(
     )
 
 
-@router.get("/{username}/favorites", response_model=BlueprintListOut)
+@router.get("/{user_id}/favorites", response_model=BlueprintListOut)
 async def get_user_favorites(
-    username: str,
+    user_id: str,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=12, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):
-    # Find user
-    user_result = await db.execute(
-        select(User).where(User.username == username)
-    )
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await _get_user_by_identifier(db, user_id)
 
     # Count favorites
     count_q = select(func.count()).where(Favorite.user_id == user.id)

@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.services.storage import StoredObject
+
 
 class TestRegister:
     async def test_register_creates_user_and_returns_tokens(self, client):
@@ -105,3 +107,43 @@ class TestGetMe:
         assert data["email"] == "me@example.com"
         assert "id" in data
         assert "created_at" in data
+
+
+class TestAvatarUpload:
+    async def test_upload_avatar_uses_storage_backend(self, client, monkeypatch):
+        class FakeStorage:
+            def __init__(self):
+                self.calls = []
+
+            async def upload(self, file_data, filename, content_type, prefix="blueprints"):
+                self.calls.append((file_data, filename, content_type, prefix))
+                return StoredObject(
+                    url="https://cos.example.com/avatars/avatar.png",
+                    object_key="avatars/avatar.png",
+                )
+
+            async def delete(self, url_or_key):
+                return None
+
+        fake_storage = FakeStorage()
+        monkeypatch.setattr("app.api.auth.get_storage", lambda: fake_storage)
+
+        reg = await client.post("/api/auth/register", json={
+            "username": "avataruser",
+            "email": "avatar@example.com",
+            "password": "secret123",
+        })
+        token = reg.json()["access_token"]
+
+        resp = await client.post(
+            "/api/auth/avatar",
+            files={"file": ("avatar.png", b"fake-png", "image/png")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["avatar_url"] == "https://cos.example.com/avatars/avatar.png"
+        assert data["object_key"] == "avatars/avatar.png"
+        assert data["user"]["avatar_url"] == data["avatar_url"]
+        assert fake_storage.calls[0][3] == "avatars"
