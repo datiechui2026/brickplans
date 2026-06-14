@@ -2,7 +2,10 @@
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
 
 function getToken() {
-  try { return JSON.parse(localStorage.getItem('bp_auth') || '{}').access_token || null; }
+  try {
+    const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
+    return auth.access_token || auth.token || auth.user?.access_token || null;
+  }
   catch { return null; }
 }
 
@@ -64,15 +67,21 @@ async function tryRefreshToken() {
 
 async function request(path, options = {}) {
   const token = getToken();
+  const method = (options.method || 'GET').toUpperCase();
+  const needsAuth = options.auth !== false && (options.requireAuth || !['GET', 'HEAD', 'OPTIONS'].includes(method));
+  if (needsAuth && !token) {
+    throw new Error('请先登录');
+  }
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const { auth: _auth, ...fetchOptions } = options;
+  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
 
   if (res.status === 204) return null;
 
-  // Auto-refresh on 401 (skip refresh endpoint itself to avoid infinite loop)
-  if (res.status === 401 && token && getRefreshToken() && path !== '/api/auth/refresh') {
+  // Auto-refresh on 401/403 auth failures (skip refresh endpoint itself to avoid infinite loop)
+  if ((res.status === 401 || res.status === 403) && token && getRefreshToken() && path !== '/api/auth/refresh') {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
@@ -94,6 +103,10 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
+    if ((res.status === 401 || res.status === 403) && token) {
+      clearAuth();
+      throw new Error('登录已过期，请重新登录');
+    }
     const msg = data?.detail || `Request failed (${res.status})`;
     throw new Error(msg);
   }
@@ -101,10 +114,34 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function formRequest(path, form, errorPrefix = 'Upload failed') {
+  let token = getToken();
+  if (!token) throw new Error('请先登录');
+
+  const send = (accessToken) => fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  });
+
+  let res = await send(token);
+  if (res.status === 401 && getRefreshToken()) {
+    const newToken = await tryRefreshToken();
+    if (newToken) res = await send(newToken);
+  }
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(data?.detail || `${errorPrefix} (${res.status})`);
+  }
+  return data;
+}
+
 // ── Auth ──
 export async function register(username, email, password) {
   const data = await request('/api/auth/register', {
     method: 'POST',
+    auth: false,
     body: JSON.stringify({ username, email, password }),
   });
   setAuth(data);
@@ -114,6 +151,7 @@ export async function register(username, email, password) {
 export async function login(email, password) {
   const data = await request('/api/auth/login', {
     method: 'POST',
+    auth: false,
     body: JSON.stringify({ email, password }),
   });
   setAuth(data);
@@ -190,21 +228,9 @@ export async function createComment(blueprintId, content, parentId = null) {
 
 // ── Images ──
 export async function uploadBlueprintImage(blueprintId, file) {
-  const token = getToken();
   const form = new FormData();
   form.append('files', file);
-
-  const res = await fetch(`${API_BASE}/api/blueprints/${blueprintId}/images`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.detail || `上传失败 (${res.status})`);
-  }
-  return res.json();
+  return formRequest(`/api/blueprints/${blueprintId}/images`, form, '上传失败');
 }
 
 export async function deleteBlueprintImage(blueprintId, imageId) {
@@ -281,21 +307,9 @@ export async function changePassword(currentPassword, newPassword) {
 }
 
 export async function uploadAvatar(file) {
-  const token = getToken();
   const form = new FormData();
   form.append('file', file);
-
-  const res = await fetch(`${API_BASE}/api/auth/avatar`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.detail || `Upload failed (${res.status})`);
-  }
-  return res.json();
+  return formRequest('/api/auth/avatar', form, 'Upload failed');
 }
 
 export async function getPresetAvatars() {
@@ -319,11 +333,11 @@ export async function getStats() {
 // ── Notifications ──
 export async function listNotifications({ page = 1, size = 20 } = {}) {
   const params = new URLSearchParams({ page, size });
-  return request(`/api/notifications?${params}`);
+  return request(`/api/notifications?${params}`, { requireAuth: true });
 }
 
 export async function getUnreadNotificationCount() {
-  return request('/api/notifications/unread-count');
+  return request('/api/notifications/unread-count', { requireAuth: true });
 }
 
 export async function markNotificationsRead() {

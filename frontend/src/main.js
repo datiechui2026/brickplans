@@ -32,6 +32,7 @@ const state = {
   flashMessage: null,
   explore: { page: 1, q: '', category: '', sort: 'new', tag: '', items: [], total: 0 },
   user: api.getCurrentUser(),
+  userLoaded: !api.isLoggedIn(),
   userProfile: { username: null, tab: 'blueprints', page: 1 },
 };
 
@@ -163,6 +164,25 @@ function onHashChange() {
   render();
 }
 window.addEventListener('hashchange', onHashChange);
+
+async function refreshCurrentUser() {
+  if (!api.isLoggedIn()) {
+    state.userLoaded = true;
+    return;
+  }
+  try {
+    const user = await api.getMe();
+    state.user = user;
+    const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
+    localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user }));
+  } catch (error) {
+    console.warn('Refresh current user failed:', error);
+  } finally {
+    state.userLoaded = true;
+    renderNavbarIntoDOM();
+    if (state.page === 'admin') render();
+  }
+}
 
 // ═══════════════════════════════════════════
 // Render Engine
@@ -1481,14 +1501,34 @@ async function loadDetail(id) {
 
 // ── Upload ──
 async function renderNotifications() {
-  if (!state.user?.id) {
-    navigate('home');
-    showModal('login');
+  const container = $id('page-notifications');
+  container.innerHTML = '';
+
+  if (!state.userLoaded) {
+    container.appendChild(
+      h('div', { className: 'main', style: { maxWidth: '760px' } },
+        h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
+      ),
+    );
     return;
   }
 
-  const container = $id('page-notifications');
-  container.innerHTML = '';
+  if (!state.user?.id) {
+    container.appendChild(
+      h('div', { className: 'main', style: { maxWidth: '760px' } },
+        h('div', { className: 'page-header' },
+          h('h1', {}, '🔔 站内通知'),
+          h('p', {}, '登录后查看评论、回复、点赞和收藏提醒'),
+        ),
+        h('div', { className: 'empty', style: { padding: '32px' } },
+          h('div', { className: 'empty-icon' }, '🔐'),
+          h('p', {}, '请先登录后查看通知'),
+          h('button', { className: 'btn btn-primary', onclick: () => showModal('login') }, '去登录'),
+        ),
+      ),
+    );
+    return;
+  }
   container.appendChild(
     h('div', { className: 'main', style: { maxWidth: '760px' } },
       h('div', { className: 'page-header' },
@@ -1926,7 +1966,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
   const authorAvatar = bp.author?.avatar_url
     || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author?.username || bp.id || 'anon')}`;
 
-  const card = h('div', { className: 'card', onclick: isOwnProfile ? () => navigate('edit', { id: bp.id }) : () => navigate('detail', { id: bp.id }) },
+  const card = h('div', { className: `card${isOwnProfile ? ' card-own' : ''}`, onclick: isOwnProfile ? () => navigate('edit', { id: bp.id }) : () => navigate('detail', { id: bp.id }) },
     h('div', { className: 'card-img-wrap' },
       coverUrl
         ? h('img', {
@@ -2452,6 +2492,14 @@ function renderEditImages() {
     return;
   }
 
+  const moveImage = (fromIdx, toIdx) => {
+    if (toIdx < 0 || toIdx >= _editImages.length) return;
+    [_editImages[fromIdx], _editImages[toIdx]] = [_editImages[toIdx], _editImages[fromIdx]];
+    if (_editCoverIdx === fromIdx) _editCoverIdx = toIdx;
+    else if (_editCoverIdx === toIdx) _editCoverIdx = fromIdx;
+    renderEditImages();
+  };
+
   _editImages.forEach((img, idx) => {
     const item = h('div', { className: 'preview-item' });
 
@@ -2477,6 +2525,34 @@ function renderEditImages() {
           renderEditImages();
         },
       }, '封面'));
+    }
+
+    if (_editImages.length > 1) {
+      const arrowStyle = {
+        position: 'absolute', left: '-4px',
+        background: 'rgba(0,0,0,0.5)', color: 'white',
+        width: '20px', height: '18px', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', fontSize: '12px', lineHeight: '1', zIndex: 2,
+      };
+      item.appendChild(h('span', {
+        className: 'sort-arrow sort-arrow-up',
+        style: { ...arrowStyle, top: '2px', borderRadius: '6px 6px 0 0', opacity: idx === 0 ? 0.35 : 1 },
+        title: '上移',
+        onclick: (ev2) => {
+          ev2.stopPropagation();
+          moveImage(idx, idx - 1);
+        },
+      }, '▲'));
+      item.appendChild(h('span', {
+        className: 'sort-arrow sort-arrow-down',
+        style: { ...arrowStyle, bottom: '2px', borderRadius: '0 0 6px 6px', opacity: idx === _editImages.length - 1 ? 0.35 : 1 },
+        title: '下移',
+        onclick: (ev2) => {
+          ev2.stopPropagation();
+          moveImage(idx, idx + 1);
+        },
+      }, '▼'));
     }
 
     // Delete button (top-right)
@@ -3051,6 +3127,11 @@ function render() {
       renderUserProfile(); break;
     case 'admin':
       resetMeta();
+      if (!state.userLoaded) {
+        const container = $id('page-admin');
+        if (container) container.innerHTML = '<div class="main"><div class="loading"><div class="spinner"></div></div></div>';
+        break;
+      }
       if (!state.user?.is_admin) {
         renderErrorPage(403);
         break;
@@ -3080,6 +3161,7 @@ function render() {
 // ═══════════════════════════════════════════
 // Boot — trigger initial render from current URL
 // ═══════════════════════════════════════════
+refreshCurrentUser();
 if (location.hash) {
   onHashChange();  // restore state from deep link
 } else {

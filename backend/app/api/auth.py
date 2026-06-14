@@ -164,7 +164,7 @@ async def upload_avatar(
     await db.commit()
     await db.refresh(current_user)
 
-    return {"avatar_url": avatar_url}
+    return {"avatar_url": stored.url}
 
 
 @router.get("/avatars")

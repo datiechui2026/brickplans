@@ -12,6 +12,8 @@
 - 设置封面
 - 图片重排序
 """
+import io
+
 import pytest
 from httpx import AsyncClient
 
@@ -124,6 +126,39 @@ class TestUploadImage:
         # 验证蓝图详情包含 3 张图
         detail_resp = await client.get(f"/api/blueprints/{bp_id}")
         assert len(detail_resp.json()["images"]) == 3
+
+    async def test_append_upload_continues_sort_order(self, client: AsyncClient):
+        """追加上传图片时 sort_order 不能从 0 重置。"""
+        token = await _register_and_login(client, "append_img", "append_img@test.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        create_resp = await client.post("/api/blueprints", json={
+            "title": "Append Image MOC",
+            "description": "Append photos later",
+        }, headers=headers)
+        bp_id = create_resp.json()["id"]
+
+        first_resp = await client.post(
+            f"/api/blueprints/{bp_id}/images",
+            files=[("files", ("first.png", io.BytesIO(MINIMAL_PNG), "image/png"))],
+            headers=headers,
+        )
+        assert first_resp.status_code == 201
+        assert [img["sort_order"] for img in first_resp.json()] == [0]
+
+        second_resp = await client.post(
+            f"/api/blueprints/{bp_id}/images",
+            files=[
+                ("files", ("second.png", io.BytesIO(MINIMAL_PNG), "image/png")),
+                ("files", ("third.png", io.BytesIO(MINIMAL_PNG), "image/png")),
+            ],
+            headers=headers,
+        )
+        assert second_resp.status_code == 201
+        images = second_resp.json()
+        assert [img["sort_order"] for img in images] == [0, 1, 2]
+
+        detail_resp = await client.get(f"/api/blueprints/{bp_id}")
+        assert [img["sort_order"] for img in detail_resp.json()["images"]] == [0, 1, 2]
 
     async def test_invalid_format_rejected(self, client: AsyncClient):
         """RED: 非法格式 (gif/txt) 拒绝 422"""

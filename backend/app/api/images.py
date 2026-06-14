@@ -7,7 +7,7 @@ DELETE /api/blueprints/{id}/images/{img_id} — 删除图片（作者操作）
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -74,13 +74,18 @@ async def upload_images(
     contents = [_validate_file(f) for f in files]
 
     storage = get_storage()
-    for sort_order, (file, content) in enumerate(zip(files, contents)):
+    max_sort_order = await db.scalar(
+        select(func.max(BlueprintImage.sort_order))
+        .where(BlueprintImage.blueprint_id == blueprint_id)
+    )
+    next_sort_order = (-1 if max_sort_order is None else max_sort_order) + 1
+    for offset, (file, content) in enumerate(zip(files, contents)):
         stored = await storage.upload(content, file.filename or "image", file.content_type or "image/png", prefix="blueprints")
         db.add(BlueprintImage(
             blueprint_id=blueprint_id,
             url=stored.url,
             object_key=stored.object_key,
-            sort_order=sort_order,
+            sort_order=next_sort_order + offset,
         ))
 
     await db.flush()
@@ -89,7 +94,7 @@ async def upload_images(
     result = await db.execute(
         select(BlueprintImage)
         .where(BlueprintImage.blueprint_id == blueprint_id)
-        .order_by(BlueprintImage.sort_order)
+        .order_by(BlueprintImage.sort_order, BlueprintImage.id)
     )
     images = result.scalars().all()
     await db.commit()

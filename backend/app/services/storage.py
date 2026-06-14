@@ -112,6 +112,7 @@ class TencentCOSStorage(BaseStorage):
             Body=BytesIO(file_data),
             Key=object_key,
             ContentType=content_type,
+            ACL="public-read",
         )
         return StoredObject(url=f"{self.public_base_url}/{object_key}", object_key=object_key)
 
