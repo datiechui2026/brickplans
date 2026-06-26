@@ -36,7 +36,7 @@ async def create_report(
         raise HTTPException(status_code=409, detail="You have already reported this blueprint")
 
     # Validate reason enum
-    valid_reasons = {"inappropriate", "copyright", "spam", "other"}
+    valid_reasons = {"inappropriate", "copyright", "incomplete", "spam", "other"}
     if payload.reason not in valid_reasons:
         raise HTTPException(
             status_code=422,

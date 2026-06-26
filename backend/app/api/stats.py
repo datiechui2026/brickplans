@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Blueprint, User, Favorite, Like
+from app.models import Blueprint, User, Favorite, Like, Report
 from app.schemas import StatsResponse
 
 router = APIRouter(prefix="/api", tags=["stats"])
@@ -40,6 +40,14 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         select(func.count()).select_from(Like)
     )).scalar() or 0
 
+    pending_count = (await db.execute(
+        select(func.count()).select_from(Blueprint).where(Blueprint.is_published == False)
+    )).scalar() or 0
+
+    report_count = (await db.execute(
+        select(func.count(func.distinct(Report.blueprint_id)))
+    )).scalar() or 0
+
     return StatsResponse(
         total_blueprints=total_blueprints,
         total_users=total_users,
@@ -47,4 +55,6 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         total_pieces=total_pieces,
         total_views=total_views,
         total_likes=total_likes,
+        pending_count=pending_count,
+        report_count=report_count,
     )

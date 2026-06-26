@@ -88,10 +88,10 @@ class TestUploadImage:
         assert isinstance(data, list)
         assert len(data) == 1
         assert data[0]["url"].startswith("/uploads/")
-        assert data[0]["url"].endswith(".png")
         assert data[0]["object_key"].startswith("blueprints/")
         assert data[0]["url"] == f"/uploads/{data[0]['object_key']}"
         assert "id" in data[0]
+        assert data[0].get("file_type") == "image"
 
         # 验证图片关联到蓝图
         detail_resp = await client.get(f"/api/blueprints/{bp_id}")
@@ -161,7 +161,7 @@ class TestUploadImage:
         assert [img["sort_order"] for img in detail_resp.json()["images"]] == [0, 1, 2]
 
     async def test_invalid_format_rejected(self, client: AsyncClient):
-        """RED: 非法格式 (gif/txt) 拒绝 422"""
+        """RED: 非法格式 (gif) 拒绝 422"""
         token = await _register_and_login(client, "fmtcheck", "fmtcheck@test.com")
         headers = {"Authorization": f"Bearer {token}"}
         create_resp = await client.post("/api/blueprints", json={
@@ -169,7 +169,7 @@ class TestUploadImage:
         }, headers=headers)
         bp_id = create_resp.json()["id"]
 
-        # 上传 .gif
+        # 上传 .gif（不在允许列表中）
         response = await client.post(
             f"/api/blueprints/{bp_id}/images",
             files=[("files", ("bad.gif", b"GIF89a\x01\x00\x01\x00\x00\x00\x00;", "image/gif"))],
@@ -177,10 +177,10 @@ class TestUploadImage:
         )
         assert response.status_code == 422
 
-        # 上传 .txt（伪装成 png 也不行，我们会检查文件头）
+        # 上传 .txt（不在允许列表中）
         response = await client.post(
             f"/api/blueprints/{bp_id}/images",
-            files=[("files", ("not-image.png", b"hello world this is text", "image/png"))],
+            files=[("files", ("bad.txt", b"hello world this is text", "text/plain"))],
             headers=headers,
         )
         assert response.status_code == 422

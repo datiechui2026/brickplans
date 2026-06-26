@@ -10,8 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_current_admin
 from app.core.database import get_db
-from app.models import User, Blueprint, BlueprintTag, BlueprintImage
-from app.schemas import BlueprintOut, BlueprintListOut
+from app.models import User, Blueprint, BlueprintTag, BlueprintImage, Report
+from app.schemas import BlueprintOut, BlueprintListOut, AdminReportOut, AdminReportItem, AdminReportListOut
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -48,15 +48,21 @@ def _to_admin_blueprint_out(bp: Blueprint) -> dict:
                 "object_key": img.object_key,
                 "sort_order": img.sort_order,
                 "is_cover": img.is_cover,
+                "file_type": getattr(img, 'file_type', 'image') or 'image',
             })
     except Exception:
         pass
 
     cover_url = None
     for img in images:
-        if img.get("is_cover"):
+        if img.get("is_cover") and img.get("file_type", "image") != "pdf":
             cover_url = img["url"]
             break
+    if not cover_url:
+        for img in images:
+            if img.get("file_type", "image") != "pdf":
+                cover_url = img["url"]
+                break
     if not cover_url and images:
         cover_url = images[0]["url"]
 
@@ -195,3 +201,107 @@ async def admin_delete(
         raise HTTPException(404, "Blueprint not found")
     await db.delete(bp)
     await db.commit()
+
+
+# ────────────────────────── Reports ──────────────────────────
+
+def _to_admin_report_out(report: Report) -> dict:
+    """Serialize a Report with reporter info for admin view."""
+    reporter = None
+    try:
+        if report.reporter:
+            reporter = {
+                "id": report.reporter.id,
+                "username": report.reporter.username,
+                "email": report.reporter.email,
+                "avatar_url": report.reporter.avatar_url,
+                "bio": report.reporter.bio,
+                "is_admin": report.reporter.is_admin,
+                "created_at": report.reporter.created_at.isoformat() if report.reporter.created_at else "",
+            }
+    except Exception:
+        pass
+
+    return {
+        "id": report.id,
+        "reporter_id": report.reporter_id,
+        "blueprint_id": report.blueprint_id,
+        "reason": report.reason,
+        "detail": report.detail,
+        "status": report.status,
+        "created_at": report.created_at.isoformat() if report.created_at else "",
+        "reporter": reporter,
+    }
+
+
+@router.get("/reports", response_model=AdminReportListOut)
+async def admin_list_reports(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """管理员查看被举报的图纸列表（按被举报图纸分组）。"""
+    # Subquery: count reports per blueprint, get the latest report time
+    report_counts = (
+        select(
+            Report.blueprint_id,
+            func.count(Report.id).label("report_count"),
+            func.max(Report.created_at).label("latest_report_at"),
+        )
+        .group_by(Report.blueprint_id)
+        .subquery()
+    )
+
+    # Count total unique blueprints with reports
+    total = (await db.execute(
+        select(func.count()).select_from(report_counts)
+    )).scalar() or 0
+
+    # Get blueprint IDs for current page, ordered by most recent report
+    bp_ids_query = (
+        select(report_counts.c.blueprint_id, report_counts.c.report_count)
+        .order_by(report_counts.c.latest_report_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    bp_id_result = await db.execute(bp_ids_query)
+    bp_rows = bp_id_result.all()
+
+    items = []
+    for bp_id, report_count in bp_rows:
+        # Load blueprint with author and images
+        bp_result = await db.execute(
+            select(Blueprint)
+            .options(
+                selectinload(Blueprint.author),
+                selectinload(Blueprint.images),
+                selectinload(Blueprint.tags).selectinload(BlueprintTag.tag),
+            )
+            .where(Blueprint.id == bp_id)
+        )
+        blueprint = bp_result.scalar_one_or_none()
+        if not blueprint:
+            continue
+
+        # Load all reports for this blueprint with reporter info
+        reports_result = await db.execute(
+            select(Report)
+            .options(selectinload(Report.reporter))
+            .where(Report.blueprint_id == bp_id)
+            .order_by(Report.created_at.desc())
+        )
+        reports = reports_result.unique().scalars().all()
+
+        items.append(AdminReportItem(
+            blueprint=_to_admin_blueprint_out(blueprint),
+            report_count=report_count,
+            reports=[_to_admin_report_out(r) for r in reports],
+        ))
+
+    return AdminReportListOut(
+        items=items,
+        total=total,
+        page=page,
+        page_size=size,
+    )

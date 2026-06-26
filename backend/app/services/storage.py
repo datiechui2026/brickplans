@@ -107,12 +107,16 @@ class TencentCOSStorage(BaseStorage):
         prefix: str = "blueprints",
     ) -> StoredObject:
         object_key = self._make_object_key(filename, prefix)
+        kwargs = {}
+        if content_type == "application/pdf":
+            kwargs["ContentDisposition"] = "inline"
         self.client.put_object(
             Bucket=self.bucket,
             Body=BytesIO(file_data),
             Key=object_key,
             ContentType=content_type,
             ACL="public-read",
+            **kwargs,
         )
         return StoredObject(url=f"{self.public_base_url}/{object_key}", object_key=object_key)
 

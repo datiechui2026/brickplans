@@ -367,3 +367,8 @@ export async function adminUnpublish(id) {
 export async function adminDelete(id) {
   return request(`/api/admin/blueprints/${id}`, { method: 'DELETE' });
 }
+
+export async function adminListReports({ page = 1 } = {}) {
+  const params = new URLSearchParams({ page, size: '20' });
+  return request(`/api/admin/reports?${params}`);
+}

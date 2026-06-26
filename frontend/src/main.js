@@ -41,15 +41,26 @@ const state = {
 // ═══════════════════════════════════════════
 function getCoverImage(images) {
   if (!images || images.length === 0) return null;
-  const cover = images.find(img => img.is_cover);
+  // Prefer the marked cover, but skip PDFs (can't render as <img>)
+  const cover = images.find(img => img.is_cover && (img.file_type || 'image') !== 'pdf');
   if (cover) return cover.url;
-  return images[images.length - 1].url;
+  // Fallback: last non-PDF image
+  const lastImage = [...images].reverse().find(img => (img.file_type || 'image') !== 'pdf');
+  if (lastImage) return lastImage.url;
+  // All are PDFs — return first URL (won't render as image, but better than null)
+  return images[0].url;
 }
 
 function getCoverIndex(images) {
   if (!images || images.length === 0) return 0;
-  const idx = images.findIndex(img => img.is_cover);
-  return idx >= 0 ? idx : images.length - 1;
+  // Prefer the marked cover, but skip PDFs
+  const idx = images.findIndex(img => img.is_cover && (img.file_type || 'image') !== 'pdf');
+  if (idx >= 0) return idx;
+  // Fallback: last non-PDF image
+  const lastIdx = [...images].reverse().findIndex(img => (img.file_type || 'image') !== 'pdf');
+  if (lastIdx >= 0) return images.length - 1 - lastIdx;
+  // All are PDFs — return last index
+  return images.length - 1;
 }
 
 // ═══════════════════════════════════════════
@@ -318,10 +329,10 @@ function showReportModal(blueprintId) {
       h('p', { style: { color: 'var(--text-sec)', fontWeight: 600, marginBottom: '16px', fontSize: '0.9rem' } }, '请选择举报原因：'),
       h('div', { id: 'report-error' }),
       h('div', { className: 'form-group' },
-        ...['inappropriate', 'copyright', 'spam', 'other'].map(r =>
+        ...['inappropriate', 'copyright', 'incomplete', 'spam', 'other'].map(r =>
           h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', cursor: 'pointer', fontWeight: 600 } },
             h('input', { type: 'radio', name: 'report-reason', value: r }),
-            { inappropriate: '内容不当', copyright: '版权问题', spam: '垃圾广告', other: '其他' }[r],
+            { inappropriate: '内容不当', copyright: '版权问题', incomplete: '图纸不完整', spam: '垃圾广告', other: '其他' }[r],
           )
         ),
         h('input', { type: 'radio', name: 'report-reason', value: 'other', style: { display: 'none' }, id: 'report-reason-other-hidden' }),
@@ -1126,12 +1137,48 @@ async function loadDetail(id) {
               const imgs = bp.images;
               let carouselIdx = getCoverIndex(imgs);
               const multi = imgs.length > 1;
+              const currentItem = imgs[carouselIdx];
+              const isCurrentPdf = (currentItem.file_type || 'image') === 'pdf';
 
-              const mainImgEl = h('img', {
-                src: imgs[carouselIdx].url,
-                alt: bp.title,
-                onclick: () => openLightbox(imgs, carouselIdx),
+              // Pre-compute non-PDF images for lightbox (PDFs can't be zoomed)
+              const nonPdfImages = imgs.filter(i => (i.file_type || 'image') !== 'pdf');
+              // Map: original index → non-PDF index
+              const nonPdfIndexMap = {};
+              imgs.forEach((img, i) => {
+                if ((img.file_type || 'image') !== 'pdf') {
+                  nonPdfIndexMap[i] = Object.keys(nonPdfIndexMap).length;
+                }
               });
+              const getLightboxIdx = (origIdx) => {
+                // Find the correct index in nonPdfImages for the lightbox
+                if (nonPdfImages.length === 0) return 0;
+                if (nonPdfIndexMap[origIdx] !== undefined) return nonPdfIndexMap[origIdx];
+                // If current is PDF, find nearest non-PDF
+                for (let d = 1; d < imgs.length; d++) {
+                  if (origIdx + d < imgs.length && nonPdfIndexMap[origIdx + d] !== undefined) return nonPdfIndexMap[origIdx + d];
+                  if (origIdx - d >= 0 && nonPdfIndexMap[origIdx - d] !== undefined) return nonPdfIndexMap[origIdx - d];
+                }
+                return 0;
+              };
+
+              // Main content: image or PDF iframe
+              let mainContentEl;
+              if (isCurrentPdf) {
+                mainContentEl = h('iframe', {
+                  src: currentItem.url + '#toolbar=0&navpanes=0',
+                  style: { width: '100%', height: '600px', border: 'none', borderRadius: '8px' },
+                  title: bp.title,
+                });
+              } else {
+                mainContentEl = h('img', {
+                  src: currentItem.url,
+                  alt: bp.title,
+                  onclick: () => {
+                    if (nonPdfImages.length === 0) return;
+                    openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
+                  },
+                });
+              }
 
               const dots = imgs.map((_, i) =>
                 h('button', {
@@ -1140,19 +1187,62 @@ async function loadDetail(id) {
                 })
               );
 
-              const thumbs = imgs.map((img, i) =>
-                h('img', {
+              const thumbs = imgs.map((img, i) => {
+                const isPdf = (img.file_type || 'image') === 'pdf';
+                if (isPdf) {
+                  return h('div', {
+                    className: `gallery-thumb${i === carouselIdx ? ' active' : ''}`,
+                    style: {
+                      width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: '#fef2f2', borderRadius: '6px', cursor: 'pointer', fontSize: '1.5rem',
+                      border: i === carouselIdx ? '2px solid var(--accent)' : '2px solid transparent',
+                    },
+                    onclick: (e) => { e.stopPropagation(); updateCarousel(i); },
+                    title: 'PDF 文件',
+                  }, '📄');
+                }
+                return h('img', {
                   src: img.url,
                   className: `gallery-thumb${i === carouselIdx ? ' active' : ''}`,
-                  onclick: (e) => { e.stopPropagation(); updateCarousel(i); openLightbox(imgs, i); },
-                })
-              );
+                  onclick: (e) => {
+                    e.stopPropagation();
+                    updateCarousel(i);
+                    if (nonPdfImages.length > 0) {
+                      openLightbox(nonPdfImages, getLightboxIdx(i));
+                    }
+                  },
+                });
+              });
 
               const updateCarousel = (newIdx) => {
                 if (newIdx < 0) newIdx = imgs.length - 1;
                 if (newIdx >= imgs.length) newIdx = 0;
                 carouselIdx = newIdx;
-                mainImgEl.src = imgs[carouselIdx].url;
+                const item = imgs[carouselIdx];
+                const isPdf = (item.file_type || 'image') === 'pdf';
+                // Replace main content
+                galleryMain.innerHTML = '';
+                if (isPdf) {
+                  galleryMain.appendChild(h('iframe', {
+                    src: item.url + '#toolbar=0&navpanes=0',
+                    style: { width: '100%', height: '600px', border: 'none', borderRadius: '8px' },
+                    title: bp.title,
+                  }));
+                } else {
+                  const newImg = h('img', {
+                    src: item.url,
+                    alt: bp.title,
+                    onclick: () => {
+                      if (nonPdfImages.length > 0) {
+                        openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
+                      }
+                    },
+                  });
+                  galleryMain.appendChild(newImg);
+                }
+                if (prevBtn) galleryMain.appendChild(prevBtn);
+                if (nextBtn) galleryMain.appendChild(nextBtn);
+                if (dotsStrip) galleryMain.appendChild(dotsStrip);
                 dots.forEach((d, i) => {
                   d.className = `gallery-dot${i === carouselIdx ? ' active' : ''}`;
                 });
@@ -1173,9 +1263,9 @@ async function loadDetail(id) {
 
               const dotsStrip = multi ? h('div', { className: 'gallery-dots' }, ...dots) : null;
 
-              // gallery-main is the CONTAINER for img + arrows + dots
+              // gallery-main is the CONTAINER for img/iframe + arrows + dots
               const galleryMain = h('div', { className: 'gallery-main' },
-                mainImgEl, prevBtn, nextBtn, dotsStrip,
+                mainContentEl, prevBtn, nextBtn, dotsStrip,
               );
 
               // Touch / swipe
@@ -1621,21 +1711,21 @@ function renderUpload() {
           h('input', { type: 'text', id: 'upload-title', className: 'form-input', placeholder: '给你的作品起个名字' }),
         ),
 
-        // Images upload
+        // Files upload
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '图片'),
+          h('label', { className: 'form-label' }, '图片 / PDF'),
           h('div', {
             id: 'upload-images-area',
             className: 'upload-area',
             onclick: () => document.getElementById('upload-file-input')?.click(),
           },
             h('div', { className: 'icon' }, '🖼️'),
-            h('div', { className: 'text' }, h('strong', {}, '点击选择图片')),
-            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP，每张 ≤10MB'),
+            h('div', { className: 'text' }, h('strong', {}, '点击选择图片或PDF')),
+            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩'),
           ),
           h('input', {
             type: 'file', id: 'upload-file-input',
-            accept: 'image/jpeg,image/png,image/webp',
+            accept: 'image/jpeg,image/png,image/webp,.pdf',
             multiple: true,
             style: { display: 'none' },
             onchange: handleImageSelect,
@@ -1705,13 +1795,8 @@ function renderUpload() {
             '💡 按回车或点击「添加」按钮添加标签'),
         ),
 
-        // Publish checkbox
-        h('div', { className: 'form-group' },
-          h('label', { className: 'form-label', style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-            h('input', { type: 'checkbox', id: 'upload-published', style: { width: 'auto' } }),
-            '立即发布',
-          ),
-        ),
+        // Publish checkbox — hidden, always published
+        h('input', { type: 'hidden', id: 'upload-published', value: 'true' }),
 
         // Submit buttons
         h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } },
@@ -1781,9 +1866,19 @@ let _coverIndex = 0; // cover index within _selectedFiles
 
 function handleImageSelect(e) {
   const files = Array.from(e.target.files || []);
-  _selectedFiles = files;
-  _coverIndex = files.length > 0 ? files.length - 1 : 0; // default last as cover
+  if (files.length === 0) return;
+  _selectedFiles = [..._selectedFiles, ...files];
+  // Default cover: last non-PDF file
+  _coverIndex = _selectedFiles.length - 1;
+  for (let i = _selectedFiles.length - 1; i >= 0; i--) {
+    if (!_selectedFiles[i].name.toLowerCase().endsWith('.pdf')) {
+      _coverIndex = i;
+      break;
+    }
+  }
   renderImagePreviews();
+  // Reset the input so the same file can be re-selected if needed
+  e.target.value = '';
 }
 
 function renderImagePreviews() {
@@ -1792,24 +1887,47 @@ function renderImagePreviews() {
   preview.innerHTML = '';
 
   _selectedFiles.forEach((file, idx) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const wrapper = h('div', {
-        'data-idx': idx,
-        style: { position: 'relative', display: 'inline-block', cursor: 'grab' },
-      });
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    const wrapper = h('div', {
+      'data-idx': idx,
+      style: { position: 'relative', display: 'inline-block', cursor: 'grab' },
+    });
 
-      const imgEl = h('img', {
-        src: ev.target.result,
+    if (isPdf) {
+      // PDF preview — show icon
+      const pdfPreview = h('div', {
         style: {
           width: '100px', height: '100px', objectFit: 'cover',
-          borderRadius: '8px', border: '3px solid ' + (idx === _coverIndex ? '#FFD700' : '#e5e5e5'),
+          borderRadius: '8px', border: '3px solid #e5e5e5',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', background: '#fef2f2',
+          fontSize: '0.7rem', color: '#dc2626', fontWeight: 700,
+          textAlign: 'center', padding: '4px', boxSizing: 'border-box',
         },
-        title: file.name,
-      });
-      wrapper.appendChild(imgEl);
+      },
+        h('div', { style: { fontSize: '1.8rem', marginBottom: '2px' } }, '📄'),
+        h('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' } }, file.name),
+      );
+      wrapper.appendChild(pdfPreview);
+    } else {
+      // Image preview
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const imgEl = h('img', {
+          src: ev.target.result,
+          style: {
+            width: '100px', height: '100px', objectFit: 'cover',
+            borderRadius: '8px', border: '3px solid ' + (idx === _coverIndex ? '#FFD700' : '#e5e5e5'),
+          },
+          title: file.name,
+        });
+        wrapper.appendChild(imgEl);
+      };
+      reader.readAsDataURL(file);
+    }
 
-      // Star button (cover)
+    // Star button (cover) — only for images
+    if (!isPdf) {
       wrapper.appendChild(h('span', {
         style: {
           position: 'absolute', bottom: '-6px', right: '-6px',
@@ -1827,62 +1945,70 @@ function renderImagePreviews() {
           renderImagePreviews();
         },
       }, '⭐'));
+    }
 
-      // Delete button
+    // Delete button
+    wrapper.appendChild(h('span', {
+      style: {
+        position: 'absolute', top: '-6px', right: '-6px',
+        background: '#ef4444', color: 'white',
+        borderRadius: '50%', width: '20px', height: '20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '12px', cursor: 'pointer', fontWeight: 'bold',
+      },
+      onclick: (ev2) => {
+        ev2.stopPropagation();
+        _selectedFiles = _selectedFiles.filter((_, i) => i !== idx);
+        if (_coverIndex >= _selectedFiles.length) _coverIndex = _selectedFiles.length - 1;
+        // If cover is now a PDF, find last non-PDF
+        if (_coverIndex >= 0 && _selectedFiles[_coverIndex]?.name?.toLowerCase().endsWith('.pdf')) {
+          for (let i = _selectedFiles.length - 1; i >= 0; i--) {
+            if (!_selectedFiles[i].name.toLowerCase().endsWith('.pdf')) {
+              _coverIndex = i;
+              break;
+            }
+          }
+        }
+        renderImagePreviews();
+      },
+    }, '×'));
+
+    // Sort arrows (if multi-file)
+    if (_selectedFiles.length > 1) {
+      const arrowStyle = {
+        position: 'absolute', left: '-4px',
+        background: 'rgba(0,0,0,0.5)', color: 'white',
+        width: '20px', height: '18px', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', fontSize: '12px', lineHeight: '1',
+      };
       wrapper.appendChild(h('span', {
-        style: {
-          position: 'absolute', top: '-6px', right: '-6px',
-          background: '#ef4444', color: 'white',
-          borderRadius: '50%', width: '20px', height: '20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '12px', cursor: 'pointer', fontWeight: 'bold',
-        },
+        style: { ...arrowStyle, top: '2px', borderRadius: '6px 6px 0 0' },
+        title: '上移',
         onclick: (ev2) => {
           ev2.stopPropagation();
-          _selectedFiles = _selectedFiles.filter((_, i) => i !== idx);
-          if (_coverIndex >= _selectedFiles.length) _coverIndex = _selectedFiles.length - 1;
+          if (idx <= 0) return;
+          [_selectedFiles[idx - 1], _selectedFiles[idx]] = [_selectedFiles[idx], _selectedFiles[idx - 1]];
+          if (_coverIndex === idx) _coverIndex = idx - 1;
+          else if (_coverIndex === idx - 1) _coverIndex = idx;
           renderImagePreviews();
         },
-      }, '×'));
+      }, '▲'));
+      wrapper.appendChild(h('span', {
+        style: { ...arrowStyle, bottom: '2px', borderRadius: '0 0 6px 6px' },
+        title: '下移',
+        onclick: (ev2) => {
+          ev2.stopPropagation();
+          if (idx >= _selectedFiles.length - 1) return;
+          [_selectedFiles[idx], _selectedFiles[idx + 1]] = [_selectedFiles[idx + 1], _selectedFiles[idx]];
+          if (_coverIndex === idx) _coverIndex = idx + 1;
+          else if (_coverIndex === idx + 1) _coverIndex = idx;
+          renderImagePreviews();
+        },
+      }, '▼'));
+    }
 
-      // Sort arrows (if multi-image)
-      if (_selectedFiles.length > 1) {
-        const arrowStyle = {
-          position: 'absolute', left: '-4px',
-          background: 'rgba(0,0,0,0.5)', color: 'white',
-          width: '20px', height: '18px', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', fontSize: '12px', lineHeight: '1',
-        };
-        wrapper.appendChild(h('span', {
-          style: { ...arrowStyle, top: '2px', borderRadius: '6px 6px 0 0' },
-          title: '上移',
-          onclick: (ev2) => {
-            ev2.stopPropagation();
-            if (idx <= 0) return;
-            [_selectedFiles[idx - 1], _selectedFiles[idx]] = [_selectedFiles[idx], _selectedFiles[idx - 1]];
-            if (_coverIndex === idx) _coverIndex = idx - 1;
-            else if (_coverIndex === idx - 1) _coverIndex = idx;
-            renderImagePreviews();
-          },
-        }, '▲'));
-        wrapper.appendChild(h('span', {
-          style: { ...arrowStyle, bottom: '2px', borderRadius: '0 0 6px 6px' },
-          title: '下移',
-          onclick: (ev2) => {
-            ev2.stopPropagation();
-            if (idx >= _selectedFiles.length - 1) return;
-            [_selectedFiles[idx], _selectedFiles[idx + 1]] = [_selectedFiles[idx + 1], _selectedFiles[idx]];
-            if (_coverIndex === idx) _coverIndex = idx + 1;
-            else if (_coverIndex === idx + 1) _coverIndex = idx;
-            renderImagePreviews();
-          },
-        }, '▼'));
-      }
-
-      preview.appendChild(wrapper);
-    };
-    reader.readAsDataURL(file);
+    preview.appendChild(wrapper);
   });
 }
 
@@ -1898,7 +2024,7 @@ async function handleUpload() {
   const difficulty = parseInt($id('upload-difficulty')?.value) || undefined;
   const piece_count = parseInt($id('upload-pieces')?.value) || undefined;
   const dimensions = $id('upload-dimensions')?.value.trim();
-  const is_published = $id('upload-published')?.checked || false;
+  const is_published = true; // always published
 
   if (!title) { if (errEl) errEl.innerHTML = '<div class="msg msg-error">请输入标题</div>'; return; }
 
@@ -1925,13 +2051,17 @@ async function handleUpload() {
       }
     }
 
-    // Set cover image
+    // Set cover image (skip if the target is a PDF)
     if (_selectedFiles.length > 0 && _coverIndex >= 0) {
       try {
         const bpDetail = await api.getBlueprint(data.id);
         if (bpDetail.images && bpDetail.images.length > 0) {
           const targetIdx = Math.min(_coverIndex, bpDetail.images.length - 1);
-          await api.setCover(data.id, bpDetail.images[targetIdx].id);
+          const targetImg = bpDetail.images[targetIdx];
+          // Only set cover if it's not a PDF
+          if (!targetImg || (targetImg.file_type || 'image') !== 'pdf') {
+            await api.setCover(data.id, targetImg.id);
+          }
         }
       } catch (coverErr) {
         console.warn('Set cover failed:', coverErr);
@@ -2525,30 +2655,48 @@ function renderEditImages() {
   };
 
   _editImages.forEach((img, idx) => {
+    const isPdf = (img.file_type || 'image') === 'pdf';
     const item = h('div', { className: 'preview-item' });
 
-    item.appendChild(h('img', {
-      src: img.url,
-    }));
-
-    // Cover badge (bottom-left)
-    if (idx === _editCoverIdx) {
-      item.appendChild(h('span', {
-        className: 'cover-badge',
-        title: '当前封面',
-        onclick: (ev2) => { ev2.stopPropagation(); },
-      }, '封面'));
-    } else {
-      item.appendChild(h('span', {
-        className: 'cover-badge',
-        style: { opacity: '0.5', cursor: 'pointer' },
-        title: '设为封面',
-        onclick: (ev2) => {
-          ev2.stopPropagation();
-          _editCoverIdx = idx;
-          renderEditImages();
+    if (isPdf) {
+      // PDF preview
+      item.appendChild(h('div', {
+        style: {
+          width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', background: '#fef2f2', borderRadius: '8px',
+          fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, textAlign: 'center',
+          padding: '8px', boxSizing: 'border-box', minHeight: '120px',
         },
-      }, '封面'));
+      },
+        h('div', { style: { fontSize: '2.5rem', marginBottom: '4px' } }, '📄'),
+        h('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' } }, 'PDF 文件'),
+      ));
+    } else {
+      item.appendChild(h('img', {
+        src: img.url,
+      }));
+    }
+
+    // Cover badge (bottom-left) — only for images
+    if (!isPdf) {
+      if (idx === _editCoverIdx) {
+        item.appendChild(h('span', {
+          className: 'cover-badge',
+          title: '当前封面',
+          onclick: (ev2) => { ev2.stopPropagation(); },
+        }, '封面'));
+      } else {
+        item.appendChild(h('span', {
+          className: 'cover-badge',
+          style: { opacity: '0.5', cursor: 'pointer' },
+          title: '设为封面',
+          onclick: (ev2) => {
+            ev2.stopPropagation();
+            _editCoverIdx = idx;
+            renderEditImages();
+          },
+        }, '封面'));
+      }
     }
 
     if (_editImages.length > 1) {
@@ -2590,6 +2738,15 @@ function renderEditImages() {
           await api.deleteBlueprintImage(_editImages[idx].blueprint_id || img.blueprint_id, img.id);
           _editImages = _editImages.filter((_, i) => i !== idx);
           if (_editCoverIdx >= _editImages.length) _editCoverIdx = _editImages.length - 1;
+          // If cover is now a PDF, find last non-PDF
+          if (_editCoverIdx >= 0 && (_editImages[_editCoverIdx]?.file_type || 'image') === 'pdf') {
+            for (let i = _editImages.length - 1; i >= 0; i--) {
+              if ((_editImages[i]?.file_type || 'image') !== 'pdf') {
+                _editCoverIdx = i;
+                break;
+              }
+            }
+          }
           renderEditImages();
           showToast('图片已删除', 'success');
         } catch (e) {
@@ -2737,42 +2894,47 @@ async function loadEditPage(id) {
           ),
         ),
 
-        // Image management
+        // File management
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '\ud83d\uddbc\ufe0f 图片管理 (点击\u2b50设为封面，\u25b2\u25bc排序)'),
+          h('label', { className: 'form-label' }, '🖼️ 文件管理 (点击⭐设为封面，▲▼排序)'),
           h('div', {
             className: 'upload-area',
             onclick: () => document.getElementById('edit-file-input')?.click(),
           },
-            h('div', { className: 'icon' }, '\ud83d\uddbc\ufe0f'),
-            h('div', { className: 'text' }, h('strong', {}, '点击添加图片')),
-            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP，每张 \u226410MB'),
+            h('div', { className: 'icon' }, '🖼️'),
+            h('div', { className: 'text' }, h('strong', {}, '点击添加图片或PDF')),
+            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩'),
           ),
           h('input', {
             type: 'file', id: 'edit-file-input',
-            accept: 'image/jpeg,image/png,image/webp',
+            accept: 'image/jpeg,image/png,image/webp,.pdf',
             multiple: true,
             style: { display: 'none' },
             onchange: async (ev) => {
               const files = [...ev.target.files];
               if (!files || files.length === 0) return;
               let success = 0, fail = 0;
-              let allImages = [];
+              let lastResult = null;
               for (const f of files) {
                 try {
-                  allImages = await api.uploadBlueprintImage(id, f);
+                  lastResult = await api.uploadBlueprintImage(id, f);
                   success++;
                 } catch { fail++; }
               }
-              _editImages = (Array.isArray(allImages) ? allImages : []).map(img => ({
-                ...img,
-                blueprint_id: img.blueprint_id || id,
-              }));
+              // API returns all images for the blueprint — use the last (most complete) result
+              if (lastResult && Array.isArray(lastResult)) {
+                _editImages = lastResult.map(img => ({
+                  ...img,
+                  blueprint_id: img.blueprint_id || id,
+                }));
+              }
               renderEditImages();
               const msg = [];
-              if (success > 0) msg.push(`${success} 张上传成功`);
-              if (fail > 0) msg.push(`${fail} 张失败`);
-              showToast(msg.join('\uff0c'), fail > 0 ? 'error' : 'success');
+              if (success > 0) msg.push(`${success} 个上传成功`);
+              if (fail > 0) msg.push(`${fail} 个失败`);
+              showToast(msg.join('，'), fail > 0 ? 'error' : 'success');
+              // Reset input
+              ev.target.value = '';
             },
           }),
           h('div', { id: 'edit-bp-images', className: 'preview-grid' }),
@@ -2840,12 +3002,15 @@ async function handleSaveEditBlueprint(id) {
       }
     }
 
-    // Save cover image
+    // Save cover image (skip PDFs)
     if (_editImages.length > 0 && _editCoverIdx >= 0 && _editCoverIdx < _editImages.length) {
-      try {
-        await api.setCover(id, _editImages[_editCoverIdx].id);
-      } catch (coverErr) {
-        console.warn('Setting cover failed:', coverErr);
+      const coverImg = _editImages[_editCoverIdx];
+      if (!coverImg || (coverImg.file_type || 'image') !== 'pdf') {
+        try {
+          await api.setCover(id, coverImg.id);
+        } catch (coverErr) {
+          console.warn('Setting cover failed:', coverErr);
+        }
       }
     }
 
@@ -2892,6 +3057,10 @@ async function renderAdminPage() {
             h('div', { className: 'stat-value' }, '...'),
             h('div', { className: 'stat-label' }, '总浏览'),
           ),
+          h('div', { className: 'stat-box warn' },
+            h('div', { className: 'stat-value' }, '...'),
+            h('div', { className: 'stat-label' }, '被举报'),
+          ),
         ),
 
         // Tabs
@@ -2900,6 +3069,7 @@ async function renderAdminPage() {
             '⏳ 待审核',
           ),
           h('button', { className: `tab-btn${tab === 'all' ? ' active' : ''}`, onclick: () => { tab = 'all'; page = 1; buildUI(); } }, '📋 全部作品'),
+          h('button', { className: `tab-btn${tab === 'reports' ? ' active' : ''}`, onclick: () => { tab = 'reports'; page = 1; buildUI(); } }, '🚩 举报管理'),
         ),
 
         // Search (only for "all")
@@ -2936,6 +3106,7 @@ async function renderAdminPage() {
         [fmt(stats.total_blueprints), '总作品', false],
         [fmt(stats.total_users), '用户数', false],
         [fmt(stats.total_views || 0), '总浏览', false],
+        [fmt(stats.report_count || 0), '被举报', true],
       ];
       data.forEach(([num, label, warn]) => {
         statsEl.appendChild(h('div', { className: `stat-box${warn ? ' warn' : ''}` },
@@ -2952,6 +3123,114 @@ async function renderAdminPage() {
     if (!tableEl) return;
 
     try {
+      if (tab === 'reports') {
+        const data = await api.adminListReports({ page });
+        const items = data.items || [];
+
+        if (!items.length) {
+          tableEl.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><p>没有被举报的作品</p></div>';
+          if (pagEl) pagEl.innerHTML = '';
+          return;
+        }
+
+        const reasonLabels = { inappropriate: '不当内容', copyright: '侵权', incomplete: '图纸不完整', spam: '垃圾信息', other: '其他' };
+
+        const rows = items.map(item => {
+          const bp = item.blueprint;
+          const cover = getCoverImage(bp.images) || '';
+
+          // Build reports detail rows
+          const reportRows = item.reports.map(r => {
+            return h('tr', { style: { background: 'var(--bg-sec)' } },
+              h('td', { colSpan: '7', style: { padding: '6px 12px', fontSize: '0.85rem' } },
+                h('span', { style: { fontWeight: 700, color: 'var(--danger)' } }, `⚠ ${reasonLabels[r.reason] || r.reason}`),
+                r.detail ? h('span', { style: { color: 'var(--text-sec)', marginLeft: '8px' } }, `— ${r.detail}`) : null,
+                h('span', { style: { color: 'var(--text-sec)', marginLeft: '12px', fontSize: '0.8rem' } },
+                  `举报人: ${r.reporter ? r.reporter.username : '—'} · ${new Date(r.created_at).toLocaleDateString('zh-CN')}`,
+                ),
+              ),
+            );
+          });
+
+          const actions = [];
+          if (bp.is_published) {
+            actions.push(h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '6px' }, onclick: () => handleUnpublish(bp.id) }, '🚫 下架'));
+          } else {
+            actions.push(h('button', { className: 'btn btn-success btn-sm', style: { marginRight: '6px' }, onclick: () => handleApprove(bp.id) }, '✅ 通过'));
+          }
+          actions.push(h('button', { className: 'btn btn-danger btn-sm', onclick: () => confirmDelete(bp.id, 'delete') }, '🗑 删除'));
+
+          const diff = formatDifficulty(bp.difficulty || 0);
+
+          return [
+            h('tr', { style: { borderLeft: '3px solid var(--danger)' } },
+              h('td', {}, cover ? h('img', { src: cover, className: 'cell-thumb' }) : '—'),
+              h('td', {},
+                h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, bp.title),
+                h('div', { style: { fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 700 } }, `🚩 ${item.report_count} 次举报`),
+              ),
+              h('td', {}, bp.author ? bp.author.username : '—'),
+              h('td', {}, bp.category || '—'),
+              h('td', {}, `${diff.stars}`),
+              h('td', {}, bp.created_at ? new Date(bp.created_at).toLocaleDateString('zh-CN') : '—'),
+              h('td', { style: { whiteSpace: 'nowrap' } }, ...actions),
+            ),
+            ...reportRows,
+          ];
+        }).flat();
+
+        tableEl.innerHTML = '';
+        tableEl.appendChild(
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+              h('thead', {},
+                h('tr', {},
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '封面'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '标题'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '作者'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '分类'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '难度'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '时间'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '操作'),
+                ),
+              ),
+              h('tbody', {}, ...rows),
+            ),
+          ),
+        );
+
+        // Pagination
+        const totalPages = Math.ceil(data.total / 20);
+        if (pagEl && totalPages > 1) {
+          pagEl.innerHTML = '';
+          pagEl.appendChild(h('button', {
+            className: 'page-btn',
+            disabled: page <= 1,
+            style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
+            onclick: () => { page--; buildUI(); },
+          }, '‹ 上一页'));
+          for (let i = 1; i <= Math.min(totalPages, 7); i++) {
+            pagEl.appendChild(h('button', {
+              className: `page-btn${i === page ? ' active' : ''}`,
+              onclick: () => { page = i; buildUI(); },
+            }, String(i)));
+          }
+          if (totalPages > 7) {
+            pagEl.appendChild(h('span', { style: { padding: '4px 8px' } }, '...'));
+            pagEl.appendChild(h('button', { className: 'page-btn', onclick: () => { page = totalPages; buildUI(); } }, String(totalPages)));
+          }
+          pagEl.appendChild(h('button', {
+            className: 'page-btn',
+            disabled: page >= totalPages,
+            style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
+            onclick: () => { page++; buildUI(); },
+          }, '下一页 ›'));
+        } else if (pagEl) {
+          pagEl.innerHTML = '';
+        }
+        return;
+      }
+
       const data = tab === 'pending'
         ? await api.adminPendingBlueprints({ page })
         : await api.adminListBlueprints({ page, q: searchQ });

@@ -80,6 +80,7 @@ class BlueprintImage(Base):
     object_key: Mapped[str | None] = mapped_column(String(500), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_cover: Mapped[bool] = mapped_column(Boolean, default=False)
+    file_type: Mapped[str] = mapped_column(String(10), default="image")  # "image" or "pdf"
 
     blueprint: Mapped["Blueprint"] = relationship(back_populates="images")
 

@@ -120,6 +120,7 @@ class BlueprintImageOut(BaseModel):
     object_key: str | None = None
     sort_order: int = 0
     is_cover: bool = False
+    file_type: str = "image"
 
     model_config = {"from_attributes": True}
 
@@ -198,6 +199,36 @@ class ReportOut(BaseModel):
 
 # ── Stats ──
 
+# ── Admin Reports ──
+
+class AdminReportOut(BaseModel):
+    id: str
+    reporter_id: str
+    blueprint_id: str
+    reason: str
+    detail: str | None = None
+    status: str
+    created_at: str
+    reporter: "UserOut | None" = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminReportItem(BaseModel):
+    blueprint: BlueprintOut
+    report_count: int
+    reports: list[AdminReportOut]
+
+
+class AdminReportListOut(BaseModel):
+    items: list[AdminReportItem]
+    total: int
+    page: int
+    page_size: int
+
+
+# ── Stats ──
+
 class StatsResponse(BaseModel):
     total_blueprints: int = 0
     total_users: int = 0
@@ -205,3 +236,5 @@ class StatsResponse(BaseModel):
     total_pieces: int = 0
     total_views: int = 0
     total_likes: int = 0
+    pending_count: int = 0
+    report_count: int = 0

@@ -532,13 +532,19 @@ def _to_blueprint_out(bp: Blueprint,
     author = _try_get_author(bp)
     moderation_status = "审核中" if not bp.is_published else None
 
-    # Compute cover_url
+    # Compute cover_url — prefer marked cover, but skip PDFs
     images = _try_get_images(bp)
     cover_url = None
     for img in images:
-        if img.get("is_cover"):
+        if img.get("is_cover") and img.get("file_type", "image") != "pdf":
             cover_url = img["url"]
             break
+    if not cover_url:
+        # Fallback: first non-PDF image
+        for img in images:
+            if img.get("file_type", "image") != "pdf":
+                cover_url = img["url"]
+                break
     if not cover_url and images:
         cover_url = images[0]["url"]
 
@@ -653,6 +659,7 @@ def _try_get_images(bp: Blueprint) -> list[dict]:
                 "object_key": img.object_key,
                 "sort_order": img.sort_order,
                 "is_cover": img.is_cover,
+                "file_type": getattr(img, 'file_type', 'image') or 'image',
             })
         except Exception:
             continue
