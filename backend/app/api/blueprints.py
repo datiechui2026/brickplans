@@ -655,6 +655,7 @@ def _try_get_images(bp: Blueprint) -> list[dict]:
         try:
             result.append({
                 "id": img.id,
+                "blueprint_id": img.blueprint_id,
                 "url": img.url,
                 "object_key": img.object_key,
                 "sort_order": img.sort_order,

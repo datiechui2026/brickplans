@@ -116,6 +116,7 @@ class BlueprintDetail(BaseModel):
 
 class BlueprintImageOut(BaseModel):
     id: str
+    blueprint_id: str | None = None
     url: str
     object_key: str | None = None
     sort_order: int = 0

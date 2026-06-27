@@ -2735,7 +2735,7 @@ function renderEditImages() {
         ev2.stopPropagation();
         if (!confirm('确定删除这张图片吗？')) return;
         try {
-          await api.deleteBlueprintImage(_editImages[idx].blueprint_id || img.blueprint_id, img.id);
+          await api.deleteBlueprintImage(_editImages[idx].blueprint_id || img.blueprint_id || state.editId, img.id);
           _editImages = _editImages.filter((_, i) => i !== idx);
           if (_editCoverIdx >= _editImages.length) _editCoverIdx = _editImages.length - 1;
           // If cover is now a PDF, find last non-PDF
