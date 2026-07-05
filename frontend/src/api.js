@@ -1,59 +1,56 @@
 // API client — configurable base URL (works on Vercel + local dev)
 const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
 
-function getToken() {
-  try {
-    const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
-    return auth.access_token || auth.token || auth.user?.access_token || null;
-  }
+// ── Auth state ──
+// Access token lives only in memory (not localStorage) so an XSS cannot exfiltrate
+// it from storage. The refresh token lives in an httpOnly cookie set by the backend
+// (Path=/api/auth), so JS can never read it. On page reload we restore the session
+// by calling /api/auth/refresh, which uses the cookie.
+let accessToken = null;
+let refreshPromise = null; // de-dupes concurrent refresh attempts
+
+function getUser() {
+  try { return JSON.parse(localStorage.getItem('bp_user') || 'null'); }
   catch { return null; }
 }
-
-function getRefreshToken() {
-  try { return JSON.parse(localStorage.getItem('bp_auth') || '{}').refresh_token || null; }
-  catch { return null; }
+function setUser(u) {
+  if (u) localStorage.setItem('bp_user', JSON.stringify(u));
+  else localStorage.removeItem('bp_user');
 }
 
 function setAuth(data) {
-  localStorage.setItem('bp_auth', JSON.stringify(data));
+  accessToken = data.access_token || null;
+  if (data.user) setUser(data.user);
 }
 
 function clearAuth() {
-  localStorage.removeItem('bp_auth');
+  accessToken = null;
+  setUser(null);
 }
 
-function getAuth() {
-  try { return JSON.parse(localStorage.getItem('bp_auth') || '{}'); }
-  catch { return {}; }
+export function isLoggedIn() {
+  return !!accessToken || !!getUser();
 }
 
-// ── Token refresh ──
-let refreshPromise = null; // prevent concurrent refresh attempts
+export function getCurrentUser() {
+  return getUser();
+}
 
+// ── Token refresh (uses the httpOnly cookie; no body, no Authorization header) ──
 async function tryRefreshToken() {
   if (refreshPromise) return refreshPromise;
-
-  const rt = getRefreshToken();
-  if (!rt) return null;
-
   refreshPromise = (async () => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/refresh`, {
         method: 'POST',
+        credentials: 'include', // send bp_refresh cookie
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: rt }),
       });
-
-      if (!res.ok) {
-        clearAuth();
-        return null;
-      }
-
+      if (!res.ok) { clearAuth(); return null; }
       const data = await res.json();
-      const current = getAuth();
-      const updated = { ...current, ...data };
-      setAuth(updated);
-      return data.access_token;
+      accessToken = data.access_token || null;
+      if (data.user) setUser(data.user);
+      return accessToken;
     } catch {
       clearAuth();
       return null;
@@ -61,42 +58,43 @@ async function tryRefreshToken() {
       refreshPromise = null;
     }
   })();
-
   return refreshPromise;
 }
 
+// ensureSession restores the access token on page load if the user was logged in.
+// Fire-and-forget; requests that need auth will 401→refresh as a fallback.
+export function ensureSession() {
+  if (accessToken || !getUser()) return;
+  tryRefreshToken();
+}
+
 async function request(path, options = {}) {
-  const token = getToken();
+  const token = accessToken;
   const method = (options.method || 'GET').toUpperCase();
   const needsAuth = options.auth !== false && (options.requireAuth || !['GET', 'HEAD', 'OPTIONS'].includes(method));
-  if (needsAuth && !token) {
+  if (needsAuth && !token && !getUser()) {
     throw new Error('请先登录');
   }
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const { auth: _auth, ...fetchOptions } = options;
-  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers, credentials: 'include' });
 
   if (res.status === 204) return null;
 
-  // Auto-refresh on 401/403 auth failures (skip refresh endpoint itself to avoid infinite loop)
-  if ((res.status === 401 || res.status === 403) && token && getRefreshToken() && path !== '/api/auth/refresh') {
+  // Auto-refresh on 401/403 auth failures (skip the refresh endpoint itself).
+  if ((res.status === 401 || res.status === 403) && path !== '/api/auth/refresh') {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retryRes = await fetch(`${API_BASE}${path}`, { ...options, headers });
-
+      const retryRes = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
       if (retryRes.status === 204) return null;
-
       const retryData = await retryRes.json().catch(() => null);
-
       if (retryRes.ok) return retryData;
-
-      const retryMsg = retryData?.detail || `Request failed (${retryRes.status})`;
-      throw new Error(retryMsg);
+      throw new Error(retryData?.detail || `Request failed (${retryRes.status})`);
     }
-    // Refresh failed — force re-login
+    clearAuth();
     throw new Error('登录已过期，请重新登录');
   }
 
@@ -107,25 +105,24 @@ async function request(path, options = {}) {
       clearAuth();
       throw new Error('登录已过期，请重新登录');
     }
-    const msg = data?.detail || `Request failed (${res.status})`;
-    throw new Error(msg);
+    throw new Error(data?.detail || `Request failed (${res.status})`);
   }
 
   return data;
 }
 
 async function formRequest(path, form, errorPrefix = 'Upload failed') {
-  let token = getToken();
-  if (!token) throw new Error('请先登录');
+  if (!accessToken && !getUser()) throw new Error('请先登录');
 
-  const send = (accessToken) => fetch(`${API_BASE}${path}`, {
+  const send = (tok) => fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: tok ? { Authorization: `Bearer ${tok}` } : {},
     body: form,
+    credentials: 'include',
   });
 
-  let res = await send(token);
-  if (res.status === 401 && getRefreshToken()) {
+  let res = await send(accessToken);
+  if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) res = await send(newToken);
   }
@@ -158,17 +155,11 @@ export async function login(email, password) {
   return data;
 }
 
-export function logout() {
+export async function logout() {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+  } catch { /* ignore — clear local state regardless */ }
   clearAuth();
-}
-
-export function isLoggedIn() {
-  return !!getToken();
-}
-
-export function getCurrentUser() {
-  const auth = getAuth();
-  return auth?.user || auth;
 }
 
 // ── Blueprints ──
@@ -316,6 +307,10 @@ export async function getPresetAvatars() {
   return request('/api/auth/avatars');
 }
 
+export async function resendVerification() {
+  return request('/api/auth/verify-email/resend', { method: 'POST' });
+}
+
 // ── Likes ──
 export async function likeBlueprint(id) {
   return request(`/api/blueprints/${id}/like`, { method: 'POST' });
@@ -372,3 +367,6 @@ export async function adminListReports({ page = 1 } = {}) {
   const params = new URLSearchParams({ page, size: '20' });
   return request(`/api/admin/reports?${params}`);
 }
+
+// Restore session on load if the user was logged in (refresh cookie is httpOnly).
+ensureSession();

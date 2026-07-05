@@ -188,8 +188,7 @@ async function refreshCurrentUser() {
   try {
     const user = await api.getMe();
     state.user = user;
-    const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
-    localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user }));
+    localStorage.setItem('bp_user', JSON.stringify(user));
   } catch (error) {
     console.warn('Refresh current user failed:', error);
   } finally {
@@ -220,6 +219,71 @@ function h(tag, attrs = {}, ...children) {
     el.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
   }
   return el;
+}
+
+// ── PDF.js viewer ──
+// Renders PDFs to <canvas> via PDF.js instead of an <iframe>. The browser's
+// native PDF viewer would execute JavaScript embedded in the PDF under the same
+// origin; PDF.js does not. Falls back to a download link if PDF.js can't load.
+let _pdfjsPromise = null;
+function loadPdfjs() {
+  if (_pdfjsPromise) return _pdfjsPromise;
+  _pdfjsPromise = new Promise((resolve, reject) => {
+    if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error('PDF.js 加载失败'));
+    document.head.appendChild(s);
+  });
+  return _pdfjsPromise;
+}
+
+async function renderPDF(container, url) {
+  try {
+    const pdfjsLib = await loadPdfjs();
+    const pdf = await pdfjsLib.getDocument(url).promise;
+    container.innerHTML = '';
+    const width = Math.min(container.clientWidth || 800, 900);
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const scale = width / base.width;
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.cssText = 'max-width:100%;display:block;margin:0 auto 8px;background:#fff';
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      container.appendChild(canvas);
+    }
+    container.appendChild(h('a', {
+      href: url, download: '',
+      style: { display: 'block', textAlign: 'center', padding: '8px', color: 'var(--accent)' },
+    }, '下载完整 PDF'));
+  } catch (e) {
+    container.innerHTML = '';
+    container.appendChild(h('div', { style: { padding: '24px', textAlign: 'center' } },
+      h('p', { style: { color: 'var(--text-sec)' } }, 'PDF 预览不可用'),
+      h('a', { href: url, download: '', style: { color: 'var(--accent)' } }, '下载 PDF'),
+    ));
+  }
+}
+
+function pdfContainer(url) {
+  const container = h('div', {
+    style: {
+      width: '100%', minHeight: '400px', maxHeight: '70vh', overflow: 'auto',
+      background: '#f5f5f5', borderRadius: '8px', padding: '12px',
+    },
+  });
+  container.appendChild(h('div', { style: { padding: '24px', color: 'var(--text-sec)', textAlign: 'center' } }, '加载 PDF…'));
+  renderPDF(container, url);
+  return container;
 }
 
 function $id(id) { return document.getElementById(id); }
@@ -305,10 +369,10 @@ function _syncUserAvatar(avatarUrl) {
   if (state.userProfile?.avatar_url) state.userProfile.avatar_url = avatarUrl;
   // Persist to localStorage so navbar stays in sync across reloads
   try {
-    const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
-    if (auth.user) {
-      auth.user.avatar_url = avatarUrl;
-      localStorage.setItem('bp_auth', JSON.stringify(auth));
+    const u = JSON.parse(localStorage.getItem('bp_user') || 'null');
+    if (u) {
+      u.avatar_url = avatarUrl;
+      localStorage.setItem('bp_user', JSON.stringify(u));
     }
   } catch(e) { /* ignore */ }
   renderNavbarIntoDOM();
@@ -1164,11 +1228,7 @@ async function loadDetail(id) {
               // Main content: image or PDF iframe
               let mainContentEl;
               if (isCurrentPdf) {
-                mainContentEl = h('iframe', {
-                  src: currentItem.url + '#toolbar=0&navpanes=0',
-                  style: { width: '100%', height: '600px', border: 'none', borderRadius: '8px' },
-                  title: bp.title,
-                });
+                mainContentEl = pdfContainer(currentItem.url);
               } else {
                 mainContentEl = h('img', {
                   src: currentItem.url,
@@ -1223,11 +1283,7 @@ async function loadDetail(id) {
                 // Replace main content
                 galleryMain.innerHTML = '';
                 if (isPdf) {
-                  galleryMain.appendChild(h('iframe', {
-                    src: item.url + '#toolbar=0&navpanes=0',
-                    style: { width: '100%', height: '600px', border: 'none', borderRadius: '8px' },
-                    title: bp.title,
-                  }));
+                  galleryMain.appendChild(pdfContainer(item.url));
                 } else {
                   const newImg = h('img', {
                     src: item.url,
@@ -2519,8 +2575,7 @@ async function handleSaveSettings() {
     state.user = data;
     state.userProfile = { ...state.userProfile, id: data.id, username: data.username };
     try {
-      const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
-      localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user: data }));
+      localStorage.setItem('bp_user', JSON.stringify(data));
     } catch { /* ignore */ }
     closeSettings();
     renderNavbarIntoDOM();
@@ -2572,8 +2627,7 @@ async function handleAvatarUpload(e) {
     if (data.user) {
       state.user = data.user;
       try {
-        const auth = JSON.parse(localStorage.getItem('bp_auth') || '{}');
-        localStorage.setItem('bp_auth', JSON.stringify({ ...auth, user: data.user }));
+        localStorage.setItem('bp_user', JSON.stringify(data.user));
       } catch { /* ignore */ }
       renderNavbarIntoDOM();
     }

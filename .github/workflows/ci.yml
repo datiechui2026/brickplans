@@ -32,6 +32,30 @@ jobs:
       - name: Run tests
         run: pytest -q tests
 
+  backend-go:
+    name: Backend-Go tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-go
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build
+        run: |
+          go mod download
+          go build ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
