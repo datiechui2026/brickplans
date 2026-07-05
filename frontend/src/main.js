@@ -231,10 +231,10 @@ function loadPdfjs() {
   _pdfjsPromise = new Promise((resolve, reject) => {
     if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
     const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.src = '/lib/pdfjs/pdf.min.js';
     s.onload = () => {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        '/lib/pdfjs/pdf.worker.min.js';
       resolve(window.pdfjsLib);
     };
     s.onerror = () => reject(new Error('PDF.js 加载失败'));
