@@ -1,3 +1,36 @@
 User-agent: *
 Allow: /
+Allow: /api/health
+Allow: /api/blueprints
+Allow: /api/blueprints/
+Allow: /api/tags
+Allow: /api/stats
+Allow: /sitemap.xml
+Disallow: /api/auth
+Disallow: /api/admin
+Disallow: /api/notifications
+Disallow: /api/reports
+Disallow: /api/users/
+Disallow: /api/blueprints/*/comments
+Disallow: /edit
+Disallow: /upload
+Disallow: /notifications
+Disallow: /admin
+
+# Explicitly welcome AI crawlers (GEO / generative engine optimization).
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
 Sitemap: https://brickplans.com/sitemap.xml

@@ -113,38 +113,48 @@ function resetMeta() {
 }
 
 // ═══════════════════════════════════════════
-// Router — uses hashchange (native back/forward support)
+// Router — history API (real URLs for SEO; native back/forward via popstate)
 // ═══════════════════════════════════════════
-function buildHash(page, params = {}) {
-  let hash = `#/${page}`;
-  if (page === 'user' && params.id) {
-    hash += `/${encodeURIComponent(params.id)}`;
-  } else if (page === 'user' && params.username) {
-    hash += `/${encodeURIComponent(params.username)}`;
+function buildPath(page, params = {}) {
+  if (!page || page === 'home') return '/';
+  if (page === 'detail' && params.id) return `/detail/${encodeURIComponent(params.id)}`;
+  if (page === 'user' && params.id) return `/user/${encodeURIComponent(params.id)}`;
+  if (page === 'edit' && params.id) return `/edit/${encodeURIComponent(params.id)}`;
+  if (page === 'explore') {
+    const q = new URLSearchParams();
+    if (params.q) q.set('q', params.q);
+    if (params.category) q.set('category', params.category);
+    if (params.tag) q.set('tag', params.tag);
+    if (params.sort) q.set('sort', params.sort);
+    if (params.page) q.set('page', params.page);
+    const qs = q.toString();
+    return '/explore' + (qs ? '?' + qs : '');
   }
-  const qs = [];
-  if (params.id && page !== 'user') qs.push(`id=${encodeURIComponent(params.id)}`);
-  if (params.q) qs.push(`q=${encodeURIComponent(params.q)}`);
-  if (params.category) qs.push(`category=${encodeURIComponent(params.category)}`);
-  if (params.tag) qs.push(`tag=${encodeURIComponent(params.tag)}`);
-  if (params.sort) qs.push(`sort=${encodeURIComponent(params.sort)}`);
-  if (params.page) qs.push(`page=${params.page}`);
-  return qs.length ? `${hash}?${qs.join('&')}` : hash;
+  return '/' + page;
 }
 
-function parseHash() {
-  const raw = location.hash.slice(2) || 'home'; // remove '#/'
+function parsePath() {
+  const path = location.pathname;
+  const params = {};
+  new URLSearchParams(location.search).forEach((v, k) => { params[k] = v; });
+  if (path === '/' || path === '') return { page: 'home', params };
+  const m = path.match(/^\/(detail|user|edit)\/(.+?)\/?$/);
+  if (m) return { page: m[1], params: { ...params, id: decodeURIComponent(m[2]) } };
+  const page = path.replace(/^\//, '').replace(/\/$/, '');
+  return { page: page || 'home', params };
+}
+
+// parseLegacyHash parses old '#/page?...' URLs for one-time redirect on boot.
+function parseLegacyHash() {
+  const raw = location.hash.slice(2) || 'home';
   const [path, query] = raw.split('?');
   const params = {};
-  if (query) {
-    new URLSearchParams(query).forEach((v, k) => { params[k] = v; });
-  }
-  // Parse user/{id} paths. Legacy user/{username} URLs are still accepted by the API.
+  if (query) new URLSearchParams(query).forEach((v, k) => { params[k] = v; });
   const parts = path.split('/');
-  if (parts[0] === 'user' && parts[1]) {
-    return { page: 'user', params: { ...params, id: decodeURIComponent(parts[1]) } };
-  }
-  return { page: path, params };
+  if (parts[0] === 'user' && parts[1]) return { page: 'user', params: { ...params, id: decodeURIComponent(parts[1]) } };
+  if (parts[0] === 'detail' && params.id) return { page: 'detail', params };
+  if (parts[0] === 'edit' && params.id) return { page: 'edit', params };
+  return { page: path || 'home', params };
 }
 
 function applyState(page, params = {}) {
@@ -168,17 +178,18 @@ function applyState(page, params = {}) {
 }
 
 function navigate(page, params = {}) {
-  location.hash = buildHash(page, params);
-  // hashchange handler fires automatically → calls applyState + render
+  history.pushState({ page, params }, '', buildPath(page, params));
+  onRouteChange();
 }
 
-// Handle hash changes (initial load + browser back/forward)
-function onHashChange() {
-  const { page, params } = parseHash();
+// Handle back/forward (popstate) and post-pushState renders.
+function onRouteChange() {
+  const { page, params } = parsePath();
   applyState(page, params);
   render();
+  window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', onHashChange);
+window.addEventListener('popstate', onRouteChange);
 
 async function refreshCurrentUser() {
   if (!api.isLoggedIn()) {
@@ -303,7 +314,7 @@ async function refreshNotificationBadge() {
 function renderNavbar() {
   const brandEl = h('a', {
     className: 'nav-brand',
-    href: '#/home',
+    href: '/',
     onclick: (e) => { e.preventDefault(); navigate('home'); },
   }, '🧱 BrickPlans');
 
@@ -483,7 +494,7 @@ function renderModal() {
       ...(isLogin ? [] : [
         h('div', { style: { marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' } },
           h('input', { type: 'checkbox', id: 'modal-privacy', checked: true }),
-          h('span', {}, '我已阅读并同意 ', h('a', { href: '#/privacy', style: { color: 'var(--accent)', fontWeight: 700 } }, '隐私策略')),
+          h('span', {}, '我已阅读并同意 ', h('a', { href: '/privacy', style: { color: 'var(--accent)', fontWeight: 700 } }, '隐私策略')),
         ),
       ]),
       h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } },
@@ -726,6 +737,35 @@ function renderPrivacyPage() {
 }
 
 // ── Error Page (404 / 500) ──
+const FAQ_ITEMS = [
+  { q: '什么是 MOC？', a: 'MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于乐高官方套装。BrickPlans 是分享 MOC 图纸的社区。' },
+  { q: '如何上传我的作品？', a: '注册登录后，点击右上角「上传」按钮，填写标题、分类、难度、零件数等信息，并上传图片或 PDF 图纸。' },
+  { q: '支持什么文件格式？', a: '支持 JPG/PNG/WebP 图片和 PDF 文件，单文件最大 20MB，一次最多 10 个文件。图片会自动压缩转码。' },
+  { q: '图纸版权归谁？', a: '作品版权归创作者所有。请勿上传他人受版权保护的作品；发现侵权可在作品页底部「举报」反馈。' },
+  { q: '怎样让作品更受欢迎？', a: '完善描述、添加标签、上传清晰封面图的作品更易被发现。浏览量高的作品会出现在首页热门区。' },
+  { q: '支持哪些分类？', a: '建筑、车辆、机甲、奇幻、科幻、场景六大分类，可配合标签进一步细化。' },
+];
+
+function renderFAQ() {
+  const container = $id('page-faq');
+  if (!container) return;
+  container.innerHTML = '';
+  container.appendChild(
+    h('div', { className: 'main', style: { maxWidth: '720px' } },
+      h('article', { className: 'form-card', style: { lineHeight: '1.8' } },
+        h('h1', {}, '❓ 常见问题'),
+        h('p', { style: { color: 'var(--text-sec)', marginBottom: '24px' } }, '关于 BrickPlans 积木图纸社区的常见问题解答。'),
+        ...FAQ_ITEMS.flatMap(item => [
+          h('h2', { style: { marginTop: '24px', fontSize: '1.15rem' } }, item.q),
+          h('p', {}, item.a),
+        ]),
+        h('p', { style: { marginTop: '32px' } },
+          '还有疑问？前往 ', h('a', { href: '/explore', onclick: (e) => { e.preventDefault(); navigate('explore'); }, style: { color: 'var(--accent)' } }, '发现页'), ' 浏览作品，或注册后上传你的 MOC。'),
+      ),
+    ),
+  );
+}
+
 function renderErrorPage(code, message, detail) {
   const app = document.getElementById('app');
   // Remove all existing page containers and nav
@@ -909,7 +949,7 @@ function renderHome() {
       h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlans'),
       h('div', {}, '© 2026 BrickPlans 积木图纸分享社区',
         h('span', {}, ' · '),
-        h('a', { href: '#/privacy', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '隐私策略'),
+        h('a', { href: '/privacy', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '隐私策略'),
       ),
     ),
   );
@@ -1104,10 +1144,14 @@ function renderDetail() {
         id: 'flash-banner',
         style: { background: '#22c55e', color: 'white', padding: '12px 20px', borderRadius: '8px', textAlign: 'center', fontSize: '1rem', fontWeight: 700, marginBottom: '16px', opacity: '1', transition: 'opacity 0.5s' },
       }, state.flashMessage) : null,
-      h('a', { className: 'back-link', href: '#/home', onclick: (e) => { e.preventDefault(); history.back(); } }, '← 返回列表'),
+      h('a', { className: 'back-link', href: '/', onclick: (e) => { e.preventDefault(); history.back(); } }, '← 返回列表'),
       h('div', { id: 'detail-content', className: 'loading' },
         h('div', { className: 'spinner' }),
         h('p', { style: { marginTop: '12px' } }, '加载图纸详情...'),
+      ),
+      h('section', { id: 'detail-related', className: 'detail-related' },
+        h('h2', { style: { marginBottom: '16px' } }, '相关作品'),
+        h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
       ),
     ),
   );
@@ -1124,6 +1168,24 @@ function renderDetail() {
 
   if (state.detailId) {
     loadDetail(state.detailId);
+    loadRelated(state.detailId);
+  }
+}
+
+async function loadRelated(id) {
+  try {
+    const data = await api.getRelatedBlueprints(id);
+    const el = $id('detail-related');
+    if (!el) return;
+    el.innerHTML = '';
+    if (!data.items || data.items.length === 0) { el.style.display = 'none'; return; }
+    el.appendChild(h('h2', { style: { marginBottom: '16px' } }, '相关作品'));
+    const grid = h('div', { className: 'grid' });
+    data.items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
+    el.appendChild(grid);
+  } catch {
+    const el = $id('detail-related');
+    if (el) el.style.display = 'none';
   }
 }
 
@@ -1139,7 +1201,7 @@ async function loadDetail(id) {
     setMeta('og:title', bp.title);
     setMeta('og:description', bp.description || 'BrickPlans 积木图纸分享社区');
     setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
-    setMeta('og:url', `${window.location.origin}/#/detail?id=${bp.id}`);
+    setMeta('og:url', `${window.location.origin}/detail/${bp.id}`);
     setMeta('og:type', 'article');
     setMetaName('description', (bp.description || 'BrickPlans 积木图纸').substring(0, 160));
 
@@ -2156,7 +2218,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
   const authorAvatar = bp.author?.avatar_url
     || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author?.username || bp.id || 'anon')}`;
 
-  const card = h('div', { className: `card${isOwnProfile ? ' card-own' : ''}`, onclick: isOwnProfile ? () => navigate('edit', { id: bp.id }) : () => navigate('detail', { id: bp.id }) },
+  const card = h('article', { className: `card${isOwnProfile ? ' card-own' : ''}`, onclick: isOwnProfile ? () => navigate('edit', { id: bp.id }) : () => navigate('detail', { id: bp.id }) },
     h('div', { className: 'card-img-wrap' },
       coverUrl
         ? h('img', {
@@ -2214,7 +2276,7 @@ async function renderUserProfile() {
   container.innerHTML = '';
   const userId = state.userProfile.id;
   if (!userId) {
-    container.innerHTML = '<div style="text-align:center;padding:80px 20px"><p style="font-size:3rem;margin-bottom:16px">🧱</p><p style="font-size:1.1rem;color:var(--text-sec);margin-bottom:24px">未指定用户</p><button class="btn btn-primary" onclick="location.hash=\'#/home\'">返回首页</button></div>';
+    container.innerHTML = '<div style="text-align:center;padding:80px 20px"><p style="font-size:3rem;margin-bottom:16px">🧱</p><p style="font-size:1.1rem;color:var(--text-sec);margin-bottom:24px">未指定用户</p><button class="btn btn-primary" onclick="location.href=\'/\'">返回首页</button></div>';
     return;
   }
   container.appendChild(h('p', {}, 'Loading...'));
@@ -3087,7 +3149,7 @@ async function renderAdminPage() {
     container.innerHTML = '';
     container.appendChild(
       h('div', { className: 'main' },
-        h('a', { className: 'back-link', href: '#/home', onclick: (e) => { e.preventDefault(); navigate('home'); } }, '← 返回前台'),
+        h('a', { className: 'back-link', href: '/', onclick: (e) => { e.preventDefault(); navigate('home'); } }, '← 返回前台'),
         h('div', { className: 'page-header' },
           h('h1', {}, '🔧 管理后台'),
           h('p', {}, '审核作品、管理全部内容'),
@@ -3449,7 +3511,7 @@ function render() {
   const app = document.getElementById('app');
 
   // Ensure page containers exist
-  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications'];
+  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications', 'faq'];
   if (!app.querySelector('#page-home')) {
     app.innerHTML = '';
     renderNavbarIntoDOM();
@@ -3474,6 +3536,7 @@ function render() {
     case 'home': resetMeta(); renderHome(); break;
     case 'explore': resetMeta(); renderExplore(); break;
     case 'detail': renderDetail(); break;
+    case 'faq': resetMeta(); renderFAQ(); break;
     case 'upload': resetMeta(); renderUpload(); break;
     case 'user':
       resetMeta();
@@ -3519,10 +3582,9 @@ function render() {
 // Boot — trigger initial render from current URL
 // ═══════════════════════════════════════════
 refreshCurrentUser();
-if (location.hash) {
-  onHashChange();  // restore state from deep link
-} else {
-  // Set initial hash so first back-button press works
-  location.hash = '#/home';
-  // hashchange fires → calls onHashChange → render
+// Redirect legacy '#/...' URLs to real paths, then render.
+if (location.hash && location.hash.startsWith('#/')) {
+  const { page, params } = parseLegacyHash();
+  history.replaceState({ page, params }, '', buildPath(page, params));
 }
+onRouteChange();

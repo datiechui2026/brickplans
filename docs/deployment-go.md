@@ -153,13 +153,15 @@ cd /home/ubuntu/project/brickplans/frontend
 npm ci && npm run build
 ```
 
-nginx 配置仍用仓库根的 `brickplans-nginx.conf`（已加入安全响应头）。安装：
+nginx 配置仍用仓库根的 `brickplans-nginx.conf`（已加入安全响应头 + SSR 反代）。安装：
 
 ```bash
 sudo cp /home/ubuntu/project/brickplans/brickplans-nginx.conf /etc/nginx/sites-available/brickplans
 sudo ln -sf /etc/nginx/sites-available/brickplans /etc/nginx/sites-enabled/brickplans
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+> 该 nginx 配置把 `/assets/`、静态扩展名、`/robots.txt`、`/llms.txt`、`/avatars/` 交给 nginx 直接服务；`/api/`、`/uploads/` 反代后端；**其余所有路径(`/`、`/detail/:id`、`/explore`、`/tags/:name`、`/user/:id` 等)反代后端做 SSR**，让搜索引擎和 AI 爬虫拿到服务端渲染的完整 HTML（含 title/meta/JSON-LD/noscript 正文）。后端通过 `FRONTEND_DIST` 读取 `dist/manifest.json` 引用带 hash 的 `/assets/main-<hash>.{js,css}`。`PUBLIC_URL` 决定 canonical/og:url/sitemap 的域名。
 
 如之前运行的是 Python 后端，停掉旧 unit（保留代码以便回退）：
 

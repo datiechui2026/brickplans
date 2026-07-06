@@ -34,6 +34,10 @@ type Config struct {
 	SMTPUser   string
 	SMTPPass   string
 	SMTPFrom   string
+
+	// SEO/SSR
+	FrontendDist string // path to frontend/dist (for vite manifest + static assets)
+	PublicURL    string // canonical site URL, e.g. https://brickplans.com
 }
 
 func Load() *Config {
@@ -61,6 +65,8 @@ func Load() *Config {
 		SMTPUser:                getenv("SMTP_USER", ""),
 		SMTPPass:                getenv("SMTP_PASS", ""),
 		SMTPFrom:                getenv("SMTP_FROM", ""),
+		FrontendDist:            getenv("FRONTEND_DIST", "../frontend/dist"),
+		PublicURL:               getenv("PUBLIC_URL", "https://brickplans.com"),
 	}
 	c.validate()
 	return c

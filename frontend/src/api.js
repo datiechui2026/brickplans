@@ -176,6 +176,10 @@ export async function getBlueprint(id) {
   return request(`/api/blueprints/${id}`);
 }
 
+export async function getRelatedBlueprints(id) {
+  return request(`/api/blueprints/${id}/related`);
+}
+
 export async function createBlueprint(payload) {
   return request('/api/blueprints', {
     method: 'POST',

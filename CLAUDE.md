@@ -109,3 +109,9 @@ Additional hardening implemented after the initial rewrite:
 - **Cookie auth (split token)**: refresh token in an httpOnly cookie (`bp_refresh`, Path=/api/auth, SameSite=Lax, Secure in prod); access token held in JS memory only (never localStorage). Frontend `api.js` uses `credentials: 'include'` and restores session on reload via `/api/auth/refresh`.
 - **PDF.js**: frontend renders PDFs to `<canvas>` via PDF.js instead of a native `<iframe>` viewer, so embedded PDF JavaScript never executes in the page origin. Falls back to a download link if PDF.js can't load.
 - **`cmd/migrate`**: one-shot importer from legacy `backend/brickplans.db` (SQLite) → MySQL, preserving UUIDs, timestamps, and bcrypt hashes. Idempotent (`--reset` to truncate first).
+
+## SEO / GEO
+
+The frontend is a history-routed SPA (`/detail/{id}`, `/explore`, `/tags/{name}`, `/user/{id}`, …, not hash) and the Go backend renders SSR HTML for every page route (`internal/ssr/`): `<title>`/meta/og/twitter, canonical, JSON-LD (Organization + WebSite+SearchAction site-wide; CreativeWork + BreadcrumbList on detail; ItemList on lists; ProfilePage on user; FAQPage on /faq), and a simplified `<noscript>` article body so AI crawlers that don't execute JS can read the content. `vite build` emits `dist/manifest.json`; `ssr.NewRenderer` reads it to reference the hashed `/assets/main-<hash>.{js,css}`.
+
+`sitemap.xml` (`handler/seo.go`) lists real URLs (home/explore/categories/tags/detail with lastmod+priority). `frontend/public/robots.txt` explicitly allows AI crawlers (GPTBot/ClaudeBot/PerplexityBot/Google-Extended/CCBot) and guards private API paths. `frontend/public/llms.txt` is the GEO content brief for LLMs. nginx serves static assets directly and proxies everything else to the backend for SSR (see `brickplans-nginx.conf`). Detail pages include a "相关作品" section (`GET /api/blueprints/{id}/related`) for internal links. Config: `PUBLIC_URL` (canonical), `FRONTEND_DIST` (manifest location).

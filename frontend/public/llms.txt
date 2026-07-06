@@ -1,0 +1,27 @@
+# BrickPlans
+
+> BrickPlans 是一个积木 / MOC 图纸分享社区：用户可上传、浏览、收藏、评论乐高 MOC 创意作品，支持图片与 PDF 图纸，按建筑 / 车辆 / 机甲 / 奇幻 / 科幻 / 场景分类，提供标签、搜索、点赞、收藏、通知与管理员审核。所有用户可见文案为中文。
+
+## 核心页面
+- [首页](https://brickplans.com/)
+- [发现 / 搜索图纸](https://brickplans.com/explore)
+- [常见问题](https://brickplans.com/faq)
+- [隐私策略](https://brickplans.com/privacy)
+- [站点地图](https://brickplans.com/sitemap.xml)
+
+## 公开数据 API
+- 作品列表（分页/搜索/分类/标签）：GET https://brickplans.com/api/blueprints
+- 作品详情：GET https://brickplans.com/api/blueprints/{id}
+- 全部标签：GET https://brickplans.com/api/tags
+- 平台统计：GET https://brickplans.com/api/stats
+- 作品评论：GET https://brickplans.com/api/blueprints/{id}/comments
+
+## 作品数据结构
+每件作品（Blueprint）包含：标题、描述、分类（建筑/车辆/机甲/奇幻/科幻/场景）、难度（1-5）、零件数、尺寸、图片与 PDF 图纸、标签。封面图取自第一张非 PDF 图片或作者指定封面。
+
+## 内容与版权
+作品版权归创作者所有；社区禁止上传他人受版权保护的图纸，举报入口位于每个作品详情页底部。管理员可对被举报作品进行下架处理。
+
+## 联系
+- 举报：作品详情页底部「举报」链接
+- 邮箱：privacy@brickplans.com

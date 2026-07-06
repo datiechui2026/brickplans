@@ -104,6 +104,7 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.DELETE("/:blueprint_id/like", auth.AuthRequired(h.cfg, h.gdb), h.unlike)
 	g.POST("/:blueprint_id/comments", auth.AuthRequired(h.cfg, h.gdb), h.createComment)
 	g.GET("/:blueprint_id/comments", h.listComments)
+	g.GET("/:blueprint_id/related", h.related)
 }
 
 // ── CREATE ──────────────────────────────────────────
@@ -522,6 +523,32 @@ func (h *BlueprintsHandler) listComments(c *gin.Context) {
 		out = append(out, *toCommentOut(&comments[i]))
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+// related returns up to 6 published blueprints in the same category (fallback:
+// same author), excluding the current one — powers the "相关作品" internal links
+// on the detail page for SEO/GEO discoverability.
+func (h *BlueprintsHandler) related(c *gin.Context) {
+	id := c.Param("blueprint_id")
+	var bp db.Blueprint
+	if err := h.gdb.First(&bp, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Blueprint not found"})
+		return
+	}
+	q := h.gdb.Where("is_published = ? AND id <> ?", true, id)
+	if bp.Category != nil && *bp.Category != "" {
+		q = q.Where("category = ?", *bp.Category)
+	} else {
+		q = q.Where("author_id = ?", bp.AuthorID)
+	}
+	var bps []db.Blueprint
+	q.Preload("Author").Preload("Images").Preload("Tags.Tag").
+		Order("view_count DESC").Limit(6).Find(&bps)
+	items := make([]dto.BlueprintOut, 0, len(bps))
+	for i := range bps {
+		items = append(items, *toBlueprintOut(&bps[i], 0, 0, false, false))
+	}
+	c.JSON(http.StatusOK, dto.BlueprintListOut{Items: items, Total: len(items), Page: 1, PageSize: 6})
 }
 
 // ── Serialization ───────────────────────────────────

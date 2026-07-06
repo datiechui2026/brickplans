@@ -9,6 +9,7 @@ import (
 	"brickplans/internal/config"
 	"brickplans/internal/db"
 	"brickplans/internal/router"
+	"brickplans/internal/ssr"
 )
 
 func main() {
@@ -25,7 +26,8 @@ func main() {
 	// Periodically remove accounts that never verified their email within 24h.
 	go cleanupUnverified(gdb)
 
-	r := router.New(cfg, gdb)
+	renderer := ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)
+	r := router.New(cfg, gdb, renderer)
 	log.Printf("BrickPlans backend-go listening on %s (env=%s)", cfg.HTTPAddr, cfg.AppEnv)
 	if err := r.Run(cfg.HTTPAddr); err != nil {
 		log.Fatalf("server: %v", err)

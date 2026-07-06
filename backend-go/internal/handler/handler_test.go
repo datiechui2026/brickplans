@@ -20,6 +20,7 @@ import (
 	"brickplans/internal/config"
 	"brickplans/internal/db"
 	"brickplans/internal/router"
+	"brickplans/internal/ssr"
 	"brickplans/internal/storage"
 )
 
@@ -45,12 +46,15 @@ func setupTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 		CORSOrigins:    []string{"http://localhost:5173"},
 		StorageBackend: "local",
 		UploadDir:      filepath.Join(t.TempDir(), "uploads"),
+		FrontendDist:   t.TempDir(), // no vite manifest → SSR HTML omits SPA script (fine for API tests)
+		PublicURL:      "https://brickplans.test",
 	}
 	storage.Reset()
+	renderer := ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)
 	// Close the DB connection so Windows can remove the temp dir on cleanup.
 	sqlDB, _ := gdb.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return router.New(cfg, gdb), gdb
+	return router.New(cfg, gdb, renderer), gdb
 }
 
 // ── HTTP helpers ──
@@ -379,4 +383,58 @@ func minPNG(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestSSRDetailHTML(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "ssruser", "ssr@x.com")
+	bpID := createBlueprint(t, r, tok, "测试图纸SSR", true)
+
+	req := httptest.NewRequest("GET", "/detail/"+bpID, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("SSR detail: %d %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, want := range []string{"测试图纸SSR", "application/ld+json", "CreativeWork", "<article", "og:image"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SSR HTML missing %q\nbody: %s", want, body)
+		}
+	}
+}
+
+func TestSSRUnpublishedIs404(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "ssrpriv", "ssrpriv@x.com")
+	bpID := createBlueprint(t, r, tok, "未发布SSR", false)
+	req := httptest.NewRequest("GET", "/detail/"+bpID, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 404 {
+		t.Fatalf("SSR unpublished expected 404, got %d", w.Code)
+	}
+}
+
+func TestSitemapUsesRealURLs(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "smuser", "sm@x.com")
+	createBlueprint(t, r, tok, "站点地图作品", true)
+
+	req := httptest.NewRequest("GET", "/sitemap.xml", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("sitemap: %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<urlset") {
+		t.Fatal("urlset missing")
+	}
+	if strings.Contains(body, "#/detail") {
+		t.Fatal("sitemap still uses hash URLs")
+	}
+	if !strings.Contains(body, "/explore") {
+		t.Fatal("explore missing from sitemap")
+	}
 }
