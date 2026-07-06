@@ -20,3 +20,11 @@ func Open(dsn string, env string) (*gorm.DB, error) {
 
 // TestLogger returns a silent logger for use in tests.
 func TestLogger() logger.Interface { return logger.Default.LogMode(logger.Silent) }
+
+// OrderImages is a GORM preload scope that orders blueprint images by sort_order
+// (then id as a tiebreaker), so reads always return images in the author's
+// intended sequence. GORM relationship tags can't express order_by, so every
+// Preload("Images", ...) must use this scope.
+func OrderImages(db *gorm.DB) *gorm.DB {
+	return db.Order("sort_order ASC, id ASC")
+}

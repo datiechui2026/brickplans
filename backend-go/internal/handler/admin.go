@@ -50,7 +50,7 @@ func (h *AdminHandler) listBlueprints(c *gin.Context) {
 	qry.Count(&total)
 
 	var bps []db.Blueprint
-	qry.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	qry.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Order("blueprints.created_at DESC").Offset((page - 1) * size).Limit(size).Find(&bps)
 
 	items := make([]dto.BlueprintOut, 0, len(bps))
@@ -71,7 +71,7 @@ func (h *AdminHandler) pendingBlueprints(c *gin.Context) {
 	qry.Count(&total)
 
 	var bps []db.Blueprint
-	qry.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	qry.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&bps)
 
 	items := make([]dto.BlueprintOut, 0, len(bps))
@@ -138,7 +138,7 @@ func (h *AdminHandler) listReports(c *gin.Context) {
 	items := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
 		var bp db.Blueprint
-		if err := h.gdb.Preload("Author").Preload("Images").Preload("Tags.Tag").
+		if err := h.gdb.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 			First(&bp, "id = ?", r.BlueprintID).Error; err != nil {
 			continue
 		}

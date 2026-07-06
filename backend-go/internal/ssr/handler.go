@@ -52,7 +52,7 @@ func (h *Handler) Home(c *gin.Context) {
 func (h *Handler) Detail(c *gin.Context) {
 	id := c.Param("id")
 	var bp db.Blueprint
-	if err := h.gdb.Preload("Author").Preload("Images").Preload("Tags.Tag").First(&bp, "id = ?", id).Error; err != nil {
+	if err := h.gdb.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").First(&bp, "id = ?", id).Error; err != nil {
 		h.NotFound(c)
 		return
 	}

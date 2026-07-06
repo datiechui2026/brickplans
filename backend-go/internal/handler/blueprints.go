@@ -162,7 +162,7 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 func (h *BlueprintsHandler) get(c *gin.Context) {
 	id := c.Param("blueprint_id")
 	var bp db.Blueprint
-	err := h.gdb.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	err := h.gdb.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		First(&bp, "id = ?", id).Error
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Blueprint not found"})
@@ -326,7 +326,7 @@ func (h *BlueprintsHandler) list(c *gin.Context) {
 	}
 
 	var bps []db.Blueprint
-	if err := qry.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	if err := qry.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Offset((page - 1) * size).Limit(size).Find(&bps).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
@@ -542,7 +542,7 @@ func (h *BlueprintsHandler) related(c *gin.Context) {
 		q = q.Where("author_id = ?", bp.AuthorID)
 	}
 	var bps []db.Blueprint
-	q.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	q.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Order("view_count DESC").Limit(6).Find(&bps)
 	items := make([]dto.BlueprintOut, 0, len(bps))
 	for i := range bps {

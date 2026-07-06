@@ -82,7 +82,7 @@ func (h *UsersHandler) getBlueprints(c *gin.Context) {
 	qry.Count(&total)
 
 	var bps []db.Blueprint
-	qry.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	qry.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&bps)
 
 	items := make([]dto.BlueprintOut, 0, len(bps))
@@ -113,7 +113,7 @@ func (h *UsersHandler) getFavorites(c *gin.Context) {
 	h.gdb.Model(&db.Favorite{}).Where("user_id = ?", target.ID).Count(&total)
 
 	var bps []db.Blueprint
-	h.gdb.Preload("Author").Preload("Images").Preload("Tags.Tag").
+	h.gdb.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 		Joins("JOIN favorites ON favorites.blueprint_id = blueprints.id").
 		Where("favorites.user_id = ? AND blueprints.is_published = ?", target.ID, true).
 		Order("favorites.created_at DESC").
