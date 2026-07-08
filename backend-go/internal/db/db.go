@@ -22,9 +22,9 @@ func Open(dsn string, env string) (*gorm.DB, error) {
 func TestLogger() logger.Interface { return logger.Default.LogMode(logger.Silent) }
 
 // OrderImages is a GORM preload scope that orders blueprint images by sort_order
-// (then id as a tiebreaker), so reads always return images in the author's
-// intended sequence. GORM relationship tags can't express order_by, so every
-// Preload("Images", ...) must use this scope.
+// only. sort_order is the single source of truth for page sequence: it defaults
+// to upload order (incrementing) and is rewritten when the author reorders in the
+// edit page. The DB id (a random UUID) must NEVER participate in ordering.
 func OrderImages(db *gorm.DB) *gorm.DB {
-	return db.Order("sort_order ASC, id ASC")
+	return db.Order("sort_order ASC")
 }

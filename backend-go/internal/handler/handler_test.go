@@ -438,3 +438,39 @@ func TestSitemapUsesRealURLs(t *testing.T) {
 		t.Fatal("explore missing from sitemap")
 	}
 }
+
+// TestImageOrderingBySortOrder verifies images are ordered by sort_order, NOT by
+// the DB id (a random UUID). Images are inserted with sort_order out of insertion
+// order; the API must return them sorted by sort_order.
+func TestImageOrderingBySortOrder(t *testing.T) {
+	r, gdb := setupTest(t)
+	tok, _ := registerUser(t, r, "orduser", "ord@x.com")
+	bpID := createBlueprint(t, r, tok, "顺序测试", true)
+
+	created := []db.BlueprintImage{
+		{BlueprintID: bpID, URL: "u1", SortOrder: 2, FileType: "image"},
+		{BlueprintID: bpID, URL: "u2", SortOrder: 0, FileType: "image"},
+		{BlueprintID: bpID, URL: "u3", SortOrder: 1, FileType: "image"},
+	}
+	for i := range created {
+		if err := gdb.Create(&created[i]).Error; err != nil {
+			t.Fatalf("create image: %v", err)
+		}
+	}
+
+	w := doJSON(t, r, "GET", "/api/blueprints/"+bpID, nil, "")
+	if w.Code != 200 {
+		t.Fatalf("detail: %d %s", w.Code, w.Body.String())
+	}
+	images := parseJSON(t, w)["images"].([]any)
+	if len(images) != 3 {
+		t.Fatalf("expected 3 images, got %d", len(images))
+	}
+	want := []string{"u2", "u3", "u1"} // sort_order 0,1,2 - NOT insertion order
+	for i, im := range images {
+		got := im.(map[string]any)["url"].(string)
+		if got != want[i] {
+			t.Fatalf("image[%d] = %q, want %q (must sort by sort_order, not id)", i, got, want[i])
+		}
+	}
+}
