@@ -27,7 +27,9 @@ func NewImagesHandler(cfg *config.Config, gdb *gorm.DB) *ImagesHandler {
 
 func (h *ImagesHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/blueprints")
-	g.POST("/:blueprint_id/images", auth.AuthRequired(h.cfg, h.gdb), middleware.RateLimit(10, 10), h.upload)
+	// 500 uploads per 10s per IP: 3000/min (50/s) steady rate, burst 500 lets a
+	// fresh IP fire 500 at once. Keyed by ClientIP + route template (see ratelimit.go).
+	g.POST("/:blueprint_id/images", auth.AuthRequired(h.cfg, h.gdb), middleware.RateLimit(3000, 500), h.upload)
 	g.PUT("/:blueprint_id/images/reorder", auth.AuthRequired(h.cfg, h.gdb), h.reorder)
 	g.PUT("/:blueprint_id/images/:image_id/cover", auth.AuthRequired(h.cfg, h.gdb), h.setCover)
 	g.DELETE("/:blueprint_id/images/:image_id", auth.AuthRequired(h.cfg, h.gdb), h.delete)
