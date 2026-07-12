@@ -1295,6 +1295,7 @@ async function loadDetail(id) {
                 mainContentEl = h('img', {
                   src: currentItem.url,
                   alt: bp.title,
+                  loading: 'lazy',
                   onclick: () => {
                     if (nonPdfImages.length === 0) return;
                     openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
@@ -1325,6 +1326,7 @@ async function loadDetail(id) {
                 }
                 return h('img', {
                   src: img.url,
+                  loading: 'lazy',
                   className: `gallery-thumb${i === carouselIdx ? ' active' : ''}`,
                   onclick: (e) => {
                     e.stopPropagation();
@@ -1350,6 +1352,7 @@ async function loadDetail(id) {
                   const newImg = h('img', {
                     src: item.url,
                     alt: bp.title,
+                    loading: 'lazy',
                     onclick: () => {
                       if (nonPdfImages.length > 0) {
                         openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
