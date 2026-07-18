@@ -1180,7 +1180,7 @@ async function loadRelated(id) {
     el.innerHTML = '';
     if (!data.items || data.items.length === 0) { el.style.display = 'none'; return; }
     el.appendChild(h('h2', { style: { marginBottom: '16px' } }, '相关作品'));
-    const grid = h('div', { className: 'grid' });
+    const grid = h('div', { className: 'card-grid' });
     data.items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
     el.appendChild(grid);
   } catch {
