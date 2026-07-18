@@ -279,10 +279,7 @@ func (h *BlueprintsHandler) delete(c *gin.Context) {
 		return
 	}
 	// Best-effort: delete uploaded image files from storage before the cascade.
-	var imgs []db.BlueprintImage
-	h.gdb.Where("blueprint_id = ?", id).Find(&imgs)
-	// (storage deletion is best-effort; image handler owns object keys — skipped here
-	// to avoid a circular import; orphaned files are acceptable and cleaned manually.)
+	deleteBlueprintImageFiles(h.cfg, h.gdb, id)
 	if err := h.gdb.Delete(&bp).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
