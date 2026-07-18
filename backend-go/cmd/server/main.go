@@ -23,8 +23,12 @@ func main() {
 		log.Fatalf("auto-migrate: %v", err)
 	}
 
-	// Periodically remove accounts that never verified their email within 24h.
-	go cleanupUnverified(gdb)
+	// Disabled: the 24h unverified-account cleanup cascades to delete users'
+	// blueprints/images DB rows while leaving the COS files orphaned. With SMTP
+	// not configured, no one can verify email, so real users (and their
+	// blueprints) were being wiped after 24h. Re-enable once email verification
+	// is actually deliverable. See cleanupUnverified below.
+	// go cleanupUnverified(gdb)
 
 	renderer := ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)
 	r := router.New(cfg, gdb, renderer)
