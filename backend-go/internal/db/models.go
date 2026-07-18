@@ -22,6 +22,8 @@ type User struct {
 	IsAdmin       bool       `gorm:"default:false" json:"is_admin"`
 	TokenVersion  int        `gorm:"not null;default:0" json:"-"`
 	EmailVerified bool       `gorm:"not null;default:false" json:"-"`
+	Banned        bool       `gorm:"not null;default:false" json:"-"`
+	BannedAt      *time.Time `json:"-"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"-"`
 

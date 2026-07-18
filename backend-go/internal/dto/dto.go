@@ -65,6 +65,21 @@ func FromMe(u *db.User) *MeOut {
 	}
 }
 
+// AdminUserOut is the admin-only user projection - includes email, is_admin,
+// email_verified, banned and blueprint_count. Private to admins (never returned
+// by public endpoints).
+type AdminUserOut struct {
+	ID             string  `json:"id"`
+	Username       string  `json:"username"`
+	Email          string  `json:"email"`
+	AvatarURL      *string `json:"avatar_url"`
+	IsAdmin        bool    `json:"is_admin"`
+	EmailVerified  bool    `json:"email_verified"`
+	Banned         bool    `json:"banned"`
+	BlueprintCount int     `json:"blueprint_count"`
+	CreatedAt      string  `json:"created_at"`
+}
+
 // TokenResponse matches the Python TokenResponse shape used by the frontend.
 // RefreshToken is delivered via httpOnly cookie (not in the body) in the cookie
 // auth scheme, so it's omitempty here.

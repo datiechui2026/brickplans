@@ -46,6 +46,10 @@ func AuthRequired(cfg *config.Config, gdb *gorm.DB) gin.HandlerFunc {
 			abortAuth(c, http.StatusUnauthorized, "Token revoked")
 			return
 		}
+		if user.Banned {
+			abortAuth(c, http.StatusForbidden, "账号已被禁用")
+			return
+		}
 		c.Set(CtxUser, &user)
 		c.Next()
 	}

@@ -31,6 +31,10 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.PUT("/blueprints/:blueprint_id/unpublish", h.unpublish)
 	g.DELETE("/blueprints/:blueprint_id", h.delete)
 	g.GET("/reports", h.listReports)
+	g.GET("/users", h.listUsers)
+	g.DELETE("/users/:user_id", h.deleteUser)
+	g.PUT("/users/:user_id/admin", h.setAdmin)
+	g.PUT("/users/:user_id/ban", h.setBanned)
 }
 
 func (h *AdminHandler) listBlueprints(c *gin.Context) {
@@ -107,6 +111,8 @@ func (h *AdminHandler) unpublish(c *gin.Context) {
 
 func (h *AdminHandler) delete(c *gin.Context) {
 	id := c.Param("blueprint_id")
+	// Best-effort: delete storage files before the cascade removes the DB rows.
+	deleteBlueprintImageFiles(h.cfg, h.gdb, id)
 	if err := h.gdb.Delete(&db.Blueprint{}, "id = ?", id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
@@ -165,4 +171,148 @@ func (h *AdminHandler) listReports(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": size})
+}
+
+// ── User management ─────────────────────────────────
+
+func (h *AdminHandler) listUsers(c *gin.Context) {
+	page := atoiOr(c.Query("page"), 1, 1)
+	size := atoiOr(c.Query("size"), 20, 1)
+	if size > 100 {
+		size = 100
+	}
+	q := strings.TrimSpace(c.Query("q"))
+
+	qry := h.gdb.Model(&db.User{})
+	if q != "" {
+		like := "%" + escapeLike(q) + "%"
+		qry = qry.Where("username LIKE ? OR email LIKE ?", like, like)
+	}
+	var total int64
+	qry.Count(&total)
+
+	var users []db.User
+	qry.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&users)
+
+	// Batch blueprint counts per author.
+	counts := make(map[string]int, len(users))
+	if len(users) > 0 {
+		ids := make([]string, 0, len(users))
+		for _, u := range users {
+			ids = append(ids, u.ID)
+		}
+		type cntRow struct {
+			AuthorID string
+			Cnt      int
+		}
+		var rows []cntRow
+		h.gdb.Model(&db.Blueprint{}).Select("author_id, count(*) as cnt").
+			Where("author_id IN ?", ids).Group("author_id").Scan(&rows)
+		for _, r := range rows {
+			counts[r.AuthorID] = r.Cnt
+		}
+	}
+
+	items := make([]dto.AdminUserOut, 0, len(users))
+	for _, u := range users {
+		items = append(items, dto.AdminUserOut{
+			ID:             u.ID,
+			Username:       u.Username,
+			Email:          u.Email,
+			AvatarURL:      u.AvatarURL,
+			IsAdmin:        u.IsAdmin,
+			EmailVerified:  u.EmailVerified,
+			Banned:         u.Banned,
+			BlueprintCount: counts[u.ID],
+			CreatedAt:      dto.ISO(u.CreatedAt),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "page_size": size})
+}
+
+func (h *AdminHandler) deleteUser(c *gin.Context) {
+	targetID := c.Param("user_id")
+	current := auth.CurrentUser(c)
+	if targetID == current.ID {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "不能删除自己"})
+		return
+	}
+	var target db.User
+	if err := h.gdb.First(&target, "id = ?", targetID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "User not found"})
+		return
+	}
+	// Clean storage files for all the user's blueprints before the cascade
+	// (the DB cascade only removes BlueprintImage rows, not the physical files).
+	var bpIDs []string
+	h.gdb.Model(&db.Blueprint{}).Where("author_id = ?", targetID).Pluck("id", &bpIDs)
+	for _, bpid := range bpIDs {
+		deleteBlueprintImageFiles(h.cfg, h.gdb, bpid)
+	}
+	if err := h.gdb.Delete(&target).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) setAdmin(c *gin.Context) {
+	targetID := c.Param("user_id")
+	current := auth.CurrentUser(c)
+	if targetID == current.ID {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "不能修改自己的管理员身份"})
+		return
+	}
+	var payload struct {
+		IsAdmin bool `json:"is_admin"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	res := h.gdb.Model(&db.User{}).Where("id = ?", targetID).Update("is_admin", payload.IsAdmin)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "User not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+func (h *AdminHandler) setBanned(c *gin.Context) {
+	targetID := c.Param("user_id")
+	current := auth.CurrentUser(c)
+	var payload struct {
+		Banned bool `json:"banned"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	var target db.User
+	if err := h.gdb.First(&target, "id = ?", targetID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "User not found"})
+		return
+	}
+	if targetID == current.ID {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "不能禁用自己"})
+		return
+	}
+	if target.IsAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "不能禁用管理员"})
+		return
+	}
+	updates := map[string]interface{}{"banned": payload.Banned, "banned_at": nil}
+	if payload.Banned {
+		now := time.Now()
+		updates["banned_at"] = &now
+	}
+	if err := h.gdb.Model(&target).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }

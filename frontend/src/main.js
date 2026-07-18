@@ -3189,11 +3189,12 @@ async function renderAdminPage() {
           ),
           h('button', { className: `tab-btn${tab === 'all' ? ' active' : ''}`, onclick: () => { tab = 'all'; page = 1; buildUI(); } }, '📋 全部作品'),
           h('button', { className: `tab-btn${tab === 'reports' ? ' active' : ''}`, onclick: () => { tab = 'reports'; page = 1; buildUI(); } }, '🚩 举报管理'),
+          h('button', { className: `tab-btn${tab === 'users' ? ' active' : ''}`, onclick: () => { tab = 'users'; page = 1; buildUI(); } }, '👤 用户管理'),
         ),
 
-        // Search (only for "all")
-        ...(tab === 'all' ? [h('div', { style: { display: 'flex', gap: '8px', marginBottom: '16px' } },
-          h('input', { type: 'text', id: 'admin-search', className: 'form-input', placeholder: '搜索标题或作者...', value: searchQ, style: { flex: '1', maxWidth: '320px' },
+        // Search (for "all" and "users")
+        ...((tab === 'all' || tab === 'users') ? [h('div', { style: { display: 'flex', gap: '8px', marginBottom: '16px' } },
+          h('input', { type: 'text', id: 'admin-search', className: 'form-input', placeholder: tab === 'users' ? '搜索用户名或邮箱...' : '搜索标题或作者...', value: searchQ, style: { flex: '1', maxWidth: '320px' },
             onkeydown: (e) => { if (e.key === 'Enter') { searchQ = e.target.value; page = 1; buildUI(); } },
           }),
           h('button', { className: 'btn btn-primary btn-sm', onclick: () => { searchQ = $id('admin-search')?.value || ''; page = 1; buildUI(); } }, '搜索'),
@@ -3350,6 +3351,80 @@ async function renderAdminPage() {
         return;
       }
 
+      if (tab === 'users') {
+        const data = await api.adminListUsers({ page, q: searchQ });
+        const items = data.items || [];
+        if (!items.length) {
+          tableEl.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>没有找到用户</p></div>';
+          if (pagEl) pagEl.innerHTML = '';
+          return;
+        }
+
+        const currentUserId = state.user?.id;
+        const rows = items.map(u => {
+          const tags = [];
+          if (u.is_admin) tags.push(h('span', { style: { color: 'var(--accent)', fontWeight: 700, marginRight: '6px' } }, '管理员'));
+          if (u.banned) tags.push(h('span', { style: { color: 'var(--danger)', fontWeight: 700, marginRight: '6px' } }, '已禁用'));
+          if (!u.email_verified) tags.push(h('span', { style: { color: 'var(--text-sec)', marginRight: '6px' } }, '未验证'));
+          const actions = [];
+          if (u.id === currentUserId) {
+            actions.push(h('span', { style: { color: 'var(--text-sec)', fontSize: '0.8rem' } }, '当前账号'));
+          } else {
+            actions.push(h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '6px' }, onclick: () => handleSetAdmin(u.id, !u.is_admin) }, u.is_admin ? '取消管理员' : '设为管理员'));
+            actions.push(h('button', { className: `btn btn-sm${u.banned ? ' btn-success' : ' btn-ghost'}`, style: { marginRight: '6px' }, onclick: () => handleSetBanned(u.id, !u.banned) }, u.banned ? '启用' : '禁用'));
+            actions.push(h('button', { className: 'btn btn-danger btn-sm', onclick: () => confirmDeleteUser(u.id, u.username) }, '🗑 删除'));
+          }
+          return h('tr', {},
+            h('td', {}, u.avatar_url
+              ? h('img', { src: u.avatar_url, className: 'cell-thumb', style: { borderRadius: '50%', objectFit: 'cover' } })
+              : h('div', { className: 'cell-thumb', style: { display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-sec)', borderRadius: '50%', fontWeight: 700 } }, (u.username || '?').charAt(0).toUpperCase())),
+            h('td', {}, h('strong', {}, u.username)),
+            h('td', { style: { color: 'var(--text-sec)', fontSize: '0.85rem' } }, u.email),
+            h('td', {}, String(u.blueprint_count || 0)),
+            h('td', {}, u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '-'),
+            h('td', {}, ...tags),
+            h('td', { style: { whiteSpace: 'nowrap' } }, ...actions),
+          );
+        });
+
+        tableEl.innerHTML = '';
+        tableEl.appendChild(
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+              h('thead', {},
+                h('tr', {},
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '头像'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '用户名'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '邮箱'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '作品数'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '注册时间'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '状态'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '操作'),
+                ),
+              ),
+              h('tbody', {}, ...rows),
+            ),
+          ),
+        );
+
+        const totalPages = Math.ceil(data.total / 20);
+        if (pagEl && totalPages > 1) {
+          pagEl.innerHTML = '';
+          pagEl.appendChild(h('button', { className: 'page-btn', disabled: page <= 1, style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' }, onclick: () => { page--; buildUI(); } }, '‹ 上一页'));
+          for (let i = 1; i <= Math.min(totalPages, 7); i++) {
+            pagEl.appendChild(h('button', { className: `page-btn${i === page ? ' active' : ''}`, onclick: () => { page = i; buildUI(); } }, String(i)));
+          }
+          if (totalPages > 7) {
+            pagEl.appendChild(h('span', { style: { padding: '4px 8px' } }, '...'));
+            pagEl.appendChild(h('button', { className: 'page-btn', onclick: () => { page = totalPages; buildUI(); } }, String(totalPages)));
+          }
+          pagEl.appendChild(h('button', { className: 'page-btn', disabled: page >= totalPages, style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' }, onclick: () => { page++; buildUI(); } }, '下一页 ›'));
+        } else if (pagEl) {
+          pagEl.innerHTML = '';
+        }
+        return;
+      }
+
       const data = tab === 'pending'
         ? await api.adminPendingBlueprints({ page })
         : await api.adminListBlueprints({ page, q: searchQ });
@@ -3496,6 +3571,56 @@ async function renderAdminPage() {
               showToast('操作失败：' + e.message, 'error');
             }
           } }, type === 'delete' ? '确认删除' : '确认拒绝'),
+        ),
+      ),
+    );
+    document.body.appendChild(modal);
+  };
+
+  const handleSetAdmin = async (id, isAdmin) => {
+    try {
+      await api.adminSetAdmin(id, isAdmin);
+      showToast(isAdmin ? '已设为管理员' : '已取消管理员', 'success');
+      buildUI();
+    } catch (e) {
+      showToast('操作失败：' + e.message, 'error');
+    }
+  };
+
+  const handleSetBanned = async (id, banned) => {
+    try {
+      await api.adminSetBanned(id, banned);
+      showToast(banned ? '已禁用' : '已启用', 'success');
+      buildUI();
+    } catch (e) {
+      showToast('操作失败：' + e.message, 'error');
+    }
+  };
+
+  const confirmDeleteUser = (id, username) => {
+    const modal = h('div', {
+      id: 'confirm-modal',
+      style: { position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '9999' },
+    },
+      h('div', { style: { background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '400px', width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' } },
+        h('div', { style: { fontSize: '3rem', marginBottom: '12px' } }, '⚠️'),
+        h('h3', { style: { marginBottom: '8px' } }, '确认删除用户'),
+        h('p', { style: { color: 'var(--text-sec)', marginBottom: '24px' } }, `将删除用户「${username}」及其所有作品，此操作不可撤销。确定？`),
+        h('div', { style: { display: 'flex', gap: '12px', justifyContent: 'center' } },
+          h('button', { className: 'btn btn-ghost', onclick: () => { const el = $id('confirm-modal'); if (el) el.remove(); } }, '取消'),
+          h('button', { className: 'btn btn-danger', onclick: async () => {
+            try {
+              await api.adminDeleteUser(id);
+              const el = $id('confirm-modal');
+              if (el) el.remove();
+              showToast('已删除用户 🗑', 'success');
+              buildUI();
+            } catch (e) {
+              const el = $id('confirm-modal');
+              if (el) el.remove();
+              showToast('操作失败：' + e.message, 'error');
+            }
+          } }, '确认删除'),
         ),
       ),
     );

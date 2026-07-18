@@ -372,5 +372,29 @@ export async function adminListReports({ page = 1 } = {}) {
   return request(`/api/admin/reports?${params}`);
 }
 
+export async function adminListUsers({ page = 1, q = '' } = {}) {
+  const params = new URLSearchParams({ page, size: '20' });
+  if (q) params.set('q', q);
+  return request(`/api/admin/users?${params}`);
+}
+
+export async function adminDeleteUser(id) {
+  return request(`/api/admin/users/${id}`, { method: 'DELETE' });
+}
+
+export async function adminSetAdmin(id, isAdmin) {
+  return request(`/api/admin/users/${id}/admin`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+}
+
+export async function adminSetBanned(id, banned) {
+  return request(`/api/admin/users/${id}/ban`, {
+    method: 'PUT',
+    body: JSON.stringify({ banned }),
+  });
+}
+
 // Restore session on load if the user was logged in (refresh cookie is httpOnly).
 ensureSession();

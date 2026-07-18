@@ -118,6 +118,10 @@ func (h *AuthHandler) login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Invalid email or password"})
 		return
 	}
+	if user.Banned {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "账号已被禁用"})
+		return
+	}
 	h.respondTokens(c, http.StatusOK, &user)
 }
 
@@ -146,6 +150,10 @@ func (h *AuthHandler) refresh(c *gin.Context) {
 	}
 	if user.TokenVersion != claims.Ver {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Token revoked"})
+		return
+	}
+	if user.Banned {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "账号已被禁用"})
 		return
 	}
 	at, err := auth.CreateAccessToken(h.cfg, user.ID, user.TokenVersion)
