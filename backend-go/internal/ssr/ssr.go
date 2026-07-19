@@ -17,7 +17,7 @@ import (
 //go:embed template.html
 var templateHTML string
 
-const favicon = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>`
+const favicon = "/favicon.svg" // SVG brick icon, served from frontend/public/favicon.svg
 
 // PageData is the template payload.
 type PageData struct {
