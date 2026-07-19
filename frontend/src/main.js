@@ -257,10 +257,15 @@ function loadPdfjs() {
 async function renderPDF(container, url) {
   try {
     const pdfjsLib = await loadPdfjs();
-    const pdf = await pdfjsLib.getDocument(url).promise;
+    // disableAutoFetch: don't pull the whole file up front; fetch page bytes on
+    // demand (relies on COS range requests, enabled by the CORS Range header).
+    const pdf = await pdfjsLib.getDocument({ url, disableAutoFetch: true }).promise;
     container.innerHTML = '';
     const width = Math.min(container.clientWidth || 800, 900);
-    for (let i = 1; i <= pdf.numPages; i++) {
+    const total = pdf.numPages;
+    const placeholders = [];
+
+    const renderPage = async (i) => {
       const page = await pdf.getPage(i);
       const base = page.getViewport({ scale: 1 });
       const scale = width / base.width;
@@ -270,12 +275,36 @@ async function renderPDF(container, url) {
       canvas.height = viewport.height;
       canvas.style.cssText = 'max-width:100%;display:block;margin:0 auto 8px;background:#fff';
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      container.appendChild(canvas);
+      const ph = placeholders[i - 1];
+      if (ph) ph.replaceWith(canvas);
+    };
+
+    // One placeholder per page so the scrollbar reflects the full length.
+    for (let i = 1; i <= total; i++) {
+      const ph = h('div', { style: { minHeight: '500px', background: '#f5f5f5', margin: '0 auto 8px', borderRadius: '4px' } });
+      ph.dataset.page = String(i);
+      placeholders.push(ph);
+      container.appendChild(ph);
     }
     container.appendChild(h('a', {
       href: url, download: '',
       style: { display: 'block', textAlign: 'center', padding: '8px', color: 'var(--accent)' },
     }, '下载完整 PDF'));
+
+    // Render the first 3 pages immediately; lazy-render the rest on scroll.
+    for (let i = 1; i <= Math.min(3, total); i++) renderPage(i);
+    if (total > 3) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const i = parseInt(entry.target.dataset.page, 10);
+            io.unobserve(entry.target);
+            renderPage(i);
+          }
+        });
+      }, { root: container, rootMargin: '300px' });
+      for (let i = 4; i <= total; i++) io.observe(placeholders[i - 1]);
+    }
   } catch (e) {
     container.innerHTML = '';
     container.appendChild(h('div', { style: { padding: '24px', textAlign: 'center' } },
