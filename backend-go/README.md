@@ -1,4 +1,4 @@
-# BrickPlans backend-go
+# BrickPlan backend-go
 
 Go (Gin + GORM + MySQL) rewrite of the Python/FastAPI backend. Same API contract
 as `frontend/src/api.js` — the frontend is unchanged. Fixes the security issues

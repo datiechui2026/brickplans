@@ -1,6 +1,6 @@
-# BrickPlans 生产部署手册
+# BrickPlan 生产部署手册
 
-本文档用于把 BrickPlans 部署到生产服务器。当前推荐架构：FastAPI 后端由 systemd 管理，Vite 前端构建产物由 nginx 静态托管，`/api/` 与 `/uploads/` 反向代理到后端。
+本文档用于把 BrickPlan 部署到生产服务器。当前推荐架构：FastAPI 后端由 systemd 管理，Vite 前端构建产物由 nginx 静态托管，`/api/` 与 `/uploads/` 反向代理到后端。
 
 > 生产上线前必须先执行 `docs/production-initialization.md`。当前开发环境内的用户、作品、上传文件都是测试数据，不能直接带到生产。
 
@@ -153,7 +153,7 @@ sudo systemctl reload nginx
 sudo nginx -T | grep 'listen 8310' -B1
 ```
 
-同一个端口只应有一个 BrickPlans server block。若 `conf.d/` 和 `sites-enabled/` 都配置了同端口，需要先人工确认后再移除旧配置。
+同一个端口只应有一个 BrickPlan server block。若 `conf.d/` 和 `sites-enabled/` 都配置了同端口，需要先人工确认后再移除旧配置。
 
 ## 6. 部署验证
 

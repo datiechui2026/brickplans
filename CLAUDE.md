@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-BrickPlans (积木图纸分享社区) — a brick/MOC blueprint-sharing community. MVP is live: auth, blueprint CRUD, multi-image/PDF upload, tags, search, favorites/likes/comments, notifications, admin moderation.
+BrickPlan (积木图纸分享社区) — a brick/MOC blueprint-sharing community. MVP is live: auth, blueprint CRUD, multi-image/PDF upload, tags, search, favorites/likes/comments, notifications, admin moderation.
 
 **Current deployed form is SQLite + systemd + nginx** (see README). The `docker/` compose stack (Postgres/Redis/MinIO) and the Postgres defaults in `app/core/config.py` are leftover scaffolding for a future migration — do not assume they reflect production. Real config comes from `backend/.env`.
 

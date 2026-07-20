@@ -1,6 +1,6 @@
 # PRD-25：隐私策略页面
 
-> **目标**：为 BrickPlans 添加隐私策略页面，满足合规要求。
+> **目标**：为 BrickPlan 添加隐私策略页面，满足合规要求。
 > **关联**：docs/privacy-policy.md（内容已撰写）
 
 ---
@@ -52,7 +52,7 @@
 
 ```html
 <div style="text-align:center;padding:24px 0;font-size:12px;color:var(--text-sec)">
-  © 2026 BrickPlans · <a href="#/privacy" style="color:inherit">隐私策略</a>
+  © 2026 BrickPlan · <a href="#/privacy" style="color:inherit">隐私策略</a>
 </div>
 ```
 

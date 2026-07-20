@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed script for BrickPlans — pre-populate database with sample data.
+"""Seed script for BrickPlan — pre-populate database with sample data.
 
 Idempotent: re-running won't duplicate entries.
 Usage: cd backend && python seed.py
@@ -23,9 +23,9 @@ from app.models import User, Blueprint
 # ── Config ──────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL_SYNC", "sqlite:///./brickplans.db")
 OFFICIAL_EMAIL = "official@brickplan.cn"
-OFFICIAL_USERNAME = "BrickPlans官方"
+OFFICIAL_USERNAME = "BrickPlan官方"
 OFFICIAL_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "brickplans2024")
-OFFICIAL_BIO = "BrickPlans 官方账号，分享高质量的积木图纸与创意灵感。"
+OFFICIAL_BIO = "BrickPlan 官方账号，分享高质量的积木图纸与创意灵感。"
 
 # ── Seed Data ───────────────────────────────────────────────────
 SEED_BLUEPRINTS = [

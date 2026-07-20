@@ -1,5 +1,5 @@
 [Unit]
-Description=BrickPlans FastAPI Backend
+Description=BrickPlan FastAPI Backend
 After=network.target
 
 [Service]

@@ -30,11 +30,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/detail/:id", h.Detail)
 	r.GET("/tags/:name", h.Tag)
 	r.GET("/user/:id", h.User)
-	r.GET("/upload", h.Simple("上传图纸", "在 BrickPlans 上传你的积木 MOC 图纸，分享给社区。"))
+	r.GET("/upload", h.Simple("上传图纸", "在 BrickPlan 上传你的积木 MOC 图纸，分享给社区。"))
 	r.GET("/edit/:id", h.Simple("编辑图纸", "编辑你的积木图纸信息。"))
-	r.GET("/notifications", h.Simple("通知", "你在 BrickPlans 的互动通知。"))
-	r.GET("/admin", h.Simple("管理后台", "BrickPlans 管理后台。"))
-	r.GET("/privacy", h.Simple("隐私策略", "BrickPlans 隐私策略。"))
+	r.GET("/notifications", h.Simple("通知", "你在 BrickPlan 的互动通知。"))
+	r.GET("/admin", h.Simple("管理后台", "BrickPlan 管理后台。"))
+	r.GET("/privacy", h.Simple("隐私策略", "BrickPlan 隐私策略。"))
 	r.GET("/faq", h.FAQ)
 	r.GET("/blog", h.BlogList)
 	r.GET("/blog/:slug", h.BlogDetail)
@@ -44,8 +44,8 @@ func (h *Handler) Home(c *gin.Context) {
 	var bps []db.Blueprint
 	h.gdb.Where("is_published = ?", true).Order("view_count DESC").Limit(10).Find(&bps)
 	h.r.Render(c, PageData{
-		Title:       "BrickPlans — 积木图纸分享社区",
-		Description: "BrickPlans 是积木/MOC 图纸分享社区，发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。",
+		Title:       "BrickPlan — 积木图纸分享社区",
+		Description: "BrickPlan 是积木/MOC 图纸分享社区，发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。",
 		Canonical:   h.cfg.PublicURL + "/",
 		OGType:      "website",
 		JSONLD:      append(h.siteJSONLD(), itemListJSONLD(bps, h.cfg.PublicURL)),
@@ -65,7 +65,7 @@ func (h *Handler) Detail(c *gin.Context) {
 		return
 	}
 	cover := coverURL(bp.Images, h.cfg.PublicURL)
-	desc := "BrickPlans 积木图纸：" + bp.Title
+	desc := "BrickPlan 积木图纸：" + bp.Title
 	if bp.Description != nil && *bp.Description != "" {
 		desc = *bp.Description
 	}
@@ -77,7 +77,7 @@ func (h *Handler) Detail(c *gin.Context) {
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL))
 	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
 	h.r.Render(c, PageData{
-		Title:       bp.Title + " — BrickPlans 积木图纸",
+		Title:       bp.Title + " — BrickPlan 积木图纸",
 		Description: truncate(desc, 160),
 		Canonical:   h.cfg.PublicURL + "/detail/" + bp.ID,
 		OGType:      "article",
@@ -95,10 +95,10 @@ func (h *Handler) Explore(c *gin.Context) {
 		qry = qry.Where("category = ?", cat)
 	}
 	qry.Order("created_at DESC").Limit(50).Find(&bps)
-	title := "发现图纸 — BrickPlans"
+	title := "发现图纸 — BrickPlan"
 	desc := "浏览社区积木 MOC 作品，按分类、标签、关键词搜索图纸。"
 	if cat != "" {
-		title = cat + "类积木图纸 — BrickPlans"
+		title = cat + "类积木图纸 — BrickPlan"
 		desc = "浏览" + cat + "分类的积木 MOC 图纸作品。"
 	}
 	h.r.Render(c, PageData{
@@ -117,7 +117,7 @@ func (h *Handler) Tag(c *gin.Context) {
 	h.gdb.Where("is_published = ? AND id IN (SELECT bt.blueprint_id FROM blueprint_tags bt JOIN tags t ON t.id = bt.tag_id WHERE t.name = ?)", true, name).
 		Order("created_at DESC").Limit(50).Find(&bps)
 	h.r.Render(c, PageData{
-		Title:       "#" + name + " 标签 — BrickPlans",
+		Title:       "#" + name + " 标签 — BrickPlan",
 		Description: "标签「" + name + "」下的积木 MOC 图纸作品。",
 		Canonical:   h.cfg.PublicURL + "/tags/" + name,
 		OGType:      "website",
@@ -138,7 +138,7 @@ func (h *Handler) User(c *gin.Context) {
 	var bpCount int64
 	h.gdb.Model(&db.Blueprint{}).Where("author_id = ? AND is_published = ?", user.ID, true).Count(&bpCount)
 	h.r.Render(c, PageData{
-		Title:       user.Username + " 的作品 — BrickPlans",
+		Title:       user.Username + " 的作品 — BrickPlan",
 		Description: "查看 " + user.Username + " 分享的积木 MOC 图纸作品。",
 		Canonical:   h.cfg.PublicURL + "/user/" + user.ID,
 		OGType:      "profile",
@@ -152,7 +152,7 @@ func (h *Handler) User(c *gin.Context) {
 func (h *Handler) Simple(title, desc string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h.r.Render(c, PageData{
-			Title:       title + " — BrickPlans",
+			Title:       title + " — BrickPlan",
 			Description: desc,
 			Canonical:   h.cfg.PublicURL + c.Request.URL.Path,
 			OGType:      "website",
@@ -164,8 +164,8 @@ func (h *Handler) Simple(title, desc string) gin.HandlerFunc {
 func (h *Handler) FAQ(c *gin.Context) {
 	qa := faqData()
 	h.r.Render(c, PageData{
-		Title:       "常见问题 — BrickPlans",
-		Description: "BrickPlans 常见问题解答：什么是 MOC、如何上传、版权与举报等。",
+		Title:       "常见问题 — BrickPlan",
+		Description: "BrickPlan 常见问题解答：什么是 MOC、如何上传、版权与举报等。",
 		Canonical:   h.cfg.PublicURL + "/faq",
 		OGType:      "website",
 		JSONLD:      append(h.siteJSONLD(), faqJSONLD(qa)),
@@ -176,7 +176,7 @@ func (h *Handler) FAQ(c *gin.Context) {
 func (h *Handler) NotFound(c *gin.Context) {
 	c.Status(http.StatusNotFound)
 	h.r.Render(c, PageData{
-		Title:       "页面不存在 — BrickPlans",
+		Title:       "页面不存在 — BrickPlan",
 		Description: "页面不存在。",
 		Canonical:   h.cfg.PublicURL + "/",
 		OGType:      "website",
@@ -195,7 +195,7 @@ func truncate(s string, n int) string {
 
 func faqData() []struct{ Q, A string } {
 	return []struct{ Q, A string }{
-		{"什么是 MOC？", "MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于官方套装。BrickPlans 是分享 MOC 图纸的社区。"},
+		{"什么是 MOC？", "MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于官方套装。BrickPlan 是分享 MOC 图纸的社区。"},
 		{"如何上传我的作品？", "注册登录后，点击右上角「上传」按钮，填写标题、分类、难度、零件数等信息，并上传图片或 PDF 图纸。"},
 		{"支持什么文件格式？", "支持 JPG/PNG/WebP 图片和 PDF 文件，单文件最大 20MB，一次最多 10 个文件。图片会自动压缩转码。"},
 		{"图纸版权归谁？", "作品版权归创作者所有。请勿上传他人受版权保护的作品；发现侵权可在作品页底部「举报」反馈。"},

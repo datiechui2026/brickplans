@@ -1,6 +1,6 @@
 # PRD-24：全站 UI 重构 — 统一设计语言
 
-> **产品目标**：将 BrickPlans 全线 6 个页面统一为现代化、一致的设计语言，告别零散的旧样式。
+> **产品目标**：将 BrickPlan 全线 6 个页面统一为现代化、一致的设计语言，告别零散的旧样式。
 > **关联 PRD**：PRD-23（首页重构 + 点赞系统）将被本 PRD 覆盖替代，本 PRD 一次性完成全部 UI 改造。
 
 ---
@@ -56,7 +56,7 @@ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
 ```
 ┌──────────────────────────────────────────────┐
-│ 🧱 BrickPlans              📤 上传图纸  👤   │
+│ 🧱 BrickPlan              📤 上传图纸  👤   │
 └──────────────────────────────────────────────┘
 ```
 
@@ -64,7 +64,7 @@ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 - 高度 56px，顶部 sticky，z-index 100
 - 毛玻璃效果：`background: rgba(255,255,255,.72); backdrop-filter: blur(20px);`
 - 底部 1px 边框 `rgba(0,0,0,.06)`
-- 品牌 Logo：左侧 `🧱 BrickPlans`，字号 18px，字重 700，无下划线
+- 品牌 Logo：左侧 `🧱 BrickPlan`，字号 18px，字重 700，无下划线
 - 上传按钮：`btn-ghost` 样式，未登录点它 → 跳登录/注册页弹窗
 - 用户头像：32px 圆形，点击 → 个人主页
 - **去掉旧的导航链接按钮**（首页/发现/管理），全部改为只在 `renderNavbar` 中渲染品牌+上传+头像
@@ -243,7 +243,7 @@ function renderBlueprintCard(bp) {
 ### 4.6 管理后台（`renderAdminPage`）
 
 **改造**：
-- 导航栏显示「🧱 BrickPlans **管理**」橙色标签
+- 导航栏显示「🧱 BrickPlan **管理**」橙色标签
 - 「← 返回前台」链接
 - 4 格统计：待审核（橙色数字，warn态）/ 总作品 / 用户数 / 总浏览
 - Tabs：⏳待审核 / 📐全部作品 / 👥用户管理

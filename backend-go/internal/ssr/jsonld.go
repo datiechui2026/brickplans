@@ -37,7 +37,7 @@ func (h *Handler) siteJSONLD() []template.HTML {
 	org := map[string]interface{}{
 		"@context":    "https://schema.org",
 		"@type":       "Organization",
-		"name":        "BrickPlans",
+		"name":        "BrickPlan",
 		"url":         public,
 		"description": "积木/MOC 图纸分享社区",
 		"logo":        public + "/og-default.png",
@@ -46,7 +46,7 @@ func (h *Handler) siteJSONLD() []template.HTML {
 		"@context": "https://schema.org",
 		"@type":    "WebSite",
 		"url":      public,
-		"name":     "BrickPlans",
+		"name":     "BrickPlan",
 		"inLanguage": "zh-CN",
 		"potentialAction": map[string]interface{}{
 			"@type": "SearchAction",

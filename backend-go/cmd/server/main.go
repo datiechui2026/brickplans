@@ -32,7 +32,7 @@ func main() {
 
 	renderer := ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)
 	r := router.New(cfg, gdb, renderer)
-	log.Printf("BrickPlans backend-go listening on %s (env=%s)", cfg.HTTPAddr, cfg.AppEnv)
+	log.Printf("BrickPlan backend-go listening on %s (env=%s)", cfg.HTTPAddr, cfg.AppEnv)
 	if err := r.Run(cfg.HTTPAddr); err != nil {
 		log.Fatalf("server: %v", err)
 	}

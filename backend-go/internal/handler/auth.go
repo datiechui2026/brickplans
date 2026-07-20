@@ -367,12 +367,12 @@ func (h *AuthHandler) sendVerifyEmail(user *db.User) {
 	}
 	url := h.cfg.AppBaseURL + "/api/auth/verify-email?token=" + token
 	body := fmt.Sprintf(
-		`<html><body style="font-family:sans-serif"><h2>验证你的 BrickPlans 邮箱</h2>`+
+		`<html><body style="font-family:sans-serif"><h2>验证你的 BrickPlan 邮箱</h2>`+
 			`<p>点击下方链接完成验证（24 小时内有效）：</p>`+
 			`<p><a href="%s" style="padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:4px">验证邮箱</a></p>`+
 			`<p style="color:#666;font-size:12px">若非本人操作请忽略此邮件。</p></body></html>`, url)
 	if err := mail.SendMail(h.cfg.SMTPHost, h.cfg.SMTPPort, h.cfg.SMTPUser, h.cfg.SMTPPass,
-		h.cfg.SMTPFrom, user.Email, "验证你的 BrickPlans 邮箱", body); err != nil {
+		h.cfg.SMTPFrom, user.Email, "验证你的 BrickPlan 邮箱", body); err != nil {
 		log.Printf("[mail] send verify to %s: %v", user.Email, err)
 	}
 }
@@ -398,7 +398,7 @@ func (h *AuthHandler) verifyEmail(c *gin.Context) {
 		h.gdb.Save(&user)
 	}
 	c.Data(http.StatusOK, "text/html; charset=utf-8",
-		[]byte(`<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>✅ 邮箱验证成功</h2><p>你现在可以关闭此页面。</p><p><a href="/">返回 BrickPlans</a></p></body></html>`))
+		[]byte(`<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>✅ 邮箱验证成功</h2><p>你现在可以关闭此页面。</p><p><a href="/">返回 BrickPlan</a></p></body></html>`))
 }
 
 func (h *AuthHandler) resendVerify(c *gin.Context) {

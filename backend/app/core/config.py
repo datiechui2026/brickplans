@@ -3,7 +3,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    app_name: str = "BrickPlans API"
+    app_name: str = "BrickPlan API"
     debug: bool = True
 
     # Database

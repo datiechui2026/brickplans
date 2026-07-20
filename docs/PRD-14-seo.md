@@ -17,12 +17,12 @@
 ### 2.1 index.html —— 默认 OG 标签
 
 ```html
-<meta property="og:title" content="BrickPlans — 积木图纸分享社区" />
+<meta property="og:title" content="BrickPlan — 积木图纸分享社区" />
 <meta property="og:description" content="分享你的乐高MOC创意，探索海量积木图纸" />
 <meta property="og:image" content="https://brickplan.cn/og-default.png" />
 <meta property="og:url" content="https://brickplan.cn" />
 <meta property="og:type" content="website" />
-<meta name="description" content="BrickPlans 积木图纸分享社区，发现和分享乐高MOC创意作品" />
+<meta name="description" content="BrickPlan 积木图纸分享社区，发现和分享乐高MOC创意作品" />
 ```
 
 ### 2.2 详情页 —— 动态 OG（服务端渲染）
@@ -32,7 +32,7 @@
 **方案 A（推荐）**：用前端 `Helmet.js` 类似方式动态改 `<meta>`：
 ```js
 // main.js loadDetail() 中
-document.title = `${bp.title} — BrickPlans`;
+document.title = `${bp.title} — BrickPlan`;
 setMeta('og:title', bp.title);
 setMeta('og:description', bp.description);
 setMeta('og:image', bp.images?.[0]?.url || '/og-default.png');

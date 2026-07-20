@@ -1,4 +1,4 @@
-# BrickPlans 上传作品 API 说明
+# BrickPlan 上传作品 API 说明
 
 > 面向注册用户。所有写操作需携带 JWT Token。
 

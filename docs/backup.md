@@ -1,6 +1,6 @@
-# BrickPlans 备份与恢复
+# BrickPlan 备份与恢复
 
-BrickPlans 当前生产数据由两部分组成：
+BrickPlan 当前生产数据由两部分组成：
 
 1. SQLite 数据库：`backend/brickplans.db`
 2. 用户上传文件：`backend/uploads/`

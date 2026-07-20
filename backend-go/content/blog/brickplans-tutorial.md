@@ -1,23 +1,23 @@
 ---
-title: "BrickPlans 新手教程：注册、找图纸、下载、搭建全流程指南"
-description: "BrickPlans 怎么用？从注册账号到下载图纸，从上传作品到社区互动，这篇教程带你 5 分钟玩转 BrickPlans 积木图纸分享社区。"
+title: "BrickPlan 新手教程：注册、找图纸、下载、搭建全流程指南"
+description: "BrickPlan 怎么用？从注册账号到下载图纸，从上传作品到社区互动，这篇教程带你 5 分钟玩转 BrickPlan 积木图纸分享社区。"
 date: 2026-07-20
-author: "BrickPlans 官方"
+author: "BrickPlan 官方"
 category: "新手教程"
-tags: [BrickPlans, 教程, 新手, 入门, 注册, 图纸]
+tags: [BrickPlan, 教程, 新手, 入门, 注册, 图纸]
 ---
 
-# BrickPlans 新手教程：注册、找图纸、下载、搭建全流程指南
+# BrickPlan 新手教程：注册、找图纸、下载、搭建全流程指南
 
-欢迎来到 BrickPlans——中文积木 MOC 图纸分享社区！
+欢迎来到 BrickPlan——中文积木 MOC 图纸分享社区！
 
-无论你是刚接触积木的新手，还是经验丰富的 MOC 玩家，这篇教程都会带你快速上手 BrickPlans 的所有功能。
+无论你是刚接触积木的新手，还是经验丰富的 MOC 玩家，这篇教程都会带你快速上手 BrickPlan 的所有功能。
 
 ---
 
-## 一、什么是 BrickPlans？
+## 一、什么是 BrickPlan？
 
-**BrickPlans**（积木图纸分享社区）是一个专注积木 MOC 图纸的中文平台。你可以在这里：
+**BrickPlan**（积木图纸分享社区）是一个专注积木 MOC 图纸的中文平台。你可以在这里：
 
 - **浏览**海量 MOC 图纸（建筑、车辆、机甲、奇幻、科幻、场景）
 - **下载**图纸 PDF 和零件清单
@@ -30,7 +30,7 @@ tags: [BrickPlans, 教程, 新手, 入门, 注册, 图纸]
 
 ### 步骤 1：进入网站
 
-打开浏览器，访问 **https://brickplans.cn**（或服务器 IP + 端口）。
+打开浏览器，访问 **https://brickplan.cn**（或服务器 IP + 端口）。
 
 ### 步骤 2：注册
 
@@ -197,7 +197,7 @@ tags: [BrickPlans, 教程, 新手, 入门, 注册, 图纸]
 A：PDF 文件请使用浏览器或 PDF 阅读器打开。Studio 文件需要安装 BrickLink Studio 软件。
 
 **Q：零件不够怎么办？**
-A：BrickPlans 的每份图纸都附带零件清单，你可以按清单在淘宝、闲鱼或高砖购买所需零件。
+A：BrickPlan 的每份图纸都附带零件清单，你可以按清单在淘宝、闲鱼或高砖购买所需零件。
 
 **Q：我能上传别人的作品吗？**
 A：请只上传你自己的原创作品。转载他人作品需获得原作者授权并注明出处。
@@ -218,4 +218,4 @@ A：在评论区留言告知作者，作者会尽快修正并重新上传。
 
 ---
 
-> 有疑问？在社区里问，积木玩家都很热心。祝你在 BrickPlans 玩得开心，搭出精彩！
+> 有疑问？在社区里问，积木玩家都很热心。祝你在 BrickPlan 玩得开心，搭出精彩！

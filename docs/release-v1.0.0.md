@@ -1,10 +1,10 @@
-# BrickPlans v1.0.0 Release Checklist
+# BrickPlan v1.0.0 Release Checklist
 
 本文档记录 `release/v1.0.0` 的交付范围、验证命令和发布包约定。
 
 ## 1. 版本定位
 
-`v1.0.0` 是 BrickPlans 的生产部署准备版本，目标是支持上线 Beta/种子用户运营。
+`v1.0.0` 是 BrickPlan 的生产部署准备版本，目标是支持上线 Beta/种子用户运营。
 
 交付重点：
 

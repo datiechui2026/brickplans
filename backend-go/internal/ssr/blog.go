@@ -27,11 +27,11 @@ func (h *Handler) BlogList(c *gin.Context) {
 		posts = h.blogStore.All()
 	}
 
-	title := "博客 - BrickPlans 积木图纸社区"
-	desc := "BrickPlans 博客：积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容。"
+	title := "博客 - BrickPlan 积木图纸社区"
+	desc := "BrickPlan 博客：积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容。"
 	if filterLabel != "" {
-		title = filterLabel + " - BrickPlans 博客"
-		desc = "BrickPlans 博客「" + filterLabel + "」分类下的文章。"
+		title = filterLabel + " - BrickPlan 博客"
+		desc = "BrickPlan 博客「" + filterLabel + "」分类下的文章。"
 	}
 
 	canonical := h.cfg.PublicURL + "/blog"
@@ -62,7 +62,7 @@ func (h *Handler) BlogDetail(c *gin.Context) {
 
 	prev, next := h.blogStore.PrevNext(slug)
 
-	title := post.Title + " - BrickPlans 博客"
+	title := post.Title + " - BrickPlan 博客"
 	desc := post.Description
 	if desc == "" {
 		desc = post.Title
@@ -82,7 +82,7 @@ func (h *Handler) BlogDetail(c *gin.Context) {
 
 func (h *Handler) blogListNoscript(posts []blog.Post, filterLabel string) template.HTML {
 	var b strings.Builder
-	b.WriteString("<h1>BrickPlans 博客</h1>")
+	b.WriteString("<h1>BrickPlan 博客</h1>")
 	b.WriteString("<p>积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容。</p>")
 	if filterLabel != "" {
 		b.WriteString(fmt.Sprintf("<p>筛选：%s</p>", esc(filterLabel)))
@@ -143,7 +143,7 @@ func (h *Handler) blogDetailNoscript(post *blog.Post, prev, next *blog.Post) tem
 // ── JSON-LD ──
 
 func blogPostJSONLD(post *blog.Post, public string) template.HTML {
-	jsonStr := fmt.Sprintf(`{"@context":"https://schema.org","@type":"BlogPosting","headline":%q,"description":%q,"datePublished":%q,"dateModified":%q,"author":{"@type":"Person","name":%q},"publisher":{"@type":"Organization","name":"BrickPlans","url":%q},"mainEntityOfPage":{"@type":"WebPage","@id":%q},"url":%q}`,
+	jsonStr := fmt.Sprintf(`{"@context":"https://schema.org","@type":"BlogPosting","headline":%q,"description":%q,"datePublished":%q,"dateModified":%q,"author":{"@type":"Person","name":%q},"publisher":{"@type":"Organization","name":"BrickPlan","url":%q},"mainEntityOfPage":{"@type":"WebPage","@id":%q},"url":%q}`,
 		post.Title,
 		post.Description,
 		post.Date.Format("2006-01-02T15:04:05Z07:00"),

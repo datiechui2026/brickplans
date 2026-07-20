@@ -119,13 +119,13 @@ function setMetaName(name, content) {
 }
 
 function resetMeta() {
-  document.title = 'BrickPlans — 积木图纸分享';
-  setMeta('og:title', 'BrickPlans — 积木图纸分享社区');
+  document.title = 'BrickPlan — 积木图纸分享';
+  setMeta('og:title', 'BrickPlan — 积木图纸分享社区');
   setMeta('og:description', '分享你的乐高MOC创意，探索海量积木图纸');
   setMeta('og:image', '/og-default.png');
   setMeta('og:url', '/');
   setMeta('og:type', 'website');
-  setMetaName('description', 'BrickPlans 积木图纸分享社区，发现和分享乐高MOC创意作品');
+  setMetaName('description', 'BrickPlan 积木图纸分享社区，发现和分享乐高MOC创意作品');
   // Remove any injected JSON-LD
   document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
 }
@@ -378,7 +378,7 @@ function renderNavbar() {
     className: 'nav-brand',
     href: '/',
     onclick: (e) => { e.preventDefault(); navigate('home'); },
-  }, '🧱 BrickPlans');
+  }, '🧱 BrickPlan');
 
   const actions = [];
 
@@ -543,7 +543,7 @@ function renderModal() {
   const overlay = h('div', { className: 'modal-overlay', onclick: (e) => { if (e.target === overlay) hideModal(); } },
     h('div', { className: 'modal' },
       h('button', { className: 'close', onclick: hideModal, style: { float: 'right' } }, '✕'),
-      h('h2', {}, isLogin ? '🔑 登录 BrickPlans' : '🧱 注册 BrickPlans'),
+      h('h2', {}, isLogin ? '🔑 登录 BrickPlan' : '🧱 注册 BrickPlan'),
       h('div', { id: 'modal-error' }),
       h('div', { className: 'form-group' },
         isLogin ? null : h('label', { className: 'form-label' }, '用户名'),
@@ -773,7 +773,7 @@ function renderPrivacyPage() {
              '<strong>无追踪原则</strong>：不使用第三方追踪脚本',
              '<strong>无广告定向</strong>：不做用户画像用于广告投放']],
           ['三、内容所有权',
-            '您上传的作品版权归您所有，BrickPlans 仅获得展示权限。',
+            '您上传的作品版权归您所有，BrickPlan 仅获得展示权限。',
             ['删除作品后，服务器副本在30天内彻底清除',
              '注销账号后，所有个人数据在30天内匿名化或删除']],
           ['四、第三方共享',
@@ -804,7 +804,7 @@ function renderPrivacyPage() {
 
 // ── Error Page (404 / 500) ──
 const FAQ_ITEMS = [
-  { q: '什么是 MOC？', a: 'MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于乐高官方套装。BrickPlans 是分享 MOC 图纸的社区。' },
+  { q: '什么是 MOC？', a: 'MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于乐高官方套装。BrickPlan 是分享 MOC 图纸的社区。' },
   { q: '如何上传我的作品？', a: '注册登录后，点击右上角「上传」按钮，填写标题、分类、难度、零件数等信息，并上传图片或 PDF 图纸。' },
   { q: '支持什么文件格式？', a: '支持 JPG/PNG/WebP 图片和 PDF 文件，单文件最大 20MB，一次最多 10 个文件。图片会自动压缩转码。' },
   { q: '图纸版权归谁？', a: '作品版权归创作者所有。请勿上传他人受版权保护的作品；发现侵权可在作品页底部「举报」反馈。' },
@@ -820,7 +820,7 @@ function renderFAQ() {
     h('div', { className: 'main', style: { maxWidth: '720px' } },
       h('article', { className: 'form-card', style: { lineHeight: '1.8' } },
         h('h1', {}, '❓ 常见问题'),
-        h('p', { style: { color: 'var(--text-sec)', marginBottom: '24px' } }, '关于 BrickPlans 积木图纸社区的常见问题解答。'),
+        h('p', { style: { color: 'var(--text-sec)', marginBottom: '24px' } }, '关于 BrickPlan 积木图纸社区的常见问题解答。'),
         ...FAQ_ITEMS.flatMap(item => [
           h('h2', { style: { marginTop: '24px', fontSize: '1.15rem' } }, item.q),
           h('p', {}, item.a),
@@ -877,7 +877,7 @@ function renderHome() {
   // Hero section
   container.appendChild(
     h('section', { className: 'hero' },
-      h('h1', {}, '🧱 BrickPlans'),
+      h('h1', {}, '🧱 BrickPlan'),
       h('p', {}, '发现和分享乐高MOC创意的积木图纸社区'),
     ),
   );
@@ -1012,8 +1012,8 @@ function renderHome() {
   // Footer
   mainWrap.appendChild(
     h('footer', { className: 'footer' },
-      h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlans'),
-      h('div', {}, '© 2026 BrickPlans 积木图纸分享社区',
+      h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlan'),
+      h('div', {}, '© 2026 BrickPlan 积木图纸分享社区',
         h('span', {}, ' · '),
         h('a', { href: '/blog', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '博客'),
         h('span', {}, ' · '),
@@ -1265,9 +1265,9 @@ async function loadDetail(id) {
     const bp = await api.getBlueprint(id);
 
     // ── Dynamic SEO: update title, OG tags, and inject JSON-LD ──
-    document.title = `${bp.title} — BrickPlans`;
+    document.title = `${bp.title} — BrickPlan`;
     setMeta('og:title', bp.title);
-    const plainDesc = stripMarkdown(bp.description || 'BrickPlans 积木图纸分享社区');
+    const plainDesc = stripMarkdown(bp.description || 'BrickPlan 积木图纸分享社区');
     setMeta('og:description', plainDesc);
     setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
     setMeta('og:url', `${window.location.origin}/detail/${bp.id}`);
@@ -3715,7 +3715,7 @@ async function renderBlogList() {
   const filter = state.blogFilter || {};
   const main = h('div', { className: 'main' },
     h('div', { className: 'blog-list' },
-      h('h1', {}, '📖 BrickPlans 博客'),
+      h('h1', {}, '📖 BrickPlan 博客'),
       h('p', { className: 'blog-subtitle' }, '积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容'),
       h('div', { id: 'blog-content', className: 'loading' },
         h('div', { className: 'spinner' }),
@@ -3813,7 +3813,7 @@ async function renderBlogDetail() {
     el.className = '';
 
     // SEO: update title and meta
-    document.title = `${post.title} - BrickPlans 博客`;
+    document.title = `${post.title} - BrickPlan 博客`;
     const plainDesc = stripMarkdown(post.description || post.title);
     setMeta('og:title', post.title);
     setMeta('og:description', plainDesc);

@@ -1,4 +1,4 @@
-# BrickPlans API 接口文档
+# BrickPlan API 接口文档
 
 > 自动生成于 2026-06-14 | 后端版本 0.1.0
 

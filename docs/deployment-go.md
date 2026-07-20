@@ -1,4 +1,4 @@
-# BrickPlans 后端 (Go) 部署手册
+# BrickPlan 后端 (Go) 部署手册
 
 本文档部署 Go 版后端 (`backend-go/`，Gin + GORM + MySQL)，替代 Python 版 (`backend/`)。前端与 nginx 配置基本不变：nginx 仍把 `/api/`、`/uploads/` 反代到 `127.0.0.1:8100`，只是后端进程由 Python/uvicorn 换成 Go 二进制，数据库由 SQLite 换成 MySQL。
 
@@ -92,7 +92,7 @@ UPLOAD_DIR=/home/ubuntu/project/brickplans/backend-go/uploads
 
 ```ini
 [Unit]
-Description=BrickPlans Go backend
+Description=BrickPlan Go backend
 After=network.target mysql.service
 
 [Service]
