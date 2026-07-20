@@ -27,6 +27,9 @@ backend-go/uploads/
 # Go
 backend-go/brickplans-backend
 backend-go/brickplans-backend.exe
+backend-go/brickplans-backend-prod
+backend-go/brickplans-backend-linux
+backend-go/*.prod
 
 # IDE
 .idea/
@@ -48,3 +51,8 @@ htmlcov/
 
 # Logs
 *.log
+
+# Release artifacts (build outputs, not source)
+releases/
+backend-go/content/blog/*.bak
+docs/*.bak
