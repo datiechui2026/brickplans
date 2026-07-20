@@ -19,8 +19,8 @@
 ```html
 <meta property="og:title" content="BrickPlans — 积木图纸分享社区" />
 <meta property="og:description" content="分享你的乐高MOC创意，探索海量积木图纸" />
-<meta property="og:image" content="https://brickplans.com/og-default.png" />
-<meta property="og:url" content="https://brickplans.com" />
+<meta property="og:image" content="https://brickplan.cn/og-default.png" />
+<meta property="og:url" content="https://brickplan.cn" />
 <meta property="og:type" content="website" />
 <meta name="description" content="BrickPlans 积木图纸分享社区，发现和分享乐高MOC创意作品" />
 ```
@@ -54,7 +54,7 @@ GET /sitemap.xml → 返回所有公开图纸的 URL 列表
 ```
 User-agent: *
 Allow: /
-Sitemap: https://brickplans.com/sitemap.xml
+Sitemap: https://brickplan.cn/sitemap.xml
 ```
 
 ### 2.5 JSON-LD 结构化数据（详情页）

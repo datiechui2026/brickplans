@@ -54,7 +54,7 @@ func detailNoscript(bp *db.Blueprint, cover, public string) template.HTML {
 		b.WriteString(fmt.Sprintf(`<p>作者：<a href="%s/user/%s">%s</a></p>`, public, esc(bp.Author.ID), esc(bp.Author.Username)))
 	}
 	if bp.Description != nil && *bp.Description != "" {
-		b.WriteString(fmt.Sprintf("<p>%s</p>", esc(*bp.Description)))
+		b.WriteString(string(mdToHTML(*bp.Description)))
 	}
 	if cover != "" {
 		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(bp.Title)))

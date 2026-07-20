@@ -33,4 +33,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://brickplans.com/sitemap.xml
+Sitemap: https://brickplan.cn/sitemap.xml

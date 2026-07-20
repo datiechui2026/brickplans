@@ -27,7 +27,7 @@
 │  [微信] 💬    [QQ] 🐧      │
 │  [微博] 📢    [Twitter] 🐦 │
 │                           │
-│  https://brickplans.com/   │
+│  https://brickplan.cn/   │
 │  blueprint/midieval-castle │
 └────────────────────────────┘
 ```

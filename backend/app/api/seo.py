@@ -34,7 +34,7 @@ async def sitemap(db: AsyncSession = Depends(get_db)):
     )
     blueprints = result.all()
 
-    base_url = "https://brickplans.com"
+    base_url = "https://brickplan.cn"
 
     urls = []
     for bp_id, bp_slug, bp_updated in blueprints:

@@ -396,5 +396,18 @@ export async function adminSetBanned(id, banned) {
   });
 }
 
+// ── Blog ──
+export async function getBlogPosts({ category = '', tag = '' } = {}) {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (tag) params.set('tag', tag);
+  const qs = params.toString();
+  return request(`/api/blog${qs ? '?' + qs : ''}`);
+}
+
+export async function getBlogPost(slug) {
+  return request(`/api/blog/${slug}`);
+}
+
 // Restore session on load if the user was logged in (refresh cookie is httpOnly).
 ensureSession();

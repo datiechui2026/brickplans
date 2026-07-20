@@ -7,18 +7,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"brickplans/internal/blog"
 	"brickplans/internal/config"
 	"brickplans/internal/db"
 )
 
 type Handler struct {
-	cfg *config.Config
-	gdb *gorm.DB
-	r   *Renderer
+	cfg       *config.Config
+	gdb       *gorm.DB
+	r         *Renderer
+	blogStore *blog.Store
 }
 
-func NewHandler(cfg *config.Config, gdb *gorm.DB, r *Renderer) *Handler {
-	return &Handler{cfg: cfg, gdb: gdb, r: r}
+func NewHandler(cfg *config.Config, gdb *gorm.DB, r *Renderer, blogStore *blog.Store) *Handler {
+	return &Handler{cfg: cfg, gdb: gdb, r: r, blogStore: blogStore}
 }
 
 // RegisterRoutes mounts SSR page routes at the site root (alongside /api, /uploads).
@@ -34,6 +36,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/admin", h.Simple("管理后台", "BrickPlans 管理后台。"))
 	r.GET("/privacy", h.Simple("隐私策略", "BrickPlans 隐私策略。"))
 	r.GET("/faq", h.FAQ)
+	r.GET("/blog", h.BlogList)
+	r.GET("/blog/:slug", h.BlogDetail)
 }
 
 func (h *Handler) Home(c *gin.Context) {

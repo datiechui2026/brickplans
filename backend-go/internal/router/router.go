@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"brickplans/internal/blog"
 	"brickplans/internal/config"
 	"brickplans/internal/handler"
 	"brickplans/internal/middleware"
@@ -22,6 +24,7 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	r.Use(middleware.HeadToGet()) // HEAD -> GET conversion (must be first, before routing)
 	r.Use(middleware.Recovery())
 	r.Use(middleware.SecurityHeaders(cfg))
 	r.Use(cors.New(cors.Config{
@@ -34,6 +37,12 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 
 	// Multipart upload memory threshold; larger parts spill to temp files.
 	r.MaxMultipartMemory = 32 << 20
+
+	// Load blog content store (non-critical: log warning on failure).
+	blogStore, blogErr := blog.Load(cfg.BlogContentDir)
+	if blogErr != nil {
+		fmt.Printf("[blog] warning: failed to load blog content from %s: %v\n", cfg.BlogContentDir, blogErr)
+	}
 
 	// Serve uploaded files when using local storage.
 	if cfg.StorageBackend != "tencent_cos" {
@@ -61,9 +70,10 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 	handler.NewReportsHandler(cfg, gdb).RegisterRoutes(api)
 	handler.NewStatsHandler(cfg, gdb).RegisterRoutes(api)
 	handler.NewAdminHandler(cfg, gdb).RegisterRoutes(api)
+	handler.NewBlogAPIHandler(cfg, blogStore).RegisterRoutes(api)
 
 	// SSR page routes (site root) + sitemap.
-	ssr.NewHandler(cfg, gdb, ssrRenderer).RegisterRoutes(r)
+	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).RegisterRoutes(r)
 	handler.NewSEOHandler(cfg, gdb).RegisterRoutes(r)
 
 	// Fallback: /api/* → JSON 404; anything else → SSR 404 page.
@@ -72,7 +82,7 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 			c.JSON(http.StatusNotFound, gin.H{"detail": "Not found"})
 			return
 		}
-		ssr.NewHandler(cfg, gdb, ssrRenderer).NotFound(c)
+		ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).NotFound(c)
 	})
 
 	return r

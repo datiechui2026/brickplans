@@ -1,5 +1,23 @@
 import * as api from './api.js';
 import './styles/main.css';
+import { marked } from 'marked';
+
+// Configure marked: disable mangle/email autolink for safety
+marked.setOptions({ breaks: true, gfm: true });
+
+// Strip markdown to plain text for meta tags
+function stripMarkdown(md) {
+  if (!md) return '';
+  return md
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/^[-*]\s+/gm, '')
+    .replace(/\n+/g, ' ')
+    .trim();
+}
 
 // ═══════════════════════════════════════════
 // Toast notification system
@@ -120,6 +138,14 @@ function buildPath(page, params = {}) {
   if (page === 'detail' && params.id) return `/detail/${encodeURIComponent(params.id)}`;
   if (page === 'user' && params.id) return `/user/${encodeURIComponent(params.id)}`;
   if (page === 'edit' && params.id) return `/edit/${encodeURIComponent(params.id)}`;
+  if (page === 'blog-detail' && params.slug) return `/blog/${encodeURIComponent(params.slug)}`;
+  if (page === 'blog') {
+    const q = new URLSearchParams();
+    if (params.category) q.set('category', params.category);
+    if (params.tag) q.set('tag', params.tag);
+    const qs = q.toString();
+    return '/blog' + (qs ? '?' + qs : '');
+  }
   if (page === 'explore') {
     const q = new URLSearchParams();
     if (params.q) q.set('q', params.q);
@@ -138,6 +164,9 @@ function parsePath() {
   const params = {};
   new URLSearchParams(location.search).forEach((v, k) => { params[k] = v; });
   if (path === '/' || path === '') return { page: 'home', params };
+  const blogM = path.match(/^\/blog\/(.+?)\/?$/);
+  if (blogM) return { page: 'blog-detail', params: { ...params, slug: decodeURIComponent(blogM[1]) } };
+  if (path === '/blog' || path === '/blog/') return { page: 'blog', params };
   const m = path.match(/^\/(detail|user|edit)\/(.+?)\/?$/);
   if (m) return { page: m[1], params: { ...params, id: decodeURIComponent(m[2]) } };
   const page = path.replace(/^\//, '').replace(/\/$/, '');
@@ -161,6 +190,10 @@ function applyState(page, params = {}) {
   state.page = page;
   if (params.id) state.detailId = params.id;
   if (page === 'edit' && params.id) state.editId = params.id;
+  if (page === 'blog-detail' && params.slug) state.blogSlug = params.slug;
+  if (page === 'blog') {
+    state.blogFilter = { category: params.category || '', tag: params.tag || '' };
+  }
   if (page === 'user' && params.id) {
     state.userProfile = { ...state.userProfile, id: params.id };
   } else if (page === 'user' && params.username) {
@@ -377,6 +410,10 @@ function renderNavbar() {
 
   return h('nav', { className: 'navbar' },
     brandEl,
+    h('div', { className: 'nav-links' },
+      h('a', { href: '/explore', onclick: (e) => { e.preventDefault(); navigate('explore'); }, className: 'nav-link' }, '发现'),
+      h('a', { href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); }, className: 'nav-link' }, '博客'),
+    ),
     h('div', { className: 'nav-actions' }, ...actions),
   );
 }
@@ -751,7 +788,7 @@ function renderPrivacyPage() {
             ['重大变更需要用户重新确认同意']],
           ['七、联系方式',
             '如有隐私相关问题，请联系：',
-            ['邮箱：privacy@brickplans.com',
+            ['邮箱：privacy@brickplan.cn',
              '举报入口：每个作品详情页底部有小字举报链接']],
         ].flatMap(([title, intro, items]) => [
           h('h2', { style: { marginTop: '32px', fontSize: '1.2rem' } }, title),
@@ -977,6 +1014,8 @@ function renderHome() {
     h('footer', { className: 'footer' },
       h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlans'),
       h('div', {}, '© 2026 BrickPlans 积木图纸分享社区',
+        h('span', {}, ' · '),
+        h('a', { href: '/blog', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '博客'),
         h('span', {}, ' · '),
         h('a', { href: '/privacy', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '隐私策略'),
       ),
@@ -1228,11 +1267,12 @@ async function loadDetail(id) {
     // ── Dynamic SEO: update title, OG tags, and inject JSON-LD ──
     document.title = `${bp.title} — BrickPlans`;
     setMeta('og:title', bp.title);
-    setMeta('og:description', bp.description || 'BrickPlans 积木图纸分享社区');
+    const plainDesc = stripMarkdown(bp.description || 'BrickPlans 积木图纸分享社区');
+    setMeta('og:description', plainDesc);
     setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
     setMeta('og:url', `${window.location.origin}/detail/${bp.id}`);
     setMeta('og:type', 'article');
-    setMetaName('description', (bp.description || 'BrickPlans 积木图纸').substring(0, 160));
+    setMetaName('description', plainDesc.substring(0, 160));
 
     // Inject JSON-LD structured data
     document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
@@ -1564,11 +1604,11 @@ async function loadDetail(id) {
               );
             })(),
           ] : []),
-          // ── Description inside sidebar ──
+          // ── Description inside sidebar (markdown rendered) ──
           ...(bp.description ? [
             h('div', { className: 'desc-card' },
-              h('h3', {}, '📝 描述'),
-              h('div', {}, bp.description),
+              h('h3', {}, '📝 图纸介绍'),
+              h('div', { className: 'markdown-body', innerHTML: marked.parse(bp.description) }),
             ),
           ] : []),
           // ── Tags inside sidebar ──
@@ -3664,11 +3704,187 @@ function renderNavbarIntoDOM() {
   else document.getElementById('app').prepend(renderNavbar());
 }
 
+// ═══════════════════════════════════════════
+// Blog Pages
+// ═══════════════════════════════════════════
+async function renderBlogList() {
+  const container = $id('page-blog');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const filter = state.blogFilter || {};
+  const main = h('div', { className: 'main' },
+    h('div', { className: 'blog-list' },
+      h('h1', {}, '📖 BrickPlans 博客'),
+      h('p', { className: 'blog-subtitle' }, '积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容'),
+      h('div', { id: 'blog-content', className: 'loading' },
+        h('div', { className: 'spinner' }),
+      ),
+    ),
+  );
+  container.appendChild(main);
+
+  try {
+    const data = await api.getBlogPosts({ category: filter.category, tag: filter.tag });
+    const el = $id('blog-content');
+    if (!el) return;
+    el.innerHTML = '';
+    el.className = '';
+
+    // Category/tag filter bar
+    if (data.categories && data.categories.length > 0) {
+      const filterBar = h('div', { className: 'blog-filter' });
+      const allBtn = h('button', {
+        className: !filter.category && !filter.tag ? 'active' : '',
+        onclick: () => navigate('blog'),
+      }, '全部');
+      filterBar.appendChild(allBtn);
+      data.categories.forEach(cat => {
+        filterBar.appendChild(h('button', {
+          className: filter.category === cat ? 'active' : '',
+          onclick: () => navigate('blog', { category: cat }),
+        }, cat));
+      });
+      el.appendChild(filterBar);
+    }
+
+    if (!data.items || data.items.length === 0) {
+      el.appendChild(h('div', { className: 'empty' },
+        h('div', { className: 'empty-icon' }, '📭'),
+        h('p', {}, '暂无文章'),
+      ));
+      return;
+    }
+
+    data.items.forEach(post => {
+      const card = h('div', {
+        className: 'blog-card',
+        onclick: () => navigate('blog-detail', { slug: post.slug }),
+      },
+        h('h2', {}, post.title),
+        h('div', { className: 'blog-meta' },
+          h('span', {}, post.date),
+          post.category ? h('span', { className: 'blog-category' }, post.category) : null,
+          post.author ? h('span', {}, post.author) : null,
+        ),
+        post.description ? h('div', { className: 'blog-desc' }, post.description) : null,
+        ...(post.tags && post.tags.length ? [
+          h('div', { className: 'blog-tags' },
+            ...post.tags.map(t => h('span', { className: 'blog-tag' }, t)),
+          ),
+        ] : []),
+      );
+      el.appendChild(card);
+    });
+  } catch (e) {
+    const el = $id('blog-content');
+    if (el) {
+      el.innerHTML = '';
+      el.appendChild(h('div', { className: 'error-block' },
+        h('div', { className: 'error-icon' }, '🔌'),
+        h('p', {}, '加载失败，请检查后端服务'),
+      ));
+    }
+  }
+}
+
+async function renderBlogDetail() {
+  const container = $id('page-blog-detail');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const slug = state.blogSlug;
+  if (!slug) { navigate('blog'); return; }
+
+  container.appendChild(h('div', { className: 'main' },
+    h('div', { className: 'blog-detail' },
+      h('a', { className: 'back-link', href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); } }, '← 返回博客'),
+      h('div', { id: 'blog-detail-content', className: 'loading' },
+        h('div', { className: 'spinner' }),
+      ),
+    ),
+  ));
+
+  try {
+    const post = await api.getBlogPost(slug);
+    const el = $id('blog-detail-content');
+    if (!el) return;
+    el.innerHTML = '';
+    el.className = '';
+
+    // SEO: update title and meta
+    document.title = `${post.title} - BrickPlans 博客`;
+    const plainDesc = stripMarkdown(post.description || post.title);
+    setMeta('og:title', post.title);
+    setMeta('og:description', plainDesc);
+    setMeta('og:url', `${window.location.origin}/blog/${slug}`);
+    setMeta('og:type', 'article');
+    setMetaName('description', plainDesc.substring(0, 160));
+
+    // Header
+    el.appendChild(h('div', { className: 'blog-header' },
+      h('h1', {}, post.title),
+      h('div', { className: 'blog-meta' },
+        h('span', {}, post.date),
+        post.author ? h('span', {}, `作者：${post.author}`) : null,
+        post.category ? h('span', { className: 'blog-category' }, post.category) : null,
+      ),
+    ));
+
+    // Content (rendered markdown)
+    el.appendChild(h('div', {
+      className: 'blog-content markdown-body',
+      innerHTML: marked.parse(post.body || ''),
+    }));
+
+    // Tags
+    if (post.tags && post.tags.length) {
+      el.appendChild(h('div', { className: 'blog-tags', style: { marginTop: '24px' } },
+        ...post.tags.map(t => h('span', {
+          className: 'blog-tag',
+          style: { cursor: 'pointer' },
+          onclick: () => navigate('blog', { tag: t }),
+        }, t)),
+      ));
+    }
+
+    // Prev/Next navigation
+    if (post.prev_slug || post.next_slug) {
+      const nav = h('div', { className: 'blog-nav' });
+      if (post.prev_slug) {
+        nav.appendChild(h('div', { className: 'nav-prev' },
+          h('div', { className: 'nav-label' }, '上一篇'),
+          h('a', { href: `/blog/${post.prev_slug}`, onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.prev_slug }); } }, post.prev_title),
+        ));
+      } else {
+        nav.appendChild(h('div', {}));
+      }
+      if (post.next_slug) {
+        nav.appendChild(h('div', { className: 'nav-next', style: { textAlign: 'right' } },
+          h('div', { className: 'nav-label' }, '下一篇'),
+          h('a', { href: `/blog/${post.next_slug}`, onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.next_slug }); } }, post.next_title),
+        ));
+      }
+      el.appendChild(nav);
+    }
+  } catch (e) {
+    const el = $id('blog-detail-content');
+    if (el) {
+      el.innerHTML = '';
+      el.appendChild(h('div', { className: 'error-block' },
+        h('div', { className: 'error-icon' }, '📄'),
+        h('p', {}, e.message || '文章不存在'),
+        h('button', { className: 'btn btn-primary btn-sm', onclick: () => navigate('blog') }, '返回博客列表'),
+      ));
+    }
+  }
+}
+
 function render() {
   const app = document.getElementById('app');
 
   // Ensure page containers exist
-  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications', 'faq'];
+  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications', 'faq', 'blog', 'blog-detail'];
   if (!app.querySelector('#page-home')) {
     app.innerHTML = '';
     renderNavbarIntoDOM();
@@ -3726,6 +3942,13 @@ function render() {
     case 'notifications':
       resetMeta();
       renderNotifications();
+      break;
+    case 'blog':
+      resetMeta();
+      renderBlogList();
+      break;
+    case 'blog-detail':
+      renderBlogDetail();
       break;
     default: resetMeta(); renderErrorPage(404); break;
   }

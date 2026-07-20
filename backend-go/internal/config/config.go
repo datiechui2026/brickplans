@@ -36,8 +36,9 @@ type Config struct {
 	SMTPFrom   string
 
 	// SEO/SSR
-	FrontendDist string // path to frontend/dist (for vite manifest + static assets)
-	PublicURL    string // canonical site URL, e.g. https://brickplans.com
+	FrontendDist   string // path to frontend/dist (for vite manifest + static assets)
+	PublicURL      string // canonical site URL, e.g. https://brickplan.cn
+	BlogContentDir string // path to blog markdown files
 }
 
 func Load() *Config {
@@ -66,7 +67,8 @@ func Load() *Config {
 		SMTPPass:                getenv("SMTP_PASS", ""),
 		SMTPFrom:                getenv("SMTP_FROM", ""),
 		FrontendDist:            getenv("FRONTEND_DIST", "../frontend/dist"),
-		PublicURL:               getenv("PUBLIC_URL", "https://brickplans.com"),
+		PublicURL:               getenv("PUBLIC_URL", "https://brickplan.cn"),
+		BlogContentDir:          getenv("BLOG_CONTENT_DIR", "./content/blog"),
 	}
 	c.validate()
 	return c

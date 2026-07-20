@@ -22,7 +22,7 @@ from app.models import User, Blueprint
 
 # ── Config ──────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL_SYNC", "sqlite:///./brickplans.db")
-OFFICIAL_EMAIL = "official@brickplans.com"
+OFFICIAL_EMAIL = "official@brickplan.cn"
 OFFICIAL_USERNAME = "BrickPlans官方"
 OFFICIAL_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "brickplans2024")
 OFFICIAL_BIO = "BrickPlans 官方账号，分享高质量的积木图纸与创意灵感。"

@@ -120,7 +120,7 @@ curl http://127.0.0.1:8100/api/health   # {"status":"ok","version":"0.2.0"}
 如需把官方账号设为管理员，手动执行：
 
 ```sql
-UPDATE users SET is_admin = 1 WHERE email = 'official@brickplans.com';
+UPDATE users SET is_admin = 1 WHERE email = 'official@brickplan.cn';
 ```
 
 ## 7. 初始化数据

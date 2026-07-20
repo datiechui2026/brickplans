@@ -99,6 +99,7 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 		data.OGDescription = data.Description
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=3600") // HTML pages: 1 hour browser cache
 	if err := r.tmpl.Execute(c.Writer, data); err != nil {
 		log.Printf("[ssr] template execute: %v", err)
 	}

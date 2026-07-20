@@ -287,7 +287,7 @@ User (用户)
 #### 用户创建
 - 直接调 `/api/auth/register`，无需验证码
 - 返回的 `access_token` 用于后续图纸创建和图片上传
-- 用户名/邮箱需要唯一，建议用模式 `sim_user_{i}@brickplans.com`
+- 用户名/邮箱需要唯一，建议用模式 `sim_user_{i}@brickplan.cn`
 
 #### 图纸创建
 - `title` 必填，`slug` 自动从 title 生成

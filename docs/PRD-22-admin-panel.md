@@ -10,7 +10,7 @@
 **数据库中新增字段**：`User.is_admin: bool = False`
 
 **设置管理员的方式**（开发阶段）：
-- 直接改数据库：`UPDATE user SET is_admin = 1 WHERE email = 'admin@brickplans.com';`
+- 直接改数据库：`UPDATE user SET is_admin = 1 WHERE email = 'admin@brickplan.cn';`
 - 后续可做命令行脚本设管理员
 
 ### 二、管理员入口
