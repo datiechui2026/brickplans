@@ -35,6 +35,10 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.DELETE("/users/:user_id", h.deleteUser)
 	g.PUT("/users/:user_id/admin", h.setAdmin)
 	g.PUT("/users/:user_id/ban", h.setBanned)
+	g.GET("/featured", h.listFeatured)
+	g.POST("/featured", h.addFeatured)
+	g.PUT("/featured/reorder", h.reorderFeatured)
+	g.DELETE("/featured/:id", h.removeFeatured)
 }
 
 func (h *AdminHandler) listBlueprints(c *gin.Context) {
@@ -313,6 +317,88 @@ func (h *AdminHandler) setBanned(c *gin.Context) {
 	if err := h.gdb.Model(&target).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+// ── Featured (home 热门推荐) management ──────────────
+
+// featuredOut is one curated entry with its blueprint preloaded for the admin tab.
+func featuredOut(f *db.FeaturedBlueprint, bp *db.Blueprint) gin.H {
+	return gin.H{
+		"id":           f.ID,
+		"blueprint_id": f.BlueprintID,
+		"sort_order":   f.SortOrder,
+		"created_at":   dto.ISO(f.CreatedAt),
+		"blueprint":    toBlueprintOut(bp, 0, 0, false, false),
+	}
+}
+
+func (h *AdminHandler) listFeatured(c *gin.Context) {
+	var featured []db.FeaturedBlueprint
+	h.gdb.Order("sort_order ASC, created_at ASC").Find(&featured)
+	items := make([]gin.H, 0, len(featured))
+	for i := range featured {
+		var bp db.Blueprint
+		if err := h.gdb.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
+			First(&bp, "id = ?", featured[i].BlueprintID).Error; err != nil {
+			continue // blueprint deleted; skip the orphaned featured entry
+		}
+		items = append(items, featuredOut(&featured[i], &bp))
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items)})
+}
+
+func (h *AdminHandler) addFeatured(c *gin.Context) {
+	var payload struct {
+		BlueprintID string `json:"blueprint_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	var bp db.Blueprint
+	if err := h.gdb.First(&bp, "id = ?", payload.BlueprintID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Blueprint not found"})
+		return
+	}
+	var existing db.FeaturedBlueprint
+	if err := h.gdb.Where("blueprint_id = ?", payload.BlueprintID).First(&existing).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"detail": "Already featured"})
+		return
+	}
+	var maxOrder int
+	h.gdb.Model(&db.FeaturedBlueprint{}).Select("COALESCE(MAX(sort_order), -1)").Scan(&maxOrder)
+	f := db.FeaturedBlueprint{BlueprintID: payload.BlueprintID, SortOrder: maxOrder + 1}
+	if err := h.gdb.Create(&f).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	c.JSON(http.StatusCreated, featuredOut(&f, &bp))
+}
+
+func (h *AdminHandler) removeFeatured(c *gin.Context) {
+	id := c.Param("id")
+	if err := h.gdb.Delete(&db.FeaturedBlueprint{}, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *AdminHandler) reorderFeatured(c *gin.Context) {
+	var payload struct {
+		Items []struct {
+			ID        string `json:"id"`
+			SortOrder int    `json:"sort_order"`
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	for _, it := range payload.Items {
+		h.gdb.Model(&db.FeaturedBlueprint{}).Where("id = ?", it.ID).Update("sort_order", it.SortOrder)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }

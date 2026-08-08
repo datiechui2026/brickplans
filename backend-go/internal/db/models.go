@@ -226,10 +226,30 @@ func (r *Report) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// FeaturedBlueprint is an admin-curated entry in the home page's "热门推荐"
+// section. SortOrder is ascending; the home falls back to latest published
+// blueprints when no entries are curated (never to view_count).
+type FeaturedBlueprint struct {
+	ID          string    `gorm:"type:char(36);primaryKey" json:"id"`
+	BlueprintID string    `gorm:"type:char(36);uniqueIndex;not null" json:"blueprint_id"`
+	SortOrder   int       `gorm:"not null;default:0" json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at"`
+
+	Blueprint *Blueprint `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (f *FeaturedBlueprint) BeforeCreate(tx *gorm.DB) error {
+	if f.ID == "" {
+		f.ID = NewUUID()
+	}
+	return nil
+}
+
 // AllModels returns every model for AutoMigrate.
 func AllModels() []interface{} {
 	return []interface{}{
 		&User{}, &Blueprint{}, &BlueprintImage{}, &Tag{}, &BlueprintTag{},
 		&Favorite{}, &Like{}, &Comment{}, &Notification{}, &Report{},
+		&FeaturedBlueprint{},
 	}
 }

@@ -95,6 +95,7 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/blueprints")
 	g.POST("", auth.AuthRequired(h.cfg, h.gdb), h.create)
 	g.GET("", auth.OptionalUser(h.cfg, h.gdb), h.list)
+	g.GET("/featured", auth.OptionalUser(h.cfg, h.gdb), h.featured)
 	g.GET("/:blueprint_id", auth.OptionalUser(h.cfg, h.gdb), h.get)
 	g.PUT("/:blueprint_id", auth.AuthRequired(h.cfg, h.gdb), h.update)
 	g.DELETE("/:blueprint_id", auth.AuthRequired(h.cfg, h.gdb), h.delete)
@@ -546,6 +547,60 @@ func (h *BlueprintsHandler) related(c *gin.Context) {
 		items = append(items, *toBlueprintOut(&bps[i], 0, 0, false, false))
 	}
 	c.JSON(http.StatusOK, dto.BlueprintListOut{Items: items, Total: len(items), Page: 1, PageSize: 6})
+}
+
+// featured returns the admin-curated "热门推荐" list for the home page, ordered
+// by sort_order. When nothing is curated it falls back to the latest published
+// blueprints (NOT view_count) so the section is never empty and the default is
+// never popularity-based.
+func (h *BlueprintsHandler) featured(c *gin.Context) {
+	size := atoiOr(c.Query("size"), 8, 1)
+	if size > 50 {
+		size = 50
+	}
+	user := auth.CurrentUser(c)
+
+	var featured []db.FeaturedBlueprint
+	h.gdb.Order("sort_order ASC, created_at ASC").Limit(size).Find(&featured)
+
+	var bps []db.Blueprint
+	if len(featured) > 0 {
+		bpIDs := make([]string, 0, len(featured))
+		for _, f := range featured {
+			bpIDs = append(bpIDs, f.BlueprintID)
+		}
+		h.gdb.Where("id IN ? AND is_published = ?", bpIDs, true).
+			Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
+			Find(&bps)
+		// Reorder the loaded blueprints to match the curated sort_order.
+		byID := make(map[string]db.Blueprint, len(bps))
+		for _, b := range bps {
+			byID[b.ID] = b
+		}
+		ordered := make([]db.Blueprint, 0, len(bps))
+		for _, f := range featured {
+			if b, ok := byID[f.BlueprintID]; ok {
+				ordered = append(ordered, b)
+			}
+		}
+		bps = ordered
+	} else {
+		// No curation -> latest published (never view_count).
+		h.gdb.Where("is_published = ?", true).
+			Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
+			Order("created_at DESC").Limit(size).Find(&bps)
+	}
+
+	bpIDs := make([]string, 0, len(bps))
+	for _, b := range bps {
+		bpIDs = append(bpIDs, b.ID)
+	}
+	favCounts, likeCounts, userLiked, userFav := h.bulkCounts(bpIDs, user)
+	items := make([]dto.BlueprintOut, 0, len(bps))
+	for i := range bps {
+		items = append(items, *toBlueprintOut(&bps[i], favCounts[bps[i].ID], likeCounts[bps[i].ID], userLiked[bps[i].ID], userFav[bps[i].ID]))
+	}
+	c.JSON(http.StatusOK, dto.BlueprintListOut{Items: items, Total: len(items), Page: 1, PageSize: size})
 }
 
 // ── Serialization ───────────────────────────────────
