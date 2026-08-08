@@ -2,27 +2,7 @@
   <!-- Hero -->
   <view class="hero card">
     <view class="hero-title">🧱 BrickPlan</view>
-    <view class="hero-sub muted">发现和分享乐高 MOC 创意的积木图纸社区</view>
-  </view>
-
-  <!-- Stats -->
-  <view wx:if="{{stats}}" class="stats card">
-    <view class="stat-item">
-      <text class="stat-num">{{stats.blueprints}}</text>
-      <text class="stat-label muted">图纸作品</text>
-    </view>
-    <view class="stat-item">
-      <text class="stat-num">{{stats.users}}</text>
-      <text class="stat-label muted">创作者</text>
-    </view>
-    <view class="stat-item">
-      <text class="stat-num">{{stats.views}}</text>
-      <text class="stat-label muted">总浏览</text>
-    </view>
-    <view class="stat-item">
-      <text class="stat-num">{{stats.favorites}}</text>
-      <text class="stat-label muted">总收藏</text>
-    </view>
+    <view class="hero-sub muted">发现积木MOC创意图纸</view>
   </view>
 
   <!-- Category quick nav -->

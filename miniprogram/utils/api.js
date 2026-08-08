@@ -105,6 +105,9 @@ function listBlueprints(params) {
   const q = query(params)
   return request('GET', '/api/blueprints' + (q ? '?' + q : ''))
 }
+function getFeatured(size) {
+  return request('GET', '/api/blueprints/featured' + (size ? '?size=' + size : ''))
+}
 function getBlueprint(id) { return request('GET', '/api/blueprints/' + id) }
 function getRelatedBlueprints(id) { return request('GET', '/api/blueprints/' + id + '/related') }
 function favoriteBlueprint(id) { return request('POST', '/api/blueprints/' + id + '/favorite') }
@@ -154,7 +157,7 @@ module.exports = {
   refresh,
   // endpoints
   wechatLogin, getMe, logout,
-  listBlueprints, getBlueprint, getRelatedBlueprints,
+  listBlueprints, getFeatured, getBlueprint, getRelatedBlueprints,
   favoriteBlueprint, unfavoriteBlueprint, likeBlueprint, unlikeBlueprint,
   listComments, createComment,
   listTags, createReport,
