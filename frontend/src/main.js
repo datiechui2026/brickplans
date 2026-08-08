@@ -958,9 +958,9 @@ function renderHome() {
   // Load-more button container
   mainWrap.appendChild(h('div', { id: 'home-load-more', className: 'load-more' }));
 
-  // Fetch featured — 8 items, popular
+  // Fetch featured - admin-curated 热门推荐 (server falls back to latest)
   const loadFeatured = () => {
-    api.listBlueprints({ size: 8, sort: 'popular' }).then(data => {
+    api.getFeaturedBlueprints(8).then(data => {
       const grid = $id('home-featured');
       if (!grid) return;
       grid.innerHTML = '';
@@ -985,7 +985,7 @@ function renderHome() {
       window._retryHome = () => {
         const g = $id('home-featured');
         if (g) { g.innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>'; }
-        api.listBlueprints({ size: 8, sort: 'popular' }).then(data => {
+        api.getFeaturedBlueprints(8).then(data => {
           const g2 = $id('home-featured');
           if (!g2) return;
           g2.innerHTML = '';
@@ -3245,6 +3245,8 @@ async function renderAdminPage() {
   let tab = 'pending'; // defaults
   let page = 1;
   let searchQ = '';
+  let featuredAddQ = '';   // search query for the "add to featured" box
+  let featuredItems = [];  // current featured list (for reorder)
 
   const buildUI = () => {
     container.innerHTML = '';
@@ -3288,6 +3290,7 @@ async function renderAdminPage() {
           h('button', { className: `tab-btn${tab === 'all' ? ' active' : ''}`, onclick: () => { tab = 'all'; page = 1; buildUI(); } }, '📋 全部作品'),
           h('button', { className: `tab-btn${tab === 'reports' ? ' active' : ''}`, onclick: () => { tab = 'reports'; page = 1; buildUI(); } }, '🚩 举报管理'),
           h('button', { className: `tab-btn${tab === 'users' ? ' active' : ''}`, onclick: () => { tab = 'users'; page = 1; buildUI(); } }, '👤 用户管理'),
+          h('button', { className: `tab-btn${tab === 'featured' ? ' active' : ''}`, onclick: () => { tab = 'featured'; page = 1; buildUI(); } }, '🔥 热门推荐'),
         ),
 
         // Search (for "all" and "users")
@@ -3335,12 +3338,154 @@ async function renderAdminPage() {
     } catch { /* ignore */ }
   };
 
+  // ── Featured (home 热门推荐) curation ──
+  const renderFeaturedManager = async (tableEl, pagEl) => {
+    if (pagEl) pagEl.innerHTML = '';
+    tableEl.innerHTML = '';
+    tableEl.appendChild(
+      h('div', { style: { marginBottom: '24px' } },
+        h('h3', { style: { margin: '0 0 8px' } }, '➕ 添加推荐'),
+        h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+          h('input', { type: 'text', id: 'featured-add-search', className: 'form-input',
+            placeholder: '搜索标题或作者...', value: featuredAddQ,
+            style: { flex: '1', maxWidth: '320px' },
+            onkeydown: (e) => { if (e.key === 'Enter') { featuredAddQ = e.target.value; searchFeaturedAdd(); } },
+          }),
+          h('button', { className: 'btn btn-primary btn-sm', onclick: () => { featuredAddQ = $id('featured-add-search')?.value || ''; searchFeaturedAdd(); } }, '搜索'),
+        ),
+        h('div', { id: 'featured-add-results' }),
+      ),
+    );
+    tableEl.appendChild(
+      h('div', {},
+        h('h3', { style: { margin: '0 0 8px' } }, '🔥 当前推荐（↑↓ 排序，✕ 移除）'),
+        h('div', { id: 'featured-list' }, h('div', { className: 'loading' }, h('div', { className: 'spinner' }))),
+      ),
+    );
+    await loadFeaturedList();
+    if (featuredAddQ.trim()) searchFeaturedAdd();
+  };
+
+  const loadFeaturedList = async () => {
+    const el = $id('featured-list');
+    if (!el) return;
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const data = await api.adminListFeatured();
+      featuredItems = data.items || [];
+      renderFeaturedList();
+    } catch {
+      el.innerHTML = '<div class="empty"><p>加载失败</p></div>';
+    }
+  };
+
+  const renderFeaturedList = () => {
+    const el = $id('featured-list');
+    if (!el) return;
+    el.innerHTML = '';
+    if (!featuredItems.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><p>暂无推荐作品，在上方搜索并添加</p></div>';
+      return;
+    }
+    featuredItems.forEach((f, i) => {
+      const bp = f.blueprint;
+      const cover = getCoverImage(bp.images) || '';
+      el.appendChild(
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' } },
+          h('span', { style: { color: 'var(--text-sec)', width: '24px', textAlign: 'center', fontWeight: 700 } }, String(i + 1)),
+          cover ? h('img', { src: cover, className: 'cell-thumb' }) : h('div', { className: 'cell-thumb', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '-'),
+          h('div', { style: { flex: '1', minWidth: '0' } },
+            h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, bp.title),
+            h('div', { style: { fontSize: '0.8rem', color: 'var(--text-sec)' } }, bp.author ? bp.author.username : '-'),
+          ),
+          h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '4px' }, disabled: i === 0, onclick: () => handleMoveFeatured(i, -1) }, '↑'),
+          h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '4px' }, disabled: i === featuredItems.length - 1, onclick: () => handleMoveFeatured(i, 1) }, '↓'),
+          h('button', { className: 'btn btn-danger btn-sm', onclick: () => handleRemoveFeatured(f.id) }, '✕'),
+        ),
+      );
+    });
+  };
+
+  const searchFeaturedAdd = async () => {
+    const el = $id('featured-add-results');
+    if (!el) return;
+    if (!featuredAddQ.trim()) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const data = await api.adminListBlueprints({ q: featuredAddQ, page: 1 });
+      const items = data.items || [];
+      const featuredIds = new Set(featuredItems.map(f => f.blueprint_id));
+      el.innerHTML = '';
+      if (!items.length) {
+        el.innerHTML = '<div class="empty" style="padding:16px"><p>没有找到作品</p></div>';
+        return;
+      }
+      items.forEach(bp => {
+        const cover = getCoverImage(bp.images) || '';
+        const already = featuredIds.has(bp.id);
+        el.appendChild(
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--border)' } },
+            cover ? h('img', { src: cover, className: 'cell-thumb' }) : h('div', { className: 'cell-thumb', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '-'),
+            h('div', { style: { flex: '1', minWidth: '0' } },
+              h('span', { style: { fontWeight: 700 } }, bp.title),
+              h('span', { style: { fontSize: '0.8rem', color: 'var(--text-sec)', marginLeft: '8px' } }, bp.author ? bp.author.username : '-'),
+            ),
+            already
+              ? h('span', { style: { color: 'var(--text-sec)', fontSize: '0.85rem' } }, '已推荐')
+              : h('button', { className: 'btn btn-primary btn-sm', onclick: () => handleAddFeatured(bp.id) }, '添加'),
+          ),
+        );
+      });
+    } catch {
+      el.innerHTML = '<div class="empty"><p>搜索失败</p></div>';
+    }
+  };
+
+  const handleAddFeatured = async (bpId) => {
+    try {
+      await api.adminAddFeatured(bpId);
+      showToast('已添加到推荐', 'success');
+      await loadFeaturedList();
+      searchFeaturedAdd();
+    } catch (e) {
+      showToast(e.message || '添加失败', 'error');
+    }
+  };
+
+  const handleRemoveFeatured = async (id) => {
+    try {
+      await api.adminRemoveFeatured(id);
+      showToast('已移除', 'success');
+      await loadFeaturedList();
+    } catch (e) {
+      showToast(e.message || '移除失败', 'error');
+    }
+  };
+
+  const handleMoveFeatured = async (index, dir) => {
+    const newIndex = index + dir;
+    if (newIndex < 0 || newIndex >= featuredItems.length) return;
+    const arr = featuredItems;
+    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+    try {
+      await api.adminReorderFeatured(arr.map((f, i) => ({ id: f.id, sort_order: i })));
+      renderFeaturedList();
+    } catch (e) {
+      showToast(e.message || '排序失败', 'error');
+      await loadFeaturedList();
+    }
+  };
+
   const loadTable = async () => {
     const tableEl = $id('admin-table');
     const pagEl = $id('admin-pagination');
     if (!tableEl) return;
 
     try {
+      if (tab === 'featured') {
+        await renderFeaturedManager(tableEl, pagEl);
+        return;
+      }
       if (tab === 'reports') {
         const data = await api.adminListReports({ page });
         const items = data.items || [];

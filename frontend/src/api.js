@@ -172,6 +172,11 @@ export async function listBlueprints({ page = 1, size = 12, q, category, sort, t
   return request(`/api/blueprints?${params}`);
 }
 
+// Admin-curated "热门推荐" list for the home page.
+export async function getFeaturedBlueprints(size = 8) {
+  return request(`/api/blueprints/featured?size=${size}`);
+}
+
 export async function getBlueprint(id) {
   return request(`/api/blueprints/${id}`);
 }
@@ -393,6 +398,29 @@ export async function adminSetBanned(id, banned) {
   return request(`/api/admin/users/${id}/ban`, {
     method: 'PUT',
     body: JSON.stringify({ banned }),
+  });
+}
+
+// ── Featured (home 热门推荐) curation ──
+export async function adminListFeatured() {
+  return request('/api/admin/featured');
+}
+
+export async function adminAddFeatured(blueprintId) {
+  return request('/api/admin/featured', {
+    method: 'POST',
+    body: JSON.stringify({ blueprint_id: blueprintId }),
+  });
+}
+
+export async function adminRemoveFeatured(id) {
+  return request(`/api/admin/featured/${id}`, { method: 'DELETE' });
+}
+
+export async function adminReorderFeatured(items) {
+  return request('/api/admin/featured/reorder', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
   });
 }
 
