@@ -3,7 +3,7 @@
   <view wx:if="{{notLoggedIn}}" class="login-gate">
     <view class="login-icon">🧱</view>
     <view class="login-title">欢迎使用 BrickPlan</view>
-    <view class="login-sub muted">登录后可以点赞、收藏和评论</view>
+    <view class="login-sub muted">登录后可以点赞、收藏</view>
     <button class="btn btn-primary login-btn" bindtap="doLogin">微信登录</button>
     <view class="login-note muted">登录即代表同意我们的<navigator class="privacy-link" url="/pages/privacy/index" hover-class="none">隐私策略</navigator></view>
   </view>
@@ -40,7 +40,7 @@
 
       <!-- Tabs -->
       <view class="tabs">
-        <view class="tab {{tab === 'works' ? 'active' : ''}}" bindtap="switchTab" data-tab="works">我的作品</view>
+        <view wx:if="{{!isSelf}}" class="tab {{tab === 'works' ? 'active' : ''}}" bindtap="switchTab" data-tab="works">我的作品</view>
         <view wx:if="{{isSelf}}" class="tab {{tab === 'favorites' ? 'active' : ''}}" bindtap="switchTab" data-tab="favorites">我的收藏</view>
       </view>
 

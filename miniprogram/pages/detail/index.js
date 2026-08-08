@@ -47,7 +47,6 @@ Page({
       bp.likeText = util.formatCount(bp.like_count)
       bp.favText = util.formatCount(bp.favorite_count)
       bp.createdText = util.formatDate(bp.created_at)
-      bp.authorAvatarUrl = util.resolveUrl(bp.author && bp.author.avatar_url)
       let partList = null
       if (bp.part_list) {
         try { partList = typeof bp.part_list === 'string' ? JSON.parse(bp.part_list) : bp.part_list } catch (e) { partList = null }

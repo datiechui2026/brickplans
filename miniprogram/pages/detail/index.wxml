@@ -29,8 +29,6 @@
     <view class="card info-card">
       <view class="bp-title">{{bp.title}}</view>
       <view class="author-row" bindtap="goAuthor">
-        <image wx:if="{{bp.authorAvatarUrl}}" class="avatar" src="{{bp.authorAvatarUrl}}" />
-        <view wx:else class="avatar avatar-fallback">{{bp.catEmoji}}</view>
         <text class="muted">{{bp.createdText}}</text>
       </view>
 

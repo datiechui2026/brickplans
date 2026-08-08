@@ -53,7 +53,7 @@ Page({
         avatarUrl: util.resolveUrl(p.avatar_url),
         createdText: util.formatDate(p.created_at),
         isSelf: !!(me && me.id === p.id),
-        tab: 'works',
+        tab: (me && me.id === p.id) ? 'favorites' : 'works',
         items: [],
         page: 1,
         hasMore: true,
