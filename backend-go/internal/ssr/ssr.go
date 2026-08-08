@@ -29,7 +29,7 @@ type PageData struct {
 	OGImage       string
 	OGUrl         string
 	OGType        string
-	JSONLD        []template.HTML
+	JSONLD        []template.JS
 	Noscript      template.HTML
 	JSFile        string
 	CSSFile       string

@@ -8,17 +8,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"brickplans/internal/blog"
 	"brickplans/internal/config"
 	"brickplans/internal/db"
 )
 
 type SEOHandler struct {
-	cfg *config.Config
-	gdb *gorm.DB
+	cfg       *config.Config
+	gdb       *gorm.DB
+	blogStore *blog.Store
 }
 
-func NewSEOHandler(cfg *config.Config, gdb *gorm.DB) *SEOHandler {
-	return &SEOHandler{cfg: cfg, gdb: gdb}
+func NewSEOHandler(cfg *config.Config, gdb *gorm.DB, blogStore *blog.Store) *SEOHandler {
+	return &SEOHandler{cfg: cfg, gdb: gdb, blogStore: blogStore}
 }
 
 // RegisterRoutes mounts the sitemap at the site root (not under /api).
@@ -69,6 +71,16 @@ func (h *SEOHandler) sitemap(c *gin.Context) {
 	h.gdb.Where("is_published = ?", true).Order("updated_at DESC").Find(&bps)
 	for _, bp := range bps {
 		writeURL(&b, base+"/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.8", "weekly")
+	}
+
+	// Blog listing page
+	writeURL(&b, base+"/blog", "", "0.9", "daily")
+
+	// Blog detail pages
+	if h.blogStore != nil {
+		for _, post := range h.blogStore.All() {
+			writeURL(&b, base+"/blog/"+post.Slug, post.Date.Format("2006-01-02"), "0.8", "weekly")
+		}
 	}
 
 	b.WriteString("</urlset>")

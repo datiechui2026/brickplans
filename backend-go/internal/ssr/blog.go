@@ -61,6 +61,7 @@ func (h *Handler) BlogDetail(c *gin.Context) {
 	}
 
 	prev, next := h.blogStore.PrevNext(slug)
+	related := h.blogStore.Related(slug, 3)
 
 	title := post.Title + " - BrickPlan 博客"
 	desc := post.Description
@@ -68,13 +69,17 @@ func (h *Handler) BlogDetail(c *gin.Context) {
 		desc = post.Title
 	}
 
+	jsonld := h.siteJSONLD()
+	jsonld = append(jsonld, blogPostJSONLD(post, h.cfg.PublicURL))
+	jsonld = append(jsonld, articleJSONLD(post, h.cfg.PublicURL))
+
 	h.r.Render(c, PageData{
 		Title:       title,
 		Description: truncate(desc, 160),
 		Canonical:   h.cfg.PublicURL + "/blog/" + slug,
 		OGType:      "article",
-		JSONLD:      append(h.siteJSONLD(), blogPostJSONLD(post, h.cfg.PublicURL)),
-		Noscript:    h.blogDetailNoscript(post, prev, next),
+		JSONLD:      jsonld,
+		Noscript:    h.blogDetailNoscript(post, prev, next, related),
 	})
 }
 
@@ -101,7 +106,7 @@ func (h *Handler) blogListNoscript(posts []blog.Post, filterLabel string) templa
 	return template.HTML(b.String())
 }
 
-func (h *Handler) blogDetailNoscript(post *blog.Post, prev, next *blog.Post) template.HTML {
+func (h *Handler) blogDetailNoscript(post *blog.Post, prev, next *blog.Post, related []blog.Post) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<article>`)
 	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(post.Title)))
@@ -120,6 +125,19 @@ func (h *Handler) blogDetailNoscript(post *blog.Post, prev, next *blog.Post) tem
 		b.WriteString("</p>")
 	}
 	b.WriteString("</article>")
+
+	// Related posts section (SEO internal links)
+	if len(related) > 0 {
+		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>你可能还喜欢</h2><ul>`)
+		for _, r := range related {
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/blog/%s">%s</a>`, h.cfg.PublicURL, esc(r.Slug), esc(r.Title)))
+			if r.Category != "" {
+				b.WriteString(fmt.Sprintf("（%s）", esc(r.Category)))
+			}
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul></section>")
+	}
 
 	// Prev/Next navigation
 	if prev != nil || next != nil {
@@ -142,7 +160,7 @@ func (h *Handler) blogDetailNoscript(post *blog.Post, prev, next *blog.Post) tem
 
 // ── JSON-LD ──
 
-func blogPostJSONLD(post *blog.Post, public string) template.HTML {
+func blogPostJSONLD(post *blog.Post, public string) template.JS {
 	jsonStr := fmt.Sprintf(`{"@context":"https://schema.org","@type":"BlogPosting","headline":%q,"description":%q,"datePublished":%q,"dateModified":%q,"author":{"@type":"Person","name":%q},"publisher":{"@type":"Organization","name":"BrickPlan","url":%q},"mainEntityOfPage":{"@type":"WebPage","@id":%q},"url":%q}`,
 		post.Title,
 		post.Description,
@@ -153,5 +171,28 @@ func blogPostJSONLD(post *blog.Post, public string) template.HTML {
 		public+"/blog/"+post.Slug,
 		public+"/blog/"+post.Slug,
 	)
-	return template.HTML(jsonStr)
+	return template.JS(jsonStr)
+}
+
+// articleJSONLD emits Schema.org Article structured data for blog detail pages.
+// This complements BlogPosting (which is a subtype of Article) for maximum
+// search engine compatibility, especially for Baidu SEO.
+func articleJSONLD(post *blog.Post, public string) template.JS {
+	m := map[string]interface{}{
+		"@context":       "https://schema.org",
+		"@type":          "Article",
+		"headline":       post.Title,
+		"description":    post.Description,
+		"datePublished":  post.Date.Format("2006-01-02T15:04:05Z07:00"),
+		"dateModified":   post.Date.Format("2006-01-02T15:04:05Z07:00"),
+		"author":         map[string]interface{}{"@type": "Person", "name": post.Author},
+		"publisher":      map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public, "logo": map[string]interface{}{"@type": "ImageObject", "url": public + "/og-default.png"}},
+		"mainEntityOfPage": map[string]interface{}{"@type": "WebPage", "@id": public + "/blog/" + post.Slug},
+		"url":            public + "/blog/" + post.Slug,
+		"inLanguage":     "zh-CN",
+	}
+	if len(post.Tags) > 0 {
+		m["keywords"] = strings.Join(post.Tags, ", ")
+	}
+	return mustJSON(m)
 }

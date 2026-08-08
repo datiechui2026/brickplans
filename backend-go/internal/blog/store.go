@@ -156,3 +156,75 @@ func (s *Store) FilterByTag(tag string) []Post {
 	}
 	return result
 }
+
+// Related returns up to `limit` posts related to the given slug, prioritizing
+// same category, then shared tags, then recency. Excludes the current post.
+func (s *Store) Related(slug string, limit int) []Post {
+	current := s.bySlug[slug]
+	if current == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 3
+	}
+
+	// Score each candidate: same category = 3pts, each shared tag = 1pt
+	type scored struct {
+		post  Post
+		score int
+	}
+	var candidates []scored
+	for i := range s.posts {
+		p := &s.posts[i]
+		if p.Slug == slug {
+			continue
+		}
+		score := 0
+		if p.Category == current.Category && p.Category != "" {
+			score += 3
+		}
+		// Check shared tags
+		currentTags := make(map[string]bool)
+		for _, t := range current.Tags {
+			currentTags[t] = true
+		}
+		for _, t := range p.Tags {
+			if currentTags[t] {
+				score += 1
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, scored{post: *p, score: score})
+		}
+	}
+
+	// Sort by score descending (posts already sorted by date desc, stable preserves that for ties)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].score > candidates[j].score
+	})
+
+	// If not enough scored candidates, fill with recent posts
+	result := make([]Post, 0, limit)
+	seen := make(map[string]bool)
+	for _, c := range candidates {
+		if len(result) >= limit {
+			break
+		}
+		result = append(result, c.post)
+		seen[c.post.Slug] = true
+	}
+	if len(result) < limit {
+		for _, p := range s.posts {
+			if len(result) >= limit {
+				break
+			}
+			if p.Slug == slug || seen[p.Slug] {
+				continue
+			}
+			result = append(result, p)
+			seen[p.Slug] = true
+		}
+	}
+
+	return result
+}

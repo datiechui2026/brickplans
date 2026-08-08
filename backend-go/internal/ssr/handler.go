@@ -73,17 +73,29 @@ func (h *Handler) Detail(c *gin.Context) {
 	if bp.Category != nil {
 		category = *bp.Category
 	}
+
+	// Query related blueprints for SSR noscript internal links (SEO).
+	var relatedBps []db.Blueprint
+	rq := h.gdb.Where("is_published = ? AND id <> ?", true, id)
+	if category != "" {
+		rq = rq.Where("category = ?", category)
+	} else {
+		rq = rq.Where("author_id = ?", bp.AuthorID)
+	}
+	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
+
 	jsonld := h.siteJSONLD()
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL))
+	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL))
 	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
 	h.r.Render(c, PageData{
-		Title:       bp.Title + " — BrickPlan 积木图纸",
+		Title:       bp.Title + " - BrickPlan 积木图纸",
 		Description: truncate(desc, 160),
 		Canonical:   h.cfg.PublicURL + "/detail/" + bp.ID,
 		OGType:      "article",
 		OGImage:     cover,
 		JSONLD:      jsonld,
-		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL),
+		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL, relatedBps),
 	})
 }
 

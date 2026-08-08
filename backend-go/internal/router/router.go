@@ -74,7 +74,7 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 
 	// SSR page routes (site root) + sitemap.
 	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).RegisterRoutes(r)
-	handler.NewSEOHandler(cfg, gdb).RegisterRoutes(r)
+	handler.NewSEOHandler(cfg, gdb, blogStore).RegisterRoutes(r)
 
 	// Fallback: /api/* → JSON 404; anything else → SSR 404 page.
 	r.NoRoute(func(c *gin.Context) {

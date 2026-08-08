@@ -46,7 +46,7 @@ func coverURL(imgs []db.BlueprintImage, public string) string {
 }
 
 // detailNoscript renders a simplified, crawlable article body.
-func detailNoscript(bp *db.Blueprint, cover, public string) template.HTML {
+func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<article>`)
 	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bp.Title)))
@@ -89,6 +89,20 @@ func detailNoscript(bp *db.Blueprint, cover, public string) template.HTML {
 		b.WriteString("</p>")
 	}
 	b.WriteString("</article>")
+
+	// Related blueprints section (SEO internal links)
+	if len(related) > 0 {
+		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>相关作品</h2><ul>`)
+		for _, r := range related {
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/detail/%s">%s</a>`, public, r.ID, esc(r.Title)))
+			if r.Category != nil {
+				b.WriteString(fmt.Sprintf("（%s）", esc(*r.Category)))
+			}
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul></section>")
+	}
+
 	return template.HTML(b.String())
 }
 

@@ -28,18 +28,27 @@ func (h *BlogAPIHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // BlogPostOut is the JSON response for a blog post.
 type BlogPostOut struct {
-	Slug        string   `json:"slug"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Date        string   `json:"date"`
-	Author      string   `json:"author"`
-	Category    string   `json:"category"`
-	Tags        []string `json:"tags"`
-	Body        string   `json:"body,omitempty"`
-	PrevSlug    string   `json:"prev_slug,omitempty"`
-	PrevTitle   string   `json:"prev_title,omitempty"`
-	NextSlug    string   `json:"next_slug,omitempty"`
-	NextTitle   string   `json:"next_title,omitempty"`
+	Slug        string          `json:"slug"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Date        string          `json:"date"`
+	Author      string          `json:"author"`
+	Category    string          `json:"category"`
+	Tags        []string        `json:"tags"`
+	Body        string          `json:"body,omitempty"`
+	PrevSlug    string          `json:"prev_slug,omitempty"`
+	PrevTitle   string          `json:"prev_title,omitempty"`
+	NextSlug    string          `json:"next_slug,omitempty"`
+	NextTitle   string          `json:"next_title,omitempty"`
+	Related     []BlogPostBrief `json:"related,omitempty"`
+}
+
+// BlogPostBrief is a lightweight blog post summary for related posts.
+type BlogPostBrief struct {
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
+	Category string `json:"category"`
+	Date     string `json:"date"`
 }
 
 // List returns all blog posts (metadata only, no body).
@@ -76,7 +85,7 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 	})
 }
 
-// Detail returns a single blog post with body and prev/next info.
+// Detail returns a single blog post with body, prev/next info, and related posts.
 func (h *BlogAPIHandler) Detail(c *gin.Context) {
 	slug := c.Param("slug")
 	post := h.store.Get(slug)
@@ -86,6 +95,7 @@ func (h *BlogAPIHandler) Detail(c *gin.Context) {
 	}
 
 	prev, next := h.store.PrevNext(slug)
+	relatedPosts := h.store.Related(slug, 3)
 
 	out := BlogPostOut{
 		Slug:        post.Slug,
@@ -104,6 +114,17 @@ func (h *BlogAPIHandler) Detail(c *gin.Context) {
 	if next != nil {
 		out.NextSlug = next.Slug
 		out.NextTitle = next.Title
+	}
+	if len(relatedPosts) > 0 {
+		out.Related = make([]BlogPostBrief, 0, len(relatedPosts))
+		for _, rp := range relatedPosts {
+			out.Related = append(out.Related, BlogPostBrief{
+				Slug:     rp.Slug,
+				Title:    rp.Title,
+				Category: rp.Category,
+				Date:     rp.Date.Format("2006-01-02"),
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, out)

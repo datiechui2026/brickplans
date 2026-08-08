@@ -9,12 +9,12 @@ import (
 	"brickplans/internal/db"
 )
 
-func mustJSON(v interface{}) template.HTML {
+func mustJSON(v interface{}) template.JS {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return ""
 	}
-	return template.HTML(b)
+	return template.JS(b)
 }
 
 func derefStr(s *string) string {
@@ -32,7 +32,7 @@ func authorName(u *db.User) string {
 }
 
 // siteJSONLD returns Organization + WebSite (with SearchAction) — emitted on every page.
-func (h *Handler) siteJSONLD() []template.HTML {
+func (h *Handler) siteJSONLD() []template.JS {
 	public := h.cfg.PublicURL
 	org := map[string]interface{}{
 		"@context":    "https://schema.org",
@@ -57,10 +57,10 @@ func (h *Handler) siteJSONLD() []template.HTML {
 			"query-input": "required name=search_term_string",
 		},
 	}
-	return []template.HTML{mustJSON(org), mustJSON(website)}
+	return []template.JS{mustJSON(org), mustJSON(website)}
 }
 
-func creativeWorkJSONLD(bp *db.Blueprint, cover, public string) template.HTML {
+func creativeWorkJSONLD(bp *db.Blueprint, cover, public string) template.JS {
 	m := map[string]interface{}{
 		"@context":     "https://schema.org",
 		"@type":        "CreativeWork",
@@ -94,7 +94,48 @@ func creativeWorkJSONLD(bp *db.Blueprint, cover, public string) template.HTML {
 	return mustJSON(m)
 }
 
-func breadcrumbJSONLD(category, title, public string) template.HTML {
+// productJSONLD emits a Schema.org Product structured data for blueprint detail pages.
+// This helps search engines (especially Baidu) display rich snippets with product info.
+func productJSONLD(bp *db.Blueprint, cover, public string) template.JS {
+	m := map[string]interface{}{
+		"@context":    "https://schema.org",
+		"@type":       "Product",
+		"name":        bp.Title,
+		"description": derefStr(bp.Description),
+		"image":       cover,
+		"url":         public + "/detail/" + bp.ID,
+		"brand":       map[string]interface{}{"@type": "Brand", "name": "BrickPlans"},
+		"offers": map[string]interface{}{
+			"@type":         "Offer",
+			"price":         "0",
+			"priceCurrency": "CNY",
+			"availability":  "https://schema.org/InStock",
+			"url":           public + "/detail/" + bp.ID,
+		},
+	}
+	if bp.Category != nil {
+		m["category"] = *bp.Category
+	}
+	if bp.PieceCount != nil {
+		m["additionalProperty"] = map[string]interface{}{
+			"@type":  "PropertyValue",
+			"name":   "零件数",
+			"value":  *bp.PieceCount,
+		}
+	}
+	if bp.Difficulty != nil {
+		m["aggregateRating"] = map[string]interface{}{
+			"@type":       "AggregateRating",
+			"ratingValue": *bp.Difficulty,
+			"bestRating":  5,
+			"worstRating": 1,
+			"ratingCount": 1,
+		}
+	}
+	return mustJSON(m)
+}
+
+func breadcrumbJSONLD(category, title, public string) template.JS {
 	items := []map[string]interface{}{
 		{"@type": "ListItem", "position": 1, "name": "首页", "item": public + "/"},
 	}
@@ -111,7 +152,7 @@ func breadcrumbJSONLD(category, title, public string) template.HTML {
 	})
 }
 
-func itemListJSONLD(bps []db.Blueprint, public string) template.HTML {
+func itemListJSONLD(bps []db.Blueprint, public string) template.JS {
 	items := make([]map[string]interface{}, 0, len(bps))
 	for i, bp := range bps {
 		items = append(items, map[string]interface{}{
@@ -128,7 +169,7 @@ func itemListJSONLD(bps []db.Blueprint, public string) template.HTML {
 	})
 }
 
-func profileJSONLD(u *db.User, bpCount int, public string) template.HTML {
+func profileJSONLD(u *db.User, bpCount int, public string) template.JS {
 	return mustJSON(map[string]interface{}{
 		"@context":   "https://schema.org",
 		"@type":      "ProfilePage",
@@ -143,7 +184,7 @@ func profileJSONLD(u *db.User, bpCount int, public string) template.HTML {
 	})
 }
 
-func faqJSONLD(qa []struct{ Q, A string }) template.HTML {
+func faqJSONLD(qa []struct{ Q, A string }) template.JS {
 	entities := make([]map[string]interface{}, 0, len(qa))
 	for _, item := range qa {
 		entities = append(entities, map[string]interface{}{

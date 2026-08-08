@@ -1276,19 +1276,48 @@ async function loadDetail(id) {
 
     // Inject JSON-LD structured data
     document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
-    const ldJson = {
-      '@context': 'https://schema.org',
-      '@type': 'CreativeWork',
-      name: bp.title,
-      description: bp.description || '',
-      image: getCoverImage(bp.images) || '',
-      author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
-      datePublished: bp.created_at || undefined,
-    };
-    const ldScript = document.createElement('script');
-    ldScript.type = 'application/ld+json';
-    ldScript.textContent = JSON.stringify(ldJson, null, 2);
-    document.head.appendChild(ldScript);
+    const coverImg = getCoverImage(bp.images) || '';
+    const ldScripts = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CreativeWork',
+        name: bp.title,
+        description: bp.description || '',
+        image: coverImg,
+        author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
+        datePublished: bp.created_at || undefined,
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: bp.title,
+        description: bp.description || '',
+        image: coverImg,
+        brand: { '@type': 'Brand', name: 'BrickPlans' },
+        offers: {
+          '@type': 'Offer',
+          price: '0',
+          priceCurrency: 'CNY',
+          availability: 'https://schema.org/InStock',
+          url: `${window.location.origin}/detail/${bp.id}`,
+        },
+      },
+    ];
+    if (bp.category) {
+      ldScripts[1].category = bp.category;
+    }
+    if (bp.piece_count != null) {
+      ldScripts[1].additionalProperty = { '@type': 'PropertyValue', name: '零件数', value: bp.piece_count };
+    }
+    if (bp.difficulty != null) {
+      ldScripts[1].aggregateRating = { '@type': 'AggregateRating', ratingValue: bp.difficulty, bestRating: 5, worstRating: 1, ratingCount: 1 };
+    }
+    ldScripts.forEach(ld => {
+      const s = document.createElement('script');
+      s.type = 'application/ld+json';
+      s.textContent = JSON.stringify(ld, null, 2);
+      document.head.appendChild(s);
+    });
 
     const stars = [];
     for (let i = 1; i <= 5; i++) {
@@ -3867,6 +3896,65 @@ async function renderBlogDetail() {
       }
       el.appendChild(nav);
     }
+
+    // Related posts ("你可能还喜欢")
+    if (post.related && post.related.length > 0) {
+      const relSection = h('section', { className: 'blog-related', style: { marginTop: '40px', padding: '24px', background: 'var(--bg-card, #f9fafb)', borderRadius: '12px' } },
+        h('h2', { style: { fontSize: '1.25rem', marginBottom: '16px' } }, '你可能还喜欢'),
+        h('div', { className: 'blog-related-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' } },
+          ...post.related.map(rp => h('a', {
+            href: `/blog/${rp.slug}`,
+            onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: rp.slug }); },
+            className: 'blog-related-card',
+            style: { display: 'block', padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--border, #e5e7eb)', transition: 'box-shadow 0.2s' },
+          },
+            h('div', { style: { fontWeight: '600', fontSize: '0.95rem', marginBottom: '6px', color: 'var(--text-primary, #1f2937)' } }, rp.title),
+            h('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' } },
+              rp.category ? `${rp.category} · ${rp.date}` : rp.date,
+            ),
+          )),
+        ),
+      );
+      el.appendChild(relSection);
+    }
+
+    // Inject Article JSON-LD structured data
+    document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
+    const blogLdScripts = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: post.title,
+        description: post.description || '',
+        datePublished: post.date,
+        author: { '@type': 'Person', name: post.author || 'BrickPlans' },
+        publisher: { '@type': 'Organization', name: 'BrickPlans', url: window.location.origin },
+        mainEntityOfPage: { '@type': 'WebPage', '@id': window.location.href },
+        url: window.location.href,
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: post.title,
+        description: post.description || '',
+        datePublished: post.date,
+        dateModified: post.date,
+        author: { '@type': 'Person', name: post.author || 'BrickPlans' },
+        publisher: { '@type': 'Organization', name: 'BrickPlans', url: window.location.origin, logo: { '@type': 'ImageObject', url: window.location.origin + '/og-default.png' } },
+        mainEntityOfPage: { '@type': 'WebPage', '@id': window.location.href },
+        url: window.location.href,
+        inLanguage: 'zh-CN',
+      },
+    ];
+    if (post.tags && post.tags.length) {
+      blogLdScripts[1].keywords = post.tags.join(', ');
+    }
+    blogLdScripts.forEach(ld => {
+      const s = document.createElement('script');
+      s.type = 'application/ld+json';
+      s.textContent = JSON.stringify(ld, null, 2);
+      document.head.appendChild(s);
+    });
   } catch (e) {
     const el = $id('blog-detail-content');
     if (el) {
