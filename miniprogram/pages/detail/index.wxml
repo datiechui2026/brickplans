@@ -1,0 +1,157 @@
+<view class="page detail">
+  <loading wx:if="{{loading}}" />
+  <view wx:elif="{{error}}" class="error-box" bindtap="load">
+    <text>{{error}}</text>
+    <text class="muted">点击重试</text>
+  </view>
+
+  <block wx:elif="{{bp}}">
+    <!-- Gallery: image swiper -->
+    <swiper wx:if="{{images.length}}" class="gallery" indicator-dots="{{images.length > 1}}" circular autoplay>
+      <swiper-item wx:for="{{images}}" wx:key="id">
+        <image class="gallery-img" src="{{item.absUrl}}" mode="aspectFit" data-current="{{item.absUrl}}" bindtap="previewImage" />
+      </swiper-item>
+    </swiper>
+    <view wx:if="{{!images.length && pdfs.length}}" class="gallery gallery-placeholder">
+      <text class="muted">📄 此图纸仅含 PDF</text>
+    </view>
+
+    <!-- PDF files -->
+    <view wx:if="{{pdfs.length}}" class="card pdf-card">
+      <view class="title">📄 PDF 文件 ({{pdfs.length}})</view>
+      <view wx:for="{{pdfs}}" wx:key="id" class="pdf-item" bindtap="openPdf" data-url="{{item.absUrl}}">
+        <text class="pdf-name">PDF {{index + 1}}</text>
+        <text class="pdf-open">打开 ›</text>
+      </view>
+    </view>
+
+    <!-- Info -->
+    <view class="card info-card">
+      <view class="bp-title">{{bp.title}}</view>
+      <view class="author-row" bindtap="goAuthor">
+        <image wx:if="{{bp.authorAvatarUrl}}" class="avatar" src="{{bp.authorAvatarUrl}}" />
+        <view wx:else class="avatar avatar-fallback">{{bp.catEmoji}}</view>
+        <text class="author-name">{{bp.author.username}}</text>
+        <text class="muted">{{bp.createdText}}</text>
+      </view>
+
+      <view class="meta-grid">
+        <view wx:if="{{bp.difficulty}}" class="meta-item"><text class="muted">难度</text><text>{{bp.difficultyLabel}}</text></view>
+        <view wx:if="{{bp.piece_count}}" class="meta-item"><text class="muted">零件数</text><text>{{bp.piece_count}}</text></view>
+        <view wx:if="{{bp.dimensions}}" class="meta-item"><text class="muted">尺寸</text><text>{{bp.dimensions}}</text></view>
+        <view wx:if="{{bp.category}}" class="meta-item"><text class="muted">分类</text><text>{{bp.catEmoji}} {{bp.category}}</text></view>
+      </view>
+
+      <view class="stat-row">
+        <text class="stat">👁 {{bp.viewText}}</text>
+        <text class="stat">❤ {{bp.likeText}}</text>
+        <text class="stat">⭐ {{bp.favText}}</text>
+      </view>
+
+      <!-- Actions -->
+      <view class="action-row">
+        <view class="action-btn {{bp.is_liked ? 'on' : ''}}" bindtap="onLike">
+          <text>{{bp.is_liked ? '❤️' : '🤍'}} {{bp.likeText}}</text>
+        </view>
+        <view class="action-btn {{bp.is_favorited ? 'on' : ''}}" bindtap="onFavorite">
+          <text>{{bp.is_favorited ? '⭐' : '☆'}} {{bp.is_favorited ? '已收藏' : '收藏'}}</text>
+        </view>
+        <view class="action-btn" bindtap="openReport"><text>🚩 举报</text></view>
+      </view>
+    </view>
+
+    <!-- Description -->
+    <view wx:if="{{descHtml}}" class="card">
+      <view class="title">📝 图纸介绍</view>
+      <rich-text class="desc" nodes="{{descHtml}}" />
+    </view>
+
+    <!-- Part list -->
+    <view wx:if="{{partList && partList.parts && partList.parts.length}}" class="card">
+      <view class="title">📋 零件清单 {{partList.total ? '(' + partList.total + ')' : ''}}</view>
+      <view class="part-list">
+        <view wx:for="{{partList.parts}}" wx:key="name" class="part-row">
+          <text class="part-name">{{item.name}}</text>
+          <text class="part-count muted">x{{item.count}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Tags -->
+    <view wx:if="{{bp.tags && bp.tags.length}}" class="card">
+      <view class="title">🏷️ 标签</view>
+      <view class="tag-list">
+        <text wx:for="{{bp.tags}}" wx:key="*this" class="tag-pill">#{{item}}</text>
+      </view>
+    </view>
+
+    <!-- Comments -->
+    <view class="card">
+      <view class="title">💬 评论 ({{comments.length}})</view>
+      <empty wx:if="{{!comments.length}}" text="暂无评论，抢个沙发吧！" icon="💬" />
+      <view class="comment-list">
+        <view wx:for="{{comments}}" wx:key="id" class="comment">
+          <image class="c-avatar" src="{{item.avatarUrl}}" wx:if="{{item.avatarUrl}}" />
+          <view wx:else class="c-avatar c-avatar-fallback">🧱</view>
+          <view class="c-body">
+            <view class="c-head">
+              <text class="c-name">{{item.user.username}}</text>
+              <text class="c-time muted">{{item.timeText}}</text>
+            </view>
+            <view class="c-content">{{item.content}}</view>
+            <view class="c-reply" bindtap="startReply" data-id="{{item.id}}" data-name="{{item.user.username}}">回复</view>
+            <view wx:if="{{item.replies && item.replies.length}}" class="reply-list">
+              <view wx:for="{{item.replies}}" wx:for-item="rep" wx:key="id" class="reply">
+                <text class="c-name">{{rep.user.username}}</text>
+                <text class="reply-content">{{rep.content}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Related -->
+    <view wx:if="{{related.length}}">
+      <view class="section-header"><text class="title">相关作品</text></view>
+      <view class="grid">
+        <bp-card wx:for="{{related}}" wx:key="id" blueprint="{{item}}" />
+      </view>
+    </view>
+
+    <view style="height: 140rpx"></view>
+  </block>
+
+  <!-- Comment input bar -->
+  <view class="comment-bar" wx:if="{{bp}}">
+    <view wx:if="{{replyTo}}" class="reply-hint">
+      <text>回复 @{{replyTo.username}}</text>
+      <text class="reply-cancel" bindtap="cancelReply">✕</text>
+    </view>
+    <view class="comment-input-row">
+      <input class="comment-input" value="{{commentText}}" placeholder="{{replyTo ? '回复 @' + replyTo.username : '写下你的评论...'}}" bindinput="onCommentInput" confirm-type="send" bindconfirm="sendComment" />
+      <button class="send-btn" bindtap="sendComment" disabled="{{!commentText || sendingComment}}">发送</button>
+    </view>
+  </view>
+
+  <!-- Report modal -->
+  <view wx:if="{{showReport}}" class="modal-mask" bindtap="closeReport">
+    <view class="modal" catchtap="">
+      <view class="modal-title">🚩 举报内容</view>
+      <view class="muted modal-sub">请选择举报原因</view>
+      <view class="reason-list">
+        <view wx:for="{{reportReasons}}" wx:key="value"
+          class="reason-item {{reportReason === item.value ? 'active' : ''}}"
+          bindtap="onReportReason" data-value="{{item.value}}">
+          <text>{{item.label}}</text>
+          <text wx:if="{{reportReason === item.value}}" class="reason-check">✓</text>
+        </view>
+      </view>
+      <textarea class="reason-detail" value="{{reportDetail}}" placeholder="补充说明（可选）..." bindinput="onReportDetail" maxlength="500" />
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeReport">取消</button>
+        <button class="btn btn-primary" bindtap="submitReport">提交举报</button>
+      </view>
+    </view>
+  </view>
+</view>

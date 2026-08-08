@@ -1,0 +1,14 @@
+<view class="bp-card" bindtap="onTap">
+  <view class="cover-wrap">
+    <image class="cover" src="{{cover}}" mode="aspectFill" lazy-load="true" />
+    <view wx:if="{{cover}}" class="cat-badge">{{emoji}}</view>
+  </view>
+  <view class="info">
+    <view class="title">{{blueprint.title}}</view>
+    <view class="difficulty muted">{{difficulty}}</view>
+    <view class="stats">
+      <text class="stat">👁 {{views}}</text>
+      <text class="stat">❤ {{likes}}</text>
+    </view>
+  </view>
+</view>

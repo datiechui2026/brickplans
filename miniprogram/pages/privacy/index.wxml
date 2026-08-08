@@ -1,0 +1,24 @@
+<view class="page privacy">
+  <view class="card">
+    <view class="title">隐私策略</view>
+    <view class="updated muted">最后更新：2026 年 7 月</view>
+
+    <view class="h2">一、我们收集哪些信息</view>
+    <view class="p">当您使用微信登录时，我们通过微信开放接口获取您的 OpenID 用于创建和识别您的账号。我们不会获取或存储您的微信密码。</view>
+    <view class="p">您在使用过程中产生的点赞、收藏、评论等内容会保存在我们的服务器上，用于展示和互动。</view>
+
+    <view class="h2">二、我们如何使用信息</view>
+    <view class="p">· 提供图纸浏览、点赞、收藏与评论功能；</view>
+    <view class="p">· 在您同意后，展示您的公开主页与作品；</view>
+    <view class="p">· 改进产品体验，不用于商业广告售卖。</view>
+
+    <view class="h2">三、信息存储与保护</view>
+    <view class="p">数据存储于服务器，访问令牌（JWT）保存在小程序本地存储中，仅用于接口鉴权。我们采取合理的安全措施保护您的信息。</view>
+
+    <view class="h2">四、您的权利</view>
+    <view class="p">您可以在个人主页退出登录以清除本地凭证。如需删除账号或数据，请联系管理员。</view>
+
+    <view class="h2">五、联系我们</view>
+    <view class="p">如有任何关于隐私的问题，请通过 BrickPlan 官方渠道反馈。</view>
+  </view>
+</view>

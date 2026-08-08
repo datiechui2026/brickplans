@@ -56,3 +56,6 @@ htmlcov/
 releases/
 backend-go/content/blog/*.bak
 docs/*.bak
+
+# WeChat DevTools local config (user/machine-specific)
+miniprogram/project.private.config.json

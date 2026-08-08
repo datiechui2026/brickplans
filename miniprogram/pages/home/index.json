@@ -1,0 +1,10 @@
+{
+  "usingComponents": {
+    "bp-card": "/components/blueprint-card/index",
+    "empty": "/components/empty/index",
+    "loading": "/components/loading/index"
+  },
+  "navigationBarTitleText": "BrickPlan",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

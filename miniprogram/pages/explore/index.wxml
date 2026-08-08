@@ -1,0 +1,57 @@
+<view class="page explore">
+  <!-- Search -->
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <text class="search-icon">🔍</text>
+      <input class="search-input" value="{{q}}" placeholder="搜索关键词..." confirm-type="search"
+        bindinput="onSearch" bindconfirm="onSearchConfirm" />
+      <text wx:if="{{q}}" class="search-clear" bindtap="clearSearch">✕</text>
+    </view>
+  </view>
+
+  <!-- Category chips -->
+  <scroll-view scroll-x class="cat-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="cat-row">
+      <view wx:for="{{categories}}" wx:key="value"
+        class="cat-chip {{category === item.value ? 'active' : ''}}"
+        bindtap="selectCategory" data-cat="{{item.value}}">
+        <text>{{item.emoji}} {{item.label}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- Sort + tags -->
+  <view class="filter-row">
+    <view class="sort-group">
+      <view class="sort-chip {{sort === 'latest' ? 'active' : ''}}" bindtap="toggleSort" data-sort="latest">🆕 最新</view>
+      <view class="sort-chip {{sort === 'popular' ? 'active' : ''}}" bindtap="toggleSort" data-sort="popular">🔥 最热门</view>
+    </view>
+  </view>
+
+  <scroll-view wx:if="{{tags.length}}" scroll-x class="tag-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="tag-row">
+      <view wx:for="{{tags}}" wx:key="name"
+        class="tag-chip {{tag === item.name ? 'active' : ''}}"
+        bindtap="selectTag" data-tag="{{item.name}}">
+        #{{item.name}}
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{total > 0}}" class="result-count muted">共找到 {{total}} 个作品</view>
+
+  <loading wx:if="{{loading}}" />
+  <view wx:elif="{{error}}" class="error-box" bindtap="resetAndLoad">
+    <text>{{error}}</text>
+    <text class="muted">点击重试</text>
+  </view>
+  <block wx:else>
+    <view wx:if="{{items.length}}" class="grid">
+      <bp-card wx:for="{{items}}" wx:key="id" blueprint="{{item}}" />
+    </view>
+    <empty wx:else text="没有找到匹配的图纸" icon="🔍" />
+  </block>
+
+  <loading wx:if="{{loadingMore}}" text="加载更多..." />
+  <view wx:if="{{!hasMore && items.length > 4}}" class="end-text muted">— 已经到底啦 —</view>
+</view>

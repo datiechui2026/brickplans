@@ -115,3 +115,14 @@ Additional hardening implemented after the initial rewrite:
 The frontend is a history-routed SPA (`/detail/{id}`, `/explore`, `/tags/{name}`, `/user/{id}`, …, not hash) and the Go backend renders SSR HTML for every page route (`internal/ssr/`): `<title>`/meta/og/twitter, canonical, JSON-LD (Organization + WebSite+SearchAction site-wide; CreativeWork + BreadcrumbList on detail; ItemList on lists; ProfilePage on user; FAQPage on /faq), and a simplified `<noscript>` article body so AI crawlers that don't execute JS can read the content. `vite build` emits `dist/manifest.json`; `ssr.NewRenderer` reads it to reference the hashed `/assets/main-<hash>.{js,css}`.
 
 `sitemap.xml` (`handler/seo.go`) lists real URLs (home/explore/categories/tags/detail with lastmod+priority). `frontend/public/robots.txt` explicitly allows AI crawlers (GPTBot/ClaudeBot/PerplexityBot/Google-Extended/CCBot) and guards private API paths. `frontend/public/llms.txt` is the GEO content brief for LLMs. nginx serves static assets directly and proxies everything else to the backend for SSR (see `brickplans-nginx.conf`). Detail pages include a "相关作品" section (`GET /api/blueprints/{id}/related`) for internal links. Config: `PUBLIC_URL` (canonical), `FRONTEND_DIST` (manifest location).
+
+## WeChat Mini Program (`miniprogram/`)
+
+A **browse-only** WeChat Mini Program (home / explore / detail / user / privacy) that talks to the **same Go backend**. Pages are the standard `.js/.wxml/.wxss/.json` quartet; `utils/api.js` is the only API client and mirrors the web's endpoints.
+
+- **Auth differs from the web**: mini programs can't use httpOnly cookies, so `POST /api/auth/wechat-login {code}` exchanges a `wx.login()` code for `openid` (server-side `jscode2session`) and returns **both** `access_token` and `refresh_token` in the body. Tokens live in `wx` storage; `request()` sends `Authorization: Bearer` and auto-refreshes on 401 by calling `POST /api/auth/refresh {refresh_token}` (the backend accepts the refresh token in the body as a cookieless fallback - the web's cookie path is unchanged).
+- **Backend additions** (all additive, "其他不变"): `User.WeChatOpenID` (*string, unique, nullable - NULL for non-WeChat users so the unique index allows many) + `WeChatUnionID`; `WECHAT_APPID`/`WECHAT_APPSECRET` config (optional); `POST /api/auth/wechat-login`; `refresh` body fallback; a `login()` guard for empty-password (WeChat-only) accounts. WeChat users get a synthesized `wx_<openid>@wechat.local` email, empty password hash, preset avatar, and `EmailVerified=true`.
+- **PDFs**: rendered via `wx.downloadFile` + `wx.openDocument` (system viewer) - no in-app PDF.js.
+- **Markdown** descriptions: `utils/markdown.js` -> `<rich-text nodes>`.
+- Config: `API_BASE` in `miniprogram/utils/config.js`; whitelist `request` + `downloadFile` domains in the WeChat console. Runbook: `docs/deployment-miniprogram.md`.
+

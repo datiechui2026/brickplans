@@ -1,0 +1,67 @@
+<view class="page user">
+  <!-- Not logged in -->
+  <view wx:if="{{notLoggedIn}}" class="login-gate">
+    <view class="login-icon">🧱</view>
+    <view class="login-title">欢迎使用 BrickPlan</view>
+    <view class="login-sub muted">登录后可以点赞、收藏和评论</view>
+    <button class="btn btn-primary login-btn" bindtap="doLogin">微信登录</button>
+    <view class="login-note muted">登录即代表同意我们的<navigator class="privacy-link" url="/pages/privacy/index" hover-class="none">隐私策略</navigator></view>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{error && !profile}}" class="error-box" bindtap="loadProfile">
+      <text>{{error}}</text>
+      <text class="muted">点击重试</text>
+    </view>
+
+    <block wx:if="{{profile}}">
+      <!-- Profile header -->
+      <view class="card profile-head">
+        <image wx:if="{{avatarUrl}}" class="p-avatar" src="{{avatarUrl}}" />
+        <view wx:else class="p-avatar p-avatar-fallback">🧱</view>
+        <view class="p-info">
+          <view class="p-name">{{profile.username}}</view>
+          <view class="p-bio muted">{{profile.bio || '这个人还没有简介'}}</view>
+          <view class="p-joined muted">📅 {{createdText}} 加入</view>
+        </view>
+      </view>
+
+      <!-- Stats -->
+      <view class="card p-stats">
+        <view class="p-stat">
+          <text class="p-stat-num">{{profile.blueprint_count}}</text>
+          <text class="p-stat-label muted">作品</text>
+        </view>
+        <view class="p-stat">
+          <text class="p-stat-num">{{profile.favorite_count}}</text>
+          <text class="p-stat-label muted">收藏</text>
+        </view>
+      </view>
+
+      <!-- Tabs -->
+      <view class="tabs">
+        <view class="tab {{tab === 'works' ? 'active' : ''}}" bindtap="switchTab" data-tab="works">我的作品</view>
+        <view wx:if="{{isSelf}}" class="tab {{tab === 'favorites' ? 'active' : ''}}" bindtap="switchTab" data-tab="favorites">我的收藏</view>
+      </view>
+
+      <!-- Items -->
+      <loading wx:if="{{loading}}" />
+      <view wx:elif="{{error}}" class="error-box" bindtap="loadItems">
+        <text>{{error}}</text>
+        <text class="muted">点击重试</text>
+      </view>
+      <block wx:else>
+        <view wx:if="{{items.length}}" class="grid">
+          <bp-card wx:for="{{items}}" wx:key="id" blueprint="{{item}}" />
+        </view>
+        <empty wx:else text="{{tab === 'works' ? '暂无作品' : '暂无收藏'}}" icon="{{tab === 'works' ? '📦' : '⭐'}}" />
+      </block>
+
+      <loading wx:if="{{loadingMore}}" text="加载更多..." />
+
+      <view wx:if="{{isSelf}}" class="logout-area">
+        <button class="btn btn-ghost logout-btn" bindtap="doLogout">🚪 退出登录</button>
+      </view>
+    </block>
+  </block>
+</view>

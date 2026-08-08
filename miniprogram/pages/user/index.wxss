@@ -1,0 +1,69 @@
+.user { padding-bottom: 40rpx; }
+
+.login-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 40rpx;
+}
+.login-icon { font-size: 100rpx; margin-bottom: 24rpx; }
+.login-title { font-size: 36rpx; font-weight: 700; }
+.login-sub { margin-top: 12rpx; font-size: 26rpx; }
+.login-btn { margin-top: 40rpx; width: 80%; }
+.login-note { margin-top: 24rpx; font-size: 22rpx; }
+.privacy-link { display: inline; color: #ea580c; }
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+.p-avatar {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+.p-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  background: #fff7ed;
+}
+.p-info { flex: 1; min-width: 0; }
+.p-name { font-size: 34rpx; font-weight: 700; }
+.p-bio { font-size: 26rpx; margin-top: 8rpx; line-height: 1.4; }
+.p-joined { font-size: 22rpx; margin-top: 8rpx; }
+
+.p-stats { display: flex; gap: 40rpx; }
+.p-stat { display: flex; flex-direction: column; align-items: center; }
+.p-stat-num { font-size: 36rpx; font-weight: 700; color: #ea580c; }
+.p-stat-label { font-size: 22rpx; margin-top: 4rpx; }
+
+.tabs {
+  display: flex;
+  gap: 16rpx;
+  margin: 8rpx 4rpx 20rpx;
+}
+.tab {
+  padding: 12rpx 28rpx;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  background: #fff;
+  color: #6b7280;
+}
+.tab.active { background: #ea580c; color: #fff; font-weight: 600; }
+
+.logout-area { margin-top: 40rpx; }
+.logout-btn { width: 100%; color: #ef4444; background: #fef2f2; }
+
+.error-box {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 60rpx;
+  text-align: center;
+  color: #6b7280;
+}

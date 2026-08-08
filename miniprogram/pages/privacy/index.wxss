@@ -1,0 +1,5 @@
+.privacy .card { padding: 32rpx 28rpx; }
+.privacy .title { font-size: 38rpx; font-weight: 700; }
+.privacy .updated { font-size: 22rpx; margin: 8rpx 0 24rpx; }
+.privacy .h2 { font-size: 30rpx; font-weight: 600; margin: 24rpx 0 12rpx; color: #1f2937; }
+.privacy .p { font-size: 27rpx; line-height: 1.7; color: #4b5563; margin-bottom: 8rpx; }

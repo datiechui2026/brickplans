@@ -1,0 +1,42 @@
+.home { padding-bottom: 40rpx; }
+
+.hero { text-align: center; padding: 48rpx 24rpx; }
+.hero-title { font-size: 52rpx; font-weight: 800; color: #ea580c; }
+.hero-sub { margin-top: 12rpx; font-size: 26rpx; }
+
+.stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 28rpx 12rpx;
+}
+.stat-item { display: flex; flex-direction: column; align-items: center; }
+.stat-num { font-size: 36rpx; font-weight: 700; color: #1f2937; }
+.stat-label { font-size: 22rpx; margin-top: 6rpx; }
+
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+.cat-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  padding: 12rpx 24rpx;
+  font-size: 26rpx;
+  box-shadow: 0 1rpx 6rpx rgba(0, 0, 0, 0.05);
+}
+.cat-emoji { font-size: 30rpx; }
+
+.more { font-size: 26rpx; }
+
+.error-box {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 48rpx;
+  text-align: center;
+  color: #6b7280;
+}

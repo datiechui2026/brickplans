@@ -1,0 +1,9 @@
+{
+  "usingComponents": {
+    "bp-card": "/components/blueprint-card/index",
+    "loading": "/components/loading/index",
+    "empty": "/components/empty/index"
+  },
+  "navigationBarTitleText": "图纸详情",
+  "backgroundTextStyle": "dark"
+}

@@ -1,0 +1,41 @@
+.bp-card {
+  background: #fff;
+  border-radius: 20rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+.cover-wrap {
+  position: relative;
+  width: 100%;
+  height: 240rpx;
+  background: #f3f4f6;
+}
+.cover { width: 100%; height: 100%; }
+.cat-badge {
+  position: absolute;
+  top: 12rpx;
+  left: 12rpx;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border-radius: 999rpx;
+  padding: 2rpx 14rpx;
+  font-size: 24rpx;
+}
+.info { padding: 16rpx 18rpx 18rpx; }
+.title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 76rpx;
+}
+.difficulty { font-size: 22rpx; margin-top: 6rpx; }
+.stats { display: flex; gap: 18rpx; margin-top: 10rpx; }
+.stat { font-size: 22rpx; color: #6b7280; }
