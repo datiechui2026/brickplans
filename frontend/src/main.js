@@ -3476,6 +3476,24 @@ async function renderAdminPage() {
     }
   };
 
+  // Toggle featured state from the "全部作品" tab row. fRec is the existing
+  // featured record (undefined when not yet featured). Reloads the table so the
+  // button lights/unlights immediately.
+  const handleToggleFeaturedAll = async (bp, fRec) => {
+    try {
+      if (fRec) {
+        await api.adminRemoveFeatured(fRec.id);
+        showToast('已取消推荐', 'success');
+      } else {
+        await api.adminAddFeatured(bp.id);
+        showToast('已设为推荐', 'success');
+      }
+      await loadTable();
+    } catch (e) {
+      showToast(e.message || '操作失败', 'error');
+    }
+  };
+
   const loadTable = async () => {
     const tableEl = $id('admin-table');
     const pagEl = $id('admin-pagination');
@@ -3679,6 +3697,16 @@ async function renderAdminPage() {
         return;
       }
 
+      // For the "全部作品" tab, preload which blueprints are featured (and their
+      // featured record ids) so each row's 推荐 button can light up + toggle.
+      let featuredMap = {};
+      if (tab === 'all') {
+        try {
+          const fd = await api.adminListFeatured();
+          (fd.items || []).forEach(f => { featuredMap[f.blueprint_id] = f; });
+        } catch { /* ignore - buttons just default to off */ }
+      }
+
       const coverUrl = (bp) => {
         const img = getCoverImage(bp.images);
         return img || '';
@@ -3690,6 +3718,13 @@ async function renderAdminPage() {
           actions.push(h('button', { className: 'btn btn-success btn-sm', style: { marginRight: '6px' }, onclick: () => handleApprove(bp.id) }, '✅ 通过'));
           actions.push(h('button', { className: 'btn btn-danger btn-sm', onclick: () => confirmDelete(bp.id, 'reject') }, '❌ 拒绝'));
         } else {
+          const fRec = featuredMap[bp.id];
+          const isFeatured = !!fRec;
+          actions.push(h('button', {
+            className: `btn btn-sm${isFeatured ? ' btn-primary' : ' btn-ghost'}`,
+            style: { marginRight: '6px' },
+            onclick: () => handleToggleFeaturedAll(bp, fRec),
+          }, isFeatured ? '🔥 已推荐' : '🔥 推荐'));
           if (bp.is_published) {
             actions.push(h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '6px' }, onclick: () => handleUnpublish(bp.id) }, '🚫 下架'));
           } else {
