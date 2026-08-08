@@ -4,8 +4,14 @@
     <view class="login-icon">🧱</view>
     <view class="login-title">欢迎使用 BrickPlan</view>
     <view class="login-sub muted">登录后可以点赞、收藏</view>
-    <button class="btn btn-primary login-btn" bindtap="doLogin">微信登录</button>
-    <view class="login-note muted">登录即代表同意我们的<navigator class="privacy-link" url="/pages/privacy/index" hover-class="none">隐私策略</navigator></view>
+    <button class="btn btn-primary login-btn" bindtap="doLogin" disabled="{{!agreedPrivacy}}">微信登录</button>
+    <view class="privacy-consent">
+      <view class="consent-checkbox {{agreedPrivacy ? 'checked' : ''}}" bindtap="togglePrivacy">
+        <text wx:if="{{agreedPrivacy}}" class="consent-check">✓</text>
+      </view>
+      <text class="consent-text">我已阅读并同意</text>
+      <navigator class="privacy-link" url="/pages/privacy/index" hover-class="none">《隐私策略》</navigator>
+    </view>
   </view>
 
   <block wx:else>

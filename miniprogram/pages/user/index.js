@@ -7,6 +7,7 @@ Page({
     userId: '',
     isSelf: false,
     notLoggedIn: false,
+    agreedPrivacy: false,
     profile: null,
     avatarUrl: '',
     createdText: '',
@@ -100,7 +101,15 @@ Page({
     this.loadItems()
   },
 
+  togglePrivacy() {
+    this.setData({ agreedPrivacy: !this.data.agreedPrivacy })
+  },
+
   async doLogin() {
+    if (!this.data.agreedPrivacy) {
+      wx.showToast({ title: '请先阅读并同意隐私策略', icon: 'none' })
+      return
+    }
     wx.showLoading({ title: '登录中...' })
     try {
       await auth.wxLogin()

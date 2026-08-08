@@ -11,8 +11,33 @@
 .login-title { font-size: 36rpx; font-weight: 700; }
 .login-sub { margin-top: 12rpx; font-size: 26rpx; }
 .login-btn { margin-top: 40rpx; width: 80%; }
-.login-note { margin-top: 24rpx; font-size: 22rpx; }
-.privacy-link { display: inline; color: #ea580c; }
+.login-btn[disabled] { background: #d1d5db; color: #fff; }
+.login-btn[disabled]::after { border: none; }
+
+.privacy-consent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 28rpx;
+  padding: 0 20rpx;
+}
+.consent-checkbox {
+  width: 32rpx;
+  height: 32rpx;
+  border: 2rpx solid #d1d5db;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  flex-shrink: 0;
+}
+.consent-checkbox.checked { background: #ea580c; border-color: #ea580c; }
+.consent-check { color: #fff; font-size: 22rpx; font-weight: 700; line-height: 1; }
+.consent-text { font-size: 24rpx; color: #6b7280; }
+.privacy-link { color: #ea580c; font-size: 24rpx; }
 
 .profile-head {
   display: flex;
