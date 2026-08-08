@@ -22,18 +22,20 @@ import (
 )
 
 type AuthHandler struct {
-	cfg *config.Config
-	gdb *gorm.DB
+	cfg    *config.Config
+	gdb    *gorm.DB
+	wechat WeChatClient
 }
 
 func NewAuthHandler(cfg *config.Config, gdb *gorm.DB) *AuthHandler {
-	return &AuthHandler{cfg: cfg, gdb: gdb}
+	return &AuthHandler{cfg: cfg, gdb: gdb, wechat: NewWeChatClient(cfg)}
 }
 
 func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/auth")
 	g.POST("/register", middleware.RateLimit(5, 5), h.register)
 	g.POST("/login", middleware.RateLimit(5, 5), h.login)
+	g.POST("/wechat-login", middleware.RateLimit(5, 5), h.wechatLogin)
 	g.POST("/refresh", middleware.RateLimit(10, 10), h.refresh)
 	g.POST("/logout", h.logout)
 	g.GET("/me", auth.AuthRequired(h.cfg, h.gdb), h.me)
@@ -114,6 +116,13 @@ func (h *AuthHandler) login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Invalid email or password"})
 		return
 	}
+	// WeChat-only accounts have no password (empty hash); they must log in via
+	// /api/auth/wechat-login. bcrypt.CheckPassword on an empty hash fails anyway,
+	// but we return a clearer message instead of the generic "Invalid ... password".
+	if user.PasswordHash == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "该账号请使用微信登录"})
+		return
+	}
 	if !auth.CheckPassword(req.Password, user.PasswordHash) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Invalid email or password"})
 		return
@@ -125,6 +134,90 @@ func (h *AuthHandler) login(c *gin.Context) {
 	h.respondTokens(c, http.StatusOK, &user)
 }
 
+type wechatLoginReq struct {
+	Code string `json:"code" binding:"required"`
+}
+
+// wechatLogin exchanges a wx.login() code for the user's WeChat openid
+// (server-side, via jscode2session), finds-or-creates a BrickPlan account keyed
+// by openid, and issues tokens. Unlike the web login, the refresh token is also
+// returned in the body because the Mini Program runtime can't rely on httpOnly
+// cookies - it stores both tokens in wx storage and sends them explicitly.
+func (h *AuthHandler) wechatLogin(c *gin.Context) {
+	var req wechatLoginReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	if h.wechat == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "微信登录未配置"})
+		return
+	}
+	openid, unionid, err := h.wechat.Code2Session(req.Code)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "微信登录失败：" + err.Error()})
+		return
+	}
+
+	var user db.User
+	if err := h.gdb.Where("wechat_open_id = ?", openid).First(&user).Error; err != nil {
+		// First login for this WeChat user -> create an account.
+		preset := fmt.Sprintf("/avatars/presets/%02d.png", rand.Intn(20)+1)
+		user = db.User{
+			WeChatOpenID:  &openid,
+			WeChatUnionID: unionid,
+			Email:         "wx_" + openid + "@wechat.local",
+			PasswordHash:  "", // no password -> password login disabled, see login()
+			EmailVerified: true,
+			AvatarURL:     &preset,
+		}
+		if !h.assignUniqueWeChatUsername(&user) {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+			return
+		}
+		if err := h.gdb.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+			return
+		}
+	} else if unionid != "" && user.WeChatUnionID == "" {
+		// Backfill unionid if we now have one and didn't before (best-effort).
+		user.WeChatUnionID = unionid
+		h.gdb.Save(&user)
+	}
+
+	if user.Banned {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "账号已被禁用"})
+		return
+	}
+	at, rt, err := h.issueTokens(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	h.setRefreshCookie(c, rt) // harmless for mini programs; lets web clients reuse the session
+	c.JSON(http.StatusOK, dto.TokenResponse{
+		AccessToken:  at,
+		RefreshToken: rt,
+		TokenType:    "bearer",
+		User:         dto.FromMe(&user),
+	})
+}
+
+// assignUniqueWeChatUsername generates a 微信用户_<hex> name that is not already
+// taken and writes it onto the user. Returns false only after repeated collisions
+// (astronomically unlikely).
+func (h *AuthHandler) assignUniqueWeChatUsername(user *db.User) bool {
+	for i := 0; i < 5; i++ {
+		candidate := "微信用户_" + fmt.Sprintf("%06x", rand.Intn(0xFFFFFF))
+		var existing db.User
+		if err := h.gdb.Where("username = ?", candidate).First(&existing).Error; err != nil {
+			user.Username = candidate
+			return true
+		}
+	}
+	return false
+}
+
 type refreshReq struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
@@ -132,9 +225,20 @@ type refreshReq struct {
 // refresh reads the refresh token from the bp_refresh httpOnly cookie (not the
 // body), rotates it, and returns a new access token in the body. The cookie's
 // Path=/api/auth means it's sent only to refresh/logout, limiting exposure.
+// As a fallback for clients that cannot use cookies (e.g. the WeChat Mini
+// Program), the refresh token may also be supplied in the JSON body.
 func (h *AuthHandler) refresh(c *gin.Context) {
-	token, err := c.Cookie("bp_refresh")
-	if err != nil || token == "" {
+	token, _ := c.Cookie("bp_refresh")
+	fromBody := false
+	if token == "" {
+		// Cookieless clients (mini program) send the refresh token in the body.
+		var req refreshReq
+		if err := c.ShouldBindJSON(&req); err == nil {
+			token = req.RefreshToken
+			fromBody = token != ""
+		}
+	}
+	if token == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "Invalid or expired token"})
 		return
 	}
@@ -156,19 +260,19 @@ func (h *AuthHandler) refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "账号已被禁用"})
 		return
 	}
-	at, err := auth.CreateAccessToken(h.cfg, user.ID, user.TokenVersion)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
-		return
-	}
-	rt, err := auth.CreateRefreshToken(h.cfg, user.ID, user.TokenVersion)
+	at, rt, err := h.issueTokens(&user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
 	}
 	h.setRefreshCookie(c, rt)
 	// Echo the user object so the frontend can restore session on page reload.
-	c.JSON(http.StatusOK, dto.TokenResponse{AccessToken: at, TokenType: "bearer", User: dto.FromMe(&user)})
+	resp := dto.TokenResponse{AccessToken: at, TokenType: "bearer", User: dto.FromMe(&user)}
+	if fromBody {
+		// Cookieless clients (mini program) need the rotated refresh token in the body.
+		resp.RefreshToken = rt
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *AuthHandler) me(c *gin.Context) {
@@ -325,16 +429,22 @@ func (h *AuthHandler) presetAvatars(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"avatars": avatars})
 }
 
+// issueTokens mints a fresh access+refresh pair bound to the user's current
+// TokenVersion. Shared by register/login (cookie auth) and wechat-login.
+func (h *AuthHandler) issueTokens(user *db.User) (at, rt string, err error) {
+	at, err = auth.CreateAccessToken(h.cfg, user.ID, user.TokenVersion)
+	if err != nil {
+		return "", "", err
+	}
+	rt, err = auth.CreateRefreshToken(h.cfg, user.ID, user.TokenVersion)
+	return at, rt, err
+}
+
 // respondTokens issues a fresh access+refresh pair. The access token goes in the
 // response body (kept in memory by the frontend); the refresh token goes in an
 // httpOnly cookie (Path=/api/auth) so client JS can never read it.
 func (h *AuthHandler) respondTokens(c *gin.Context, code int, user *db.User) {
-	at, err := auth.CreateAccessToken(h.cfg, user.ID, user.TokenVersion)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
-		return
-	}
-	rt, err := auth.CreateRefreshToken(h.cfg, user.ID, user.TokenVersion)
+	at, rt, err := h.issueTokens(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return

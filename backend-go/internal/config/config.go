@@ -35,6 +35,12 @@ type Config struct {
 	SMTPPass   string
 	SMTPFrom   string
 
+	// WeChat Mini Program login (optional - WeChat login disabled when unset).
+	// The AppID/AppSecret come from the WeChat Mini Program admin console; the
+	// secret is used only server-side to call jscode2session.
+	WeChatAppID     string
+	WeChatAppSecret string
+
 	// SEO/SSR
 	FrontendDist   string // path to frontend/dist (for vite manifest + static assets)
 	PublicURL      string // canonical site URL, e.g. https://brickplan.cn
@@ -66,6 +72,8 @@ func Load() *Config {
 		SMTPUser:                getenv("SMTP_USER", ""),
 		SMTPPass:                getenv("SMTP_PASS", ""),
 		SMTPFrom:                getenv("SMTP_FROM", ""),
+		WeChatAppID:             getenv("WECHAT_APPID", ""),
+		WeChatAppSecret:         getenv("WECHAT_APPSECRET", ""),
 		FrontendDist:            getenv("FRONTEND_DIST", "../frontend/dist"),
 		PublicURL:               getenv("PUBLIC_URL", "https://brickplan.cn"),
 		BlogContentDir:          getenv("BLOG_CONTENT_DIR", "./content/blog"),

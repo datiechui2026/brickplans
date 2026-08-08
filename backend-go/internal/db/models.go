@@ -24,6 +24,14 @@ type User struct {
 	EmailVerified bool       `gorm:"not null;default:false" json:"-"`
 	Banned        bool       `gorm:"not null;default:false" json:"-"`
 	BannedAt      *time.Time `json:"-"`
+	// WeChat Mini Program identity. WeChatOpenID uniquely identifies a user within
+	// one mini program; WeChatUnionID is set only when the app belongs to a WeChat
+	// Open Platform account (shared across the brand's apps). Explicit column names
+	// avoid GORM splitting "WeChat" into "we_chat". WeChatOpenID is a pointer so
+	// non-WeChat users store NULL - a UNIQUE index allows many NULLs but not many
+	// empty strings, so this keeps the uniqueness check correct for everyone.
+	WeChatOpenID  *string `gorm:"type:varchar(64);column:wechat_open_id;uniqueIndex" json:"-"`
+	WeChatUnionID string  `gorm:"type:varchar(64);column:wechat_union_id;index" json:"-"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"-"`
 
