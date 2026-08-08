@@ -31,7 +31,6 @@
       <view class="author-row" bindtap="goAuthor">
         <image wx:if="{{bp.authorAvatarUrl}}" class="avatar" src="{{bp.authorAvatarUrl}}" />
         <view wx:else class="avatar avatar-fallback">{{bp.catEmoji}}</view>
-        <text class="author-name">{{bp.author.username}}</text>
         <text class="muted">{{bp.createdText}}</text>
       </view>
 
@@ -85,32 +84,6 @@
       </view>
     </view>
 
-    <!-- Comments -->
-    <view class="card">
-      <view class="title">💬 评论 ({{comments.length}})</view>
-      <empty wx:if="{{!comments.length}}" text="暂无评论，抢个沙发吧！" icon="💬" />
-      <view class="comment-list">
-        <view wx:for="{{comments}}" wx:key="id" class="comment">
-          <image class="c-avatar" src="{{item.avatarUrl}}" wx:if="{{item.avatarUrl}}" />
-          <view wx:else class="c-avatar c-avatar-fallback">🧱</view>
-          <view class="c-body">
-            <view class="c-head">
-              <text class="c-name">{{item.user.username}}</text>
-              <text class="c-time muted">{{item.timeText}}</text>
-            </view>
-            <view class="c-content">{{item.content}}</view>
-            <view class="c-reply" bindtap="startReply" data-id="{{item.id}}" data-name="{{item.user.username}}">回复</view>
-            <view wx:if="{{item.replies && item.replies.length}}" class="reply-list">
-              <view wx:for="{{item.replies}}" wx:for-item="rep" wx:key="id" class="reply">
-                <text class="c-name">{{rep.user.username}}</text>
-                <text class="reply-content">{{rep.content}}</text>
-              </view>
-            </view>
-          </view>
-        </view>
-      </view>
-    </view>
-
     <!-- Related -->
     <view wx:if="{{related.length}}">
       <view class="section-header"><text class="title">相关作品</text></view>
@@ -119,20 +92,7 @@
       </view>
     </view>
 
-    <view style="height: 140rpx"></view>
   </block>
-
-  <!-- Comment input bar -->
-  <view class="comment-bar" wx:if="{{bp}}">
-    <view wx:if="{{replyTo}}" class="reply-hint">
-      <text>回复 @{{replyTo.username}}</text>
-      <text class="reply-cancel" bindtap="cancelReply">✕</text>
-    </view>
-    <view class="comment-input-row">
-      <input class="comment-input" value="{{commentText}}" placeholder="{{replyTo ? '回复 @' + replyTo.username : '写下你的评论...'}}" bindinput="onCommentInput" confirm-type="send" bindconfirm="sendComment" />
-      <button class="send-btn" bindtap="sendComment" disabled="{{!commentText || sendingComment}}">发送</button>
-    </view>
-  </view>
 
   <!-- Report modal -->
   <view wx:if="{{showReport}}" class="modal-mask" bindtap="closeReport">

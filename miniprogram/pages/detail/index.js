@@ -13,14 +13,10 @@ Page({
     descHtml: '',
     partList: null,
     related: [],
-    comments: [],   // tree: [{...comment, replies: [...]}]
     loading: true,
     error: '',
     liking: false,
     favving: false,
-    commentText: '',
-    replyTo: null,  // {id, username}
-    sendingComment: false,
     showReport: false,
     reportReason: '',
     reportDetail: '',
@@ -35,9 +31,8 @@ Page({
   async load() {
     this.setData({ loading: true, error: '' })
     try {
-      const [bp, comments, relatedRes] = await Promise.all([
+      const [bp, relatedRes] = await Promise.all([
         api.getBlueprint(this.data.id),
-        api.listComments(this.data.id),
         api.getRelatedBlueprints(this.data.id),
       ])
       const images = (bp.images || []).filter((im) => im.file_type !== 'pdf')
@@ -64,30 +59,12 @@ Page({
         descHtml,
         partList,
         related: (relatedRes.items || []),
-        comments: this.buildCommentTree(comments || []),
         loading: false,
       })
       wx.setNavigationBarTitle({ title: bp.title || '图纸详情' })
     } catch (e) {
       this.setData({ loading: false, error: (e && e.message) || '加载失败' })
     }
-  },
-
-  buildCommentTree(flat) {
-    const byId = {}
-    flat.forEach((c) => {
-      byId[c.id] = Object.assign({}, c, {
-        replies: [],
-        avatarUrl: util.resolveUrl(c.user && c.user.avatar_url),
-        timeText: util.timeAgo(c.created_at),
-      })
-    })
-    const roots = []
-    flat.forEach((c) => {
-      if (c.parent_id && byId[c.parent_id]) byId[c.parent_id].replies.push(byId[c.id])
-      else roots.push(byId[c.id])
-    })
-    return roots
   },
 
   // ── Like ──
@@ -128,42 +105,6 @@ Page({
       this.setData({ favving: false })
       const msg = (e && e.status === 409) ? '已收藏' : ((e && e.message) || '操作失败')
       wx.showToast({ title: msg, icon: 'none' })
-    }
-  },
-
-  // ── Comments ──
-  onCommentInput(e) { this.setData({ commentText: e.detail.value }) },
-  startReply(e) {
-    const { id, name } = e.currentTarget.dataset
-    this.setData({ replyTo: { id, username: name } })
-  },
-  cancelReply() { this.setData({ replyTo: null }) },
-  async sendComment() {
-    const content = (this.data.commentText || '').trim()
-    if (!content || this.data.sendingComment) return
-    try { await auth.ensureLogin() } catch (e) { return }
-    this.setData({ sendingComment: true })
-    try {
-      const created = await api.createComment(this.data.id, {
-        content,
-        parent_id: this.data.replyTo ? this.data.replyTo.id : null,
-      })
-      const comments = this.data.comments.slice()
-      const node = Object.assign({}, created, {
-        replies: [],
-        avatarUrl: util.resolveUrl(created.user && created.user.avatar_url),
-        timeText: util.timeAgo(created.created_at),
-      })
-      if (this.data.replyTo) {
-        const parent = comments.find((c) => c.id === this.data.replyTo.id)
-        if (parent) parent.replies.push(node)
-      } else {
-        comments.push(node)
-      }
-      this.setData({ comments, commentText: '', replyTo: null, sendingComment: false })
-    } catch (e) {
-      this.setData({ sendingComment: false })
-      wx.showToast({ title: (e && e.message) || '发送失败', icon: 'none' })
     }
   },
 
