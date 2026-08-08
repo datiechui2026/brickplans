@@ -205,7 +205,7 @@ tags: [MOC, 图纸, 资源, 乐高, 平台, 教程]
 
 示例：
 ```
-机甲 MOC 图纸 site:brickplans.cn
+机甲 MOC 图纸 site:brickplan.cn
 城堡 MOC building instructions site:rebrickable.com
 乐高 MOC 教程 site:bilibili.com
 ```
