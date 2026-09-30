@@ -139,7 +139,7 @@ func homeNoscript(bps []db.Blueprint, public string) template.HTML {
 	return template.HTML(b.String())
 }
 
-func faqNoscript(qa []struct{ Q, A string }) template.HTML {
+func faqNoscript(qa []QA) template.HTML {
 	var b strings.Builder
 	b.WriteString("<h1>常见问题</h1>")
 	for _, item := range qa {

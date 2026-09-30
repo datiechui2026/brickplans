@@ -30,11 +30,26 @@ type PageData struct {
 	OGUrl         string
 	OGType        string
 	JSONLD        []template.JS
+	SiteNav       template.HTML
 	Noscript      template.HTML
 	JSFile        string
 	CSSFile       string
 	Favicon       template.HTML
 }
+
+// siteNavHTML is the server-rendered site navigation emitted into #app ahead of
+// the page body. Without it, crawlers that do not execute JS see no navigation
+// links at all (the SPA builds the navbar client-side), so crawl paths to
+// /explore, /blog and /about would be missing from the raw HTML. The SPA
+// replaces #app on boot, so JS users never see this duplicated.
+var siteNavHTML = template.HTML(`<nav aria-label="站点导航"><ul>` +
+	`<li><a href="/">首页</a></li>` +
+	`<li><a href="/explore">发现图纸</a></li>` +
+	`<li><a href="/blog">博客</a></li>` +
+	`<li><a href="/about">关于我们</a></li>` +
+	`<li><a href="/faq">常见问题</a></li>` +
+	`<li><a href="/privacy">隐私策略</a></li>` +
+	`</ul></nav>`)
 
 // Renderer parses the template once and resolves vite's hashed asset filenames
 // from the build manifest (so SSR HTML references /assets/main-<hash>.js).
@@ -86,6 +101,7 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 	data.JSFile = r.jsFile
 	data.CSSFile = r.cssFile
 	data.Favicon = favicon
+	data.SiteNav = siteNavHTML
 	if data.OGImage == "" {
 		data.OGImage = r.publicURL + "/og-default.png"
 	}

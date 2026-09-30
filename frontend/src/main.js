@@ -413,6 +413,7 @@ function renderNavbar() {
     h('div', { className: 'nav-links' },
       h('a', { href: '/explore', onclick: (e) => { e.preventDefault(); navigate('explore'); }, className: 'nav-link' }, '发现'),
       h('a', { href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); }, className: 'nav-link' }, '博客'),
+      h('a', { href: '/about', onclick: (e) => { e.preventDefault(); navigate('about'); }, className: 'nav-link' }, '关于'),
     ),
     h('div', { className: 'nav-actions' }, ...actions),
   );
@@ -1016,6 +1017,8 @@ function renderHome() {
       h('div', {}, '© 2026 BrickPlan 积木图纸分享社区',
         h('span', {}, ' · '),
         h('a', { href: '/blog', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '博客'),
+        h('span', {}, ' · '),
+        h('a', { href: '/about', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '关于我们'),
         h('span', {}, ' · '),
         h('a', { href: '/privacy', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '隐私策略'),
       ),
@@ -4098,17 +4101,19 @@ async function renderBlogDetail() {
       el.appendChild(relSection);
     }
 
-    // Inject Article JSON-LD structured data
-    document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
+    // Inject structured data: site-wide nodes + BlogPosting/Article + GEO extras
+    // (mirrors BlogDetail() in backend-go/internal/ssr/blog.go).
     const blogLdScripts = [
+      organizationJsonLd(),
+      websiteJsonLd(),
       {
         '@context': 'https://schema.org',
         '@type': 'BlogPosting',
         headline: post.title,
         description: post.description || '',
         datePublished: post.date,
-        author: { '@type': 'Person', name: post.author || 'BrickPlans' },
-        publisher: { '@type': 'Organization', name: 'BrickPlans', url: window.location.origin },
+        author: { '@type': 'Person', name: post.author || 'BrickPlan' },
+        publisher: { '@id': `${window.location.origin}/#organization` },
         mainEntityOfPage: { '@type': 'WebPage', '@id': window.location.href },
         url: window.location.href,
       },
@@ -4119,22 +4124,36 @@ async function renderBlogDetail() {
         description: post.description || '',
         datePublished: post.date,
         dateModified: post.date,
-        author: { '@type': 'Person', name: post.author || 'BrickPlans' },
-        publisher: { '@type': 'Organization', name: 'BrickPlans', url: window.location.origin, logo: { '@type': 'ImageObject', url: window.location.origin + '/og-default.png' } },
+        author: { '@type': 'Person', name: post.author || 'BrickPlan' },
+        publisher: { '@id': `${window.location.origin}/#organization` },
         mainEntityOfPage: { '@type': 'WebPage', '@id': window.location.href },
         url: window.location.href,
         inLanguage: 'zh-CN',
       },
     ];
     if (post.tags && post.tags.length) {
-      blogLdScripts[1].keywords = post.tags.join(', ');
+      blogLdScripts[3].keywords = post.tags.join(', ');
     }
-    blogLdScripts.forEach(ld => {
-      const s = document.createElement('script');
-      s.type = 'application/ld+json';
-      s.textContent = JSON.stringify(ld, null, 2);
-      document.head.appendChild(s);
-    });
+
+    // GEO: FAQPage derived from the article's own H2/H3 sections
+    const faqPairs = buildFaqFromBody(post.body || '', 6);
+    if (faqPairs.length) {
+      blogLdScripts.push({
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: faqPairs.map(x => ({
+          '@type': 'Question',
+          name: x.q,
+          acceptedAnswer: { '@type': 'Answer', text: x.a },
+        })),
+      });
+    }
+
+    // GEO: tutorial-style posts expose their ordered steps as HowTo
+    const howToLd = buildHowToJsonLd(post);
+    if (howToLd) blogLdScripts.push(howToLd);
+
+    injectJsonLd(blogLdScripts);
   } catch (e) {
     const el = $id('blog-detail-content');
     if (el) {
@@ -4148,11 +4167,329 @@ async function renderBlogDetail() {
   }
 }
 
+// ═══════════════════════════════════════════
+// GEO / structured data helpers
+// ═══════════════════════════════════════════
+
+// injectJsonLd replaces all injected JSON-LD blocks with the given ones.
+function injectJsonLd(blocks) {
+  document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
+  blocks.filter(Boolean).forEach(ld => {
+    const s = document.createElement('script');
+    s.type = 'application/ld+json';
+    s.textContent = JSON.stringify(ld, null, 2);
+    document.head.appendChild(s);
+  });
+}
+
+// organizationJsonLd / websiteJsonLd mirror siteJSONLD() in
+// backend-go/internal/ssr/jsonld.go — both layers must stay in sync.
+function organizationJsonLd() {
+  const origin = window.location.origin;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${origin}/#organization`,
+    name: 'BrickPlan',
+    alternateName: '积木图纸社区',
+    url: origin,
+    description: 'BrickPlan 是面向积木/MOC 爱好者的图纸分享社区，收录乐高及国产积木（双鹰、宇星、高砖、森宝、奇积等）的 MOC 图纸、零件知识、搭建教程与作品评测。',
+    slogan: '发现和分享积木 MOC 图纸',
+    logo: { '@type': 'ImageObject', url: `${origin}/og-default.png`, width: 1200, height: 630 },
+    image: `${origin}/og-default.png`,
+    inLanguage: 'zh-CN',
+    areaServed: { '@type': 'Country', name: 'China' },
+    knowsAbout: ['积木图纸', 'MOC', '乐高 MOC', '积木搭建教程', '积木零件', '国产积木品牌'],
+    contactPoint: [{
+      '@type': 'ContactPoint',
+      contactType: 'customer support',
+      email: 'privacy@brickplan.cn',
+      url: `${origin}/about`,
+      availableLanguage: ['zh-CN'],
+    }],
+  };
+}
+
+function websiteJsonLd() {
+  const origin = window.location.origin;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    '@id': `${origin}/#website`,
+    url: origin,
+    name: 'BrickPlan',
+    alternateName: '积木图纸社区',
+    description: '积木/MOC 图纸分享社区',
+    inLanguage: 'zh-CN',
+    publisher: { '@id': `${origin}/#organization` },
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${origin}/explore?q={search_term_string}` },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+}
+
+// plainMdText reduces markdown syntax to readable text (Go: ssr.plainMDText).
+function plainMdText(s) {
+  return String(s || '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`]+/g, '')
+    .replace(/^\s*>\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// mdSectionsFromBody splits markdown into H2/H3 sections with the text that
+// follows each heading (Go: ssr.mdSections). `raw` keeps line breaks for
+// line-oriented parsing; `text` is markdown-stripped.
+function mdSectionsFromBody(body) {
+  const out = [];
+  let cur = null;
+  let buf = [];
+  const flush = () => {
+    if (!cur) return;
+    cur.raw = buf.join('\n');
+    cur.text = plainMdText(cur.raw);
+    out.push(cur);
+    cur = null;
+    buf = [];
+  };
+  String(body || '').split('\n').forEach(line => {
+    const m = line.match(/^(#{2,3})[ \t]+(.+?)[ \t]*#*[ \t]*$/);
+    if (m) {
+      flush();
+      cur = { level: m[1].length, heading: plainMdText(m[2]), text: '', raw: '' };
+      return;
+    }
+    if (cur) buf.push(line);
+  });
+  flush();
+  return out;
+}
+
+// isFAQHeading mirrors ssr.isFAQHeading in Go.
+function isFAQHeading(heading) {
+  const h = String(heading || '');
+  const lower = h.toLowerCase();
+  return h.includes('常见问题') || h.includes('问答') || lower.includes('faq') || lower.includes('q&a');
+}
+
+// explicitFAQ parses hand-written "**Q：…**" / "A：…" pairs out of a 常见问题
+// section (Go: ssr.explicitFAQ). Curated pairs beat auto-derived questions.
+function explicitFAQ(body) {
+  for (const s of mdSectionsFromBody(body)) {
+    if (!isFAQHeading(s.heading) || !s.raw) continue;
+    const pairs = [];
+    let cur = -1;
+    s.raw.split('\n').forEach(line => {
+      const qm = line.match(/^\s*\**\s*(?:Q|问|问题)\s*[：:]\s*\**\s*(.*)$/);
+      if (qm) {
+        const q = toQuestionText(plainMdText(qm[1]));
+        if (!q) return;
+        pairs.push({ q, a: '' });
+        cur = pairs.length - 1;
+        return;
+      }
+      if (cur < 0) return;
+      let ans = '';
+      const am = line.match(/^\s*\**\s*(?:A|答|答案)\s*[：:]\s*\**\s*(.*)$/);
+      if (am) ans = plainMdText(am[1]);
+      else if (pairs[cur].a) ans = plainMdText(line); // continuation line
+      if (!ans) return;
+      pairs[cur].a = pairs[cur].a ? `${pairs[cur].a} ${ans}` : ans;
+    });
+    const complete = pairs
+      .filter(p => p.q && Array.from(p.a).length >= 8)
+      .map(p => ({ q: p.q, a: clipText(p.a, 300) }));
+    if (complete.length >= 2) return complete;
+  }
+  return [];
+}
+
+function toQuestionText(heading) {
+  const s = String(heading || '')
+    .replace(/^第\s*[0-9一二三四五六七八九十]+\s*[步节部分]\s*[:：.、]?\s*/, '')
+    .replace(/^(?:[0-9]+|[一二三四五六七八九十]+)\s*[、.．)）:：]\s*/, '')
+    .replace(/[？?。.：:]+$/, '')
+    .trim();
+  return s ? `${s}？` : '';
+}
+
+function clipText(s, n) {
+  const r = Array.from(String(s || ''));
+  return r.length > n ? `${r.slice(0, n).join('')}...` : String(s || '');
+}
+
+// buildFaqFromBody derives FAQPage Q&A pairs for a post (Go: ssr.buildFAQFromBody).
+// Hand-written 常见问题 sections win; otherwise H2/H3 sections become questions.
+function buildFaqFromBody(body, max) {
+  const explicit = explicitFAQ(body);
+  if (explicit.length) return explicit.slice(0, max);
+
+  const sections = mdSectionsFromBody(body);
+  const pick = (level) => {
+    const qa = [];
+    for (const s of sections) {
+      if (s.level !== level || !s.heading || isFAQHeading(s.heading)) continue;
+      if (!s.text) continue;
+      if (Array.from(s.text).length < 12) continue;
+      const q = toQuestionText(s.heading);
+      if (!q) continue;
+      qa.push({ q, a: clipText(s.text, 260) });
+      if (qa.length >= max) break;
+    }
+    return qa;
+  };
+  let qa = pick(2);
+  if (qa.length < 2) qa = pick(3);
+  return qa.length >= 2 ? qa : [];
+}
+
+function isTutorialPost(post) {
+  const hay = [post.category, post.title, post.slug, (post.tags || []).join(' ')].join(' ');
+  return ['教程', '指南', '入门', 'tutorial', 'guide', 'how-to', 'howto'].some(k => hay.includes(k));
+}
+
+// buildHowToJsonLd mirrors howToJSONLD() in Go: H2 sections become ordered steps.
+function buildHowToJsonLd(post) {
+  if (!isTutorialPost(post)) return null;
+  const steps = mdSectionsFromBody(post.body)
+    .filter(s => s.level === 2 && s.heading && s.text && !isFAQHeading(s.heading))
+    .map((s, i) => ({ '@type': 'HowToStep', position: i + 1, name: s.heading, text: clipText(s.text, 300) }));
+  if (steps.length < 2) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    name: post.title,
+    description: post.description || '',
+    inLanguage: 'zh-CN',
+    step: steps,
+  };
+}
+
+// ═══════════════════════════════════════════
+// About page — mirrors backend-go/internal/ssr/about.go
+// ═══════════════════════════════════════════
+function aboutSectionsData() {
+  return [
+    {
+      id: 'background',
+      heading: '项目背景',
+      paras: [
+        'BrickPlan（积木图纸社区）是一个面向积木与 MOC 爱好者的图纸分享社区，主站为 brickplan.cn。',
+        '玩家找图纸时最大的痛点是：图纸散落在论坛、网盘和社交平台，搜索困难、格式混乱、链接还常常失效。BrickPlan 把这些内容集中到一个可检索、可分类、带完整元信息（零件数、难度、尺寸、推荐品牌）的站点上。',
+        '目前站内收录建筑、车辆、机甲、奇幻、科幻、场景六大分类的积木图纸，覆盖乐高以及双鹰、宇星、高砖、森宝、奇积等国产积木品牌，并提供零件知识、品牌对比与搭建教程类文章。',
+      ],
+      bullets: [],
+    },
+    {
+      id: 'what-we-offer',
+      heading: '我们提供什么',
+      paras: [],
+      bullets: [
+        '图纸库：按分类、标签、关键词检索的 MOC 图纸，支持图片与 PDF 图纸在线预览。',
+        '元信息：每份图纸标注零件数、难度、尺寸与推荐品牌，方便在动手前评估可行性。',
+        '教程与评测：博客栏目持续更新 MOC 搭建教程、零件分类知识、品牌评测与选购建议。',
+        '社区互动：点赞、收藏、评论与作者主页，创作者的作品可以被直接关注。',
+      ],
+    },
+    {
+      id: 'team',
+      heading: '作者团队',
+      paras: ['BrickPlan 由一个小型独立团队维护：'],
+      bullets: [
+        '内容与运营：负责图纸整理、分类标注、教程与评测撰写。',
+        '工程：负责站点、微信小程序与检索体验的开发与运维。',
+        '社区创作者：图纸与作品的版权归各自创作者所有，BrickPlan 仅提供展示与分享平台。',
+      ],
+    },
+    {
+      id: 'contact',
+      heading: '联系方式',
+      paras: [],
+      bullets: [
+        '邮箱：privacy@brickplan.cn（隐私与内容相关事务）',
+        '侵权与下架：在作品页底部点击「举报」，或直接发送邮件，我们会在核实后处理。',
+        '商务与合作：同样通过上述邮箱联系，标题请注明「合作」。',
+      ],
+    },
+    {
+      id: 'inclusion',
+      heading: '收录说明',
+      paras: [],
+      bullets: [
+        '收录范围：站内收录玩家自荐或公开渠道可获取的积木 MOC 图纸与原创文章，图纸版权归原作者所有。',
+        '收录方式：注册用户可自行上传；非注册用户可通过邮箱推荐，我们整理后入库。',
+        '更新频率：图纸库与博客持续更新，站点地图（/sitemap.xml）实时反映最新内容。',
+        '展示信息：每份图纸的元信息（零件数、难度等）来自原作者提供或公开资料整理，如有出入欢迎指正。',
+        '版权与下架：如果你是版权方且不希望作品被收录，请通过举报入口或邮箱联系我们，核实后会尽快下架。',
+        '抓取与引用：欢迎搜索引擎与 AI 助手抓取、引用本站公开内容，引用时请保留原文链接（https://brickplan.cn）。站内提供 sitemap.xml、llms.txt 与结构化数据便于机器读取。',
+      ],
+    },
+  ];
+}
+
+function renderAboutPage() {
+  const container = $id('page-about');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const title = '关于我们 — BrickPlan 积木图纸社区';
+  const desc = 'BrickPlan 积木图纸社区的项目背景、作者团队、联系方式与内容收录说明。';
+  document.title = title;
+  setMeta('og:title', title);
+  setMeta('og:description', desc);
+  setMeta('og:url', `${window.location.origin}/about`);
+  setMeta('og:type', 'website');
+  setMetaName('description', desc);
+
+  const body = h('div', { className: 'markdown-body' },
+    h('h1', {}, '关于 BrickPlan'),
+    h('p', {}, 'BrickPlan（积木图纸社区）是面向积木/MOC 爱好者的图纸分享社区，本文介绍项目背景、团队、联系方式与内容收录说明。'),
+    ...aboutSectionsData().map(s => h('section', { id: s.id },
+      h('h2', {}, s.heading),
+      ...s.paras.map(p => h('p', {}, p)),
+      s.bullets.length
+        ? h('ul', {}, ...s.bullets.map(li => h('li', {}, li)))
+        : null,
+    )),
+    h('p', {},
+      h('a', { href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); } }, '阅读积木搭建教程与评测'),
+      ' · ',
+      h('a', { href: '/explore', onclick: (e) => { e.preventDefault(); navigate('explore'); } }, '浏览全部图纸'),
+      ' · ',
+      h('a', { href: '/faq', onclick: (e) => { e.preventDefault(); navigate('faq'); } }, '常见问题'),
+    ),
+  );
+
+  container.appendChild(h('div', { className: 'main' },
+    h('div', { className: 'blog-detail' }, body),
+  ));
+
+  injectJsonLd([
+    organizationJsonLd(),
+    websiteJsonLd(),
+    {
+      '@context': 'https://schema.org',
+      '@type': 'AboutPage',
+      '@id': `${window.location.origin}/about#aboutpage`,
+      url: `${window.location.origin}/about`,
+      name: '关于 BrickPlan 积木图纸社区',
+      description: desc,
+      inLanguage: 'zh-CN',
+      isPartOf: { '@type': 'WebSite', '@id': `${window.location.origin}/#website` },
+      about: { '@id': `${window.location.origin}/#organization` },
+      mainEntity: { '@id': `${window.location.origin}/#organization` },
+    },
+  ]);
+}
+
 function render() {
   const app = document.getElementById('app');
 
   // Ensure page containers exist
-  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications', 'faq', 'blog', 'blog-detail'];
+  const pages = ['home', 'explore', 'detail', 'upload', 'user', 'admin', 'edit', 'privacy', 'notifications', 'faq', 'blog', 'blog-detail', 'about'];
   if (!app.querySelector('#page-home')) {
     app.innerHTML = '';
     renderNavbarIntoDOM();
@@ -4206,6 +4543,10 @@ function render() {
     case 'privacy':
       resetMeta();
       renderPrivacyPage();
+      break;
+    case 'about':
+      resetMeta();
+      renderAboutPage();
       break;
     case 'notifications':
       resetMeta();

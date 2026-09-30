@@ -52,6 +52,7 @@ func (h *SEOHandler) sitemap(c *gin.Context) {
 	writeURL(&b, base+"/", "", "1.0", "daily")
 	writeURL(&b, base+"/explore", "", "0.9", "daily")
 	writeURL(&b, base+"/faq", "", "0.6", "weekly")
+	writeURL(&b, base+"/about", "", "0.6", "monthly")
 	writeURL(&b, base+"/privacy", "", "0.3", "yearly")
 
 	// Category pages

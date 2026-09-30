@@ -5,6 +5,8 @@
 ## 核心页面
 - [首页](https://brickplan.cn/)
 - [发现 / 搜索图纸](https://brickplan.cn/explore)
+- [博客](https://brickplan.cn/blog)：MOC 搭建教程、零件知识、品牌评测与选购建议，每篇正文均为服务端渲染 HTML，可直接抓取。
+- [关于我们](https://brickplan.cn/about)：项目背景、作者团队、联系方式与内容收录说明。
 - [常见问题](https://brickplan.cn/faq)
 - [隐私策略](https://brickplan.cn/privacy)
 - [站点地图](https://brickplan.cn/sitemap.xml)

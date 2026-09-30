@@ -35,6 +35,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/notifications", h.Simple("通知", "你在 BrickPlan 的互动通知。"))
 	r.GET("/admin", h.Simple("管理后台", "BrickPlan 管理后台。"))
 	r.GET("/privacy", h.Simple("隐私策略", "BrickPlan 隐私策略。"))
+	r.GET("/about", h.About)
 	r.GET("/faq", h.FAQ)
 	r.GET("/blog", h.BlogList)
 	r.GET("/blog/:slug", h.BlogDetail)
@@ -114,12 +115,12 @@ func (h *Handler) Explore(c *gin.Context) {
 		desc = "浏览" + cat + "分类的积木 MOC 图纸作品。"
 	}
 	h.r.Render(c, PageData{
-		Title:     title,
+		Title:       title,
 		Description: desc,
-		Canonical: h.cfg.PublicURL + "/explore",
-		OGType:    "website",
-		JSONLD:    append(h.siteJSONLD(), itemListJSONLD(bps, h.cfg.PublicURL)),
-		Noscript:  listNoscript(bps, h.cfg.PublicURL),
+		Canonical:   h.cfg.PublicURL + "/explore",
+		OGType:      "website",
+		JSONLD:      append(h.siteJSONLD(), itemListJSONLD(bps, h.cfg.PublicURL)),
+		Noscript:    listNoscript(bps, h.cfg.PublicURL),
 	})
 }
 
@@ -205,8 +206,8 @@ func truncate(s string, n int) string {
 	return s
 }
 
-func faqData() []struct{ Q, A string } {
-	return []struct{ Q, A string }{
+func faqData() []QA {
+	return []QA{
 		{"什么是 MOC？", "MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于官方套装。BrickPlan 是分享 MOC 图纸的社区。"},
 		{"如何上传我的作品？", "注册登录后，点击右上角「上传」按钮，填写标题、分类、难度、零件数等信息，并上传图片或 PDF 图纸。"},
 		{"支持什么文件格式？", "支持 JPG/PNG/WebP 图片和 PDF 文件，单文件最大 20MB，一次最多 10 个文件。图片会自动压缩转码。"},

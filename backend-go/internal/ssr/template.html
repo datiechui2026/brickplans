@@ -29,7 +29,7 @@
   <script async defer src="/umami.js" data-website-id="630eea47-5406-4ee3-a80b-cb58b683c196"></script>
 </head>
 <body>
-  <div id="app">{{.Noscript}}</div>
+  <div id="app">{{.SiteNav}}{{.Noscript}}</div>
   {{if .JSFile}}<script type="module" src="/{{.JSFile}}"></script>{{end}}
 </body>
 </html>

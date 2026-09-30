@@ -2,8 +2,8 @@ package ssr
 
 import (
 	"fmt"
-	"strings"
 	"html/template"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -72,6 +72,15 @@ func (h *Handler) BlogDetail(c *gin.Context) {
 	jsonld := h.siteJSONLD()
 	jsonld = append(jsonld, blogPostJSONLD(post, h.cfg.PublicURL))
 	jsonld = append(jsonld, articleJSONLD(post, h.cfg.PublicURL))
+	// GEO: derive FAQPage Q&A pairs from the article's own H2/H3 sections so AI
+	// answer engines get explicit question/answer pairs instead of free prose.
+	if qa := buildFAQFromBody(post.Body, 6); len(qa) > 0 {
+		jsonld = append(jsonld, faqJSONLD(qa))
+	}
+	// GEO: tutorial-style posts additionally expose their H2 sections as HowTo steps.
+	if howto, ok := howToJSONLD(post, h.cfg.PublicURL); ok {
+		jsonld = append(jsonld, template.JS(howto))
+	}
 
 	h.r.Render(c, PageData{
 		Title:       title,
@@ -179,17 +188,17 @@ func blogPostJSONLD(post *blog.Post, public string) template.JS {
 // search engine compatibility, especially for Baidu SEO.
 func articleJSONLD(post *blog.Post, public string) template.JS {
 	m := map[string]interface{}{
-		"@context":       "https://schema.org",
-		"@type":          "Article",
-		"headline":       post.Title,
-		"description":    post.Description,
-		"datePublished":  post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		"dateModified":   post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		"author":         map[string]interface{}{"@type": "Person", "name": post.Author},
-		"publisher":      map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public, "logo": map[string]interface{}{"@type": "ImageObject", "url": public + "/og-default.png"}},
+		"@context":         "https://schema.org",
+		"@type":            "Article",
+		"headline":         post.Title,
+		"description":      post.Description,
+		"datePublished":    post.Date.Format("2006-01-02T15:04:05Z07:00"),
+		"dateModified":     post.Date.Format("2006-01-02T15:04:05Z07:00"),
+		"author":           map[string]interface{}{"@type": "Person", "name": post.Author},
+		"publisher":        map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public, "logo": map[string]interface{}{"@type": "ImageObject", "url": public + "/og-default.png"}},
 		"mainEntityOfPage": map[string]interface{}{"@type": "WebPage", "@id": public + "/blog/" + post.Slug},
-		"url":            public + "/blog/" + post.Slug,
-		"inLanguage":     "zh-CN",
+		"url":              public + "/blog/" + post.Slug,
+		"inLanguage":       "zh-CN",
 	}
 	if len(post.Tags) > 0 {
 		m["keywords"] = strings.Join(post.Tags, ", ")
