@@ -31,6 +31,10 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.PUT("/blueprints/:blueprint_id/unpublish", h.unpublish)
 	g.DELETE("/blueprints/:blueprint_id", h.delete)
 	g.GET("/reports", h.listReports)
+	g.GET("/comments", h.listComments)
+	g.PUT("/comments/:comment_id/pin", h.pinComment)
+	g.PUT("/comments/:comment_id/status", h.setCommentStatus)
+	g.DELETE("/comments/:comment_id", h.deleteComment)
 	g.GET("/users", h.listUsers)
 	g.DELETE("/users/:user_id", h.deleteUser)
 	g.PUT("/users/:user_id/admin", h.setAdmin)
@@ -178,6 +182,132 @@ func (h *AdminHandler) listReports(c *gin.Context) {
 }
 
 // ── User management ─────────────────────────────────
+
+// ── Comment moderation ──────────────────────────────
+
+// commentStatuses are the values accepted by setCommentStatus.
+var commentStatuses = map[string]bool{"approved": true, "hidden": true}
+
+func toAdminCommentOut(cm *db.Comment) dto.AdminCommentOut {
+	title := ""
+	if cm.Blueprint != nil {
+		title = cm.Blueprint.Title
+	}
+	return dto.AdminCommentOut{
+		ID:             cm.ID,
+		BlueprintID:    cm.BlueprintID,
+		BlueprintTitle: title,
+		UserID:         cm.UserID,
+		ParentID:       cm.ParentID,
+		Content:        cm.Content,
+		Status:         cm.Status,
+		IsPinned:       cm.IsPinned,
+		CreatedAt:      dto.ISO(cm.CreatedAt),
+		User:           dto.FromUser(cm.User),
+	}
+}
+
+func (h *AdminHandler) listComments(c *gin.Context) {
+	page := atoiOr(c.Query("page"), 1, 1)
+	size := atoiOr(c.Query("size"), 20, 1)
+	if size > 100 {
+		size = 100
+	}
+	q := strings.TrimSpace(c.Query("q"))
+	status := strings.TrimSpace(c.Query("status"))
+
+	qry := h.gdb.Model(&db.Comment{}).
+		Joins("LEFT JOIN users ON users.id = comments.user_id").
+		Joins("LEFT JOIN blueprints ON blueprints.id = comments.blueprint_id")
+	if q != "" {
+		like := "%" + escapeLike(q) + "%"
+		qry = qry.Where("comments.content LIKE ? OR users.username LIKE ? OR blueprints.title LIKE ?", like, like, like)
+	}
+	if commentStatuses[status] {
+		qry = qry.Where("comments.status = ?", status)
+	}
+	var total int64
+	qry.Count(&total)
+
+	var comments []db.Comment
+	qry.Preload("User").Preload("Blueprint").
+		Order("comments.created_at DESC").Offset((page - 1) * size).Limit(size).Find(&comments)
+
+	items := make([]dto.AdminCommentOut, 0, len(comments))
+	for i := range comments {
+		items = append(items, toAdminCommentOut(&comments[i]))
+	}
+	c.JSON(http.StatusOK, dto.AdminCommentListOut{Items: items, Total: int(total), Page: page, PageSize: size})
+}
+
+func (h *AdminHandler) pinComment(c *gin.Context) {
+	var payload struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	res := h.gdb.Model(&db.Comment{}).Where("id = ?", c.Param("comment_id")).
+		Update("is_pinned", payload.Pinned)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Comment not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+func (h *AdminHandler) setCommentStatus(c *gin.Context) {
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	if !commentStatuses[payload.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "status must be approved or hidden"})
+		return
+	}
+	id := c.Param("comment_id")
+	res := h.gdb.Model(&db.Comment{}).Where("id = ?", id).
+		Update("status", payload.Status)
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Comment not found"})
+		return
+	}
+	// Hiding a top-level comment also hides its replies, so they don't surface as
+	// orphaned replies in the public list. Re-approving restores only the parent;
+	// each reply must be approved individually.
+	if payload.Status == "hidden" {
+		h.gdb.Model(&db.Comment{}).Where("parent_id = ?", id).Update("status", "hidden")
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+}
+
+func (h *AdminHandler) deleteComment(c *gin.Context) {
+	id := c.Param("comment_id")
+	var cm db.Comment
+	if err := h.gdb.First(&cm, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Comment not found"})
+		return
+	}
+	// Delete replies explicitly so the cascade does not depend on DB FK settings.
+	h.gdb.Where("parent_id = ?", id).Delete(&db.Comment{})
+	if err := h.gdb.Delete(&db.Comment{}, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
 
 func (h *AdminHandler) listUsers(c *gin.Context) {
 	page := atoiOr(c.Query("page"), 1, 1)

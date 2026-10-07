@@ -55,7 +55,7 @@ func aboutSections() []aboutSection {
 			ID:      "contact",
 			Heading: "联系方式",
 			Bullets: []string{
-				"邮箱：privacy@brickplan.cn（隐私与内容相关事务）",
+				"邮箱：ghostjeky@hotmail.com（隐私与内容相关事务）",
 				"侵权与下架：在作品页底部点击「举报」，或直接发送邮件，我们会在核实后处理。",
 				"商务与合作：同样通过上述邮箱联系，标题请注明「合作」。",
 			},

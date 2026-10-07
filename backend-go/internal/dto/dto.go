@@ -147,8 +147,32 @@ type CommentOut struct {
 	UserID      string   `json:"user_id"`
 	ParentID    *string  `json:"parent_id"`
 	Content     string   `json:"content"`
+	IsPinned    bool     `json:"is_pinned"`
 	CreatedAt   string   `json:"created_at"`
 	User        *UserOut `json:"user"`
+}
+
+// AdminCommentOut is the admin-only comment projection - adds the moderation
+// status and the owning blueprint's title so the review table is self-contained.
+type AdminCommentOut struct {
+	ID             string   `json:"id"`
+	BlueprintID    string   `json:"blueprint_id"`
+	BlueprintTitle string   `json:"blueprint_title"`
+	UserID         string   `json:"user_id"`
+	ParentID       *string  `json:"parent_id"`
+	Content        string   `json:"content"`
+	Status         string   `json:"status"`
+	IsPinned       bool     `json:"is_pinned"`
+	CreatedAt      string   `json:"created_at"`
+	User           *UserOut `json:"user"`
+}
+
+// AdminCommentListOut is the paginated admin comment list envelope.
+type AdminCommentListOut struct {
+	Items    []AdminCommentOut `json:"items"`
+	Total    int               `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
 }
 
 // NotificationOut is the notification projection. Actor uses the public UserOut

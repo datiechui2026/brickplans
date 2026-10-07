@@ -493,7 +493,7 @@ func (h *BlueprintsHandler) createComment(c *gin.Context) {
 		}
 		parent = &p
 	}
-	comment := db.Comment{BlueprintID: id, UserID: user.ID, ParentID: req.ParentID, Content: req.Content}
+	comment := db.Comment{BlueprintID: id, UserID: user.ID, ParentID: req.ParentID, Content: req.Content, Status: "approved"}
 	if err := h.gdb.Create(&comment).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
@@ -515,7 +515,8 @@ func (h *BlueprintsHandler) createComment(c *gin.Context) {
 func (h *BlueprintsHandler) listComments(c *gin.Context) {
 	id := c.Param("blueprint_id")
 	var comments []db.Comment
-	h.gdb.Preload("User").Where("blueprint_id = ?", id).Order("created_at ASC").Find(&comments)
+	h.gdb.Preload("User").Where("blueprint_id = ? AND status = ?", id, "approved").
+		Order("is_pinned DESC, created_at ASC").Find(&comments)
 	out := make([]dto.CommentOut, 0, len(comments))
 	for i := range comments {
 		out = append(out, *toCommentOut(&comments[i]))
@@ -683,6 +684,7 @@ func toCommentOut(comment *db.Comment) *dto.CommentOut {
 		UserID:      comment.UserID,
 		ParentID:    comment.ParentID,
 		Content:     comment.Content,
+		IsPinned:    comment.IsPinned,
 		CreatedAt:   dto.ISO(comment.CreatedAt),
 		User:        dto.FromUser(comment.User),
 	}

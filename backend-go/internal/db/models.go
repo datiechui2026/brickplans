@@ -164,7 +164,11 @@ type Comment struct {
 	UserID      string     `gorm:"type:char(36);index;not null" json:"user_id"`
 	ParentID    *string    `gorm:"type:char(36);index" json:"parent_id"`
 	Content     string     `gorm:"type:text;not null" json:"content"`
-	CreatedAt   time.Time  `json:"created_at"`
+	// Status is the moderation state: "approved" (default, shown publicly) or
+	// "hidden" (removed from public listings by an admin).
+	Status    string    `gorm:"type:varchar(20);not null;default:approved" json:"status"`
+	IsPinned  bool      `gorm:"not null;default:false" json:"is_pinned"`
+	CreatedAt time.Time `json:"created_at"`
 
 	Blueprint *Blueprint `gorm:"foreignKey:BlueprintID" json:"-"`
 	User      *User      `gorm:"foreignKey:UserID" json:"user"`

@@ -377,6 +377,31 @@ export async function adminListReports({ page = 1 } = {}) {
   return request(`/api/admin/reports?${params}`);
 }
 
+export async function adminListComments({ page = 1, q = '', status = '' } = {}) {
+  const params = new URLSearchParams({ page, size: '20' });
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  return request(`/api/admin/comments?${params}`);
+}
+
+export async function adminDeleteComment(id) {
+  return request(`/api/admin/comments/${id}`, { method: 'DELETE' });
+}
+
+export async function adminSetCommentPinned(id, pinned) {
+  return request(`/api/admin/comments/${id}/pin`, {
+    method: 'PUT',
+    body: JSON.stringify({ pinned }),
+  });
+}
+
+export async function adminSetCommentStatus(id, status) {
+  return request(`/api/admin/comments/${id}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function adminListUsers({ page = 1, q = '' } = {}) {
   const params = new URLSearchParams({ page, size: '20' });
   if (q) params.set('q', q);

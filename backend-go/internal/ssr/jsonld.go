@@ -61,7 +61,7 @@ func (h *Handler) siteJSONLD() []template.JS {
 			{
 				"@type":             "ContactPoint",
 				"contactType":       "customer support",
-				"email":             "privacy@brickplan.cn",
+				"email":             "ghostjeky@hotmail.com",
 				"url":               public + "/about",
 				"availableLanguage": []string{"zh-CN"},
 			},

@@ -789,7 +789,7 @@ function renderPrivacyPage() {
             ['重大变更需要用户重新确认同意']],
           ['七、联系方式',
             '如有隐私相关问题，请联系：',
-            ['邮箱：privacy@brickplan.cn',
+            ['邮箱：ghostjeky@hotmail.com',
              '举报入口：每个作品详情页底部有小字举报链接']],
         ].flatMap(([title, intro, items]) => [
           h('h2', { style: { marginTop: '32px', fontSize: '1.2rem' } }, title),
@@ -1666,6 +1666,9 @@ async function loadDetail(id) {
       h('div', { className: 'comment-header' },
         h('div', { className: 'comment-avatar' }, (c.user?.username || '?')[0].toUpperCase()),
         h('div', { className: 'comment-author' }, c.user?.username || '匿名'),
+        c.is_pinned ? h('span', {
+          style: { marginLeft: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent, #2563eb)', background: 'var(--bg-sec, #f1f5f9)', borderRadius: '4px', padding: '1px 6px' },
+        }, '📌 置顶') : null,
         c.created_at ? h('div', { className: 'comment-time' },
           new Date(c.created_at).toLocaleDateString('zh-CN'),
         ) : null,
@@ -3292,13 +3295,14 @@ async function renderAdminPage() {
           ),
           h('button', { className: `tab-btn${tab === 'all' ? ' active' : ''}`, onclick: () => { tab = 'all'; page = 1; buildUI(); } }, '📋 全部作品'),
           h('button', { className: `tab-btn${tab === 'reports' ? ' active' : ''}`, onclick: () => { tab = 'reports'; page = 1; buildUI(); } }, '🚩 举报管理'),
+          h('button', { className: `tab-btn${tab === 'comments' ? ' active' : ''}`, onclick: () => { tab = 'comments'; page = 1; buildUI(); } }, '💬 评论审核'),
           h('button', { className: `tab-btn${tab === 'users' ? ' active' : ''}`, onclick: () => { tab = 'users'; page = 1; buildUI(); } }, '👤 用户管理'),
           h('button', { className: `tab-btn${tab === 'featured' ? ' active' : ''}`, onclick: () => { tab = 'featured'; page = 1; buildUI(); } }, '🔥 热门推荐'),
         ),
 
         // Search (for "all" and "users")
-        ...((tab === 'all' || tab === 'users') ? [h('div', { style: { display: 'flex', gap: '8px', marginBottom: '16px' } },
-          h('input', { type: 'text', id: 'admin-search', className: 'form-input', placeholder: tab === 'users' ? '搜索用户名或邮箱...' : '搜索标题或作者...', value: searchQ, style: { flex: '1', maxWidth: '320px' },
+        ...((tab === 'all' || tab === 'users' || tab === 'comments') ? [h('div', { style: { display: 'flex', gap: '8px', marginBottom: '16px' } },
+          h('input', { type: 'text', id: 'admin-search', className: 'form-input', placeholder: tab === 'users' ? '搜索用户名或邮箱...' : (tab === 'comments' ? '搜索评论内容、作者或作品...' : '搜索标题或作者...'), value: searchQ, style: { flex: '1', maxWidth: '320px' },
             onkeydown: (e) => { if (e.key === 'Enter') { searchQ = e.target.value; page = 1; buildUI(); } },
           }),
           h('button', { className: 'btn btn-primary btn-sm', onclick: () => { searchQ = $id('admin-search')?.value || ''; page = 1; buildUI(); } }, '搜索'),
@@ -3615,6 +3619,87 @@ async function renderAdminPage() {
         return;
       }
 
+      if (tab === 'comments') {
+        const data = await api.adminListComments({ page, q: searchQ });
+        const items = data.items || [];
+        if (!items.length) {
+          tableEl.innerHTML = '<div class="empty"><div class="empty-icon">💬</div><p>' + (searchQ ? '没有找到评论' : '暂无评论') + '</p></div>';
+          if (pagEl) pagEl.innerHTML = '';
+          return;
+        }
+
+        const rows = items.map(cm => {
+          const actions = [];
+          actions.push(h('button', {
+            className: `btn btn-sm${cm.is_pinned ? ' btn-primary' : ' btn-ghost'}`,
+            style: { marginRight: '6px' },
+            onclick: () => handleTogglePinComment(cm.id, !cm.is_pinned),
+          }, cm.is_pinned ? '📌 取消置顶' : '📌 置顶'));
+          if (cm.status === 'hidden') {
+            actions.push(h('button', { className: 'btn btn-success btn-sm', style: { marginRight: '6px' }, onclick: () => handleSetCommentStatus(cm.id, 'approved') }, '通过'));
+          } else {
+            actions.push(h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '6px' }, onclick: () => handleSetCommentStatus(cm.id, 'hidden') }, '隐藏'));
+          }
+          actions.push(h('button', { className: 'btn btn-danger btn-sm', onclick: () => confirmDeleteComment(cm.id) }, '🗑 删除'));
+
+          const excerpt = cm.content.length > 60 ? cm.content.slice(0, 60) + '…' : cm.content;
+          return h('tr', {},
+            h('td', { style: { maxWidth: '320px' } }, h('div', {}, excerpt)),
+            h('td', {}, cm.user ? cm.user.username : '—'),
+            h('td', {}, cm.blueprint_id
+              ? h('a', {
+                href: `/detail/${cm.blueprint_id}`,
+                style: { fontWeight: 700 },
+                onclick: (e) => { e.preventDefault(); navigate('detail', { id: cm.blueprint_id }); },
+              }, cm.blueprint_title || '（作品已删除）')
+              : '—'),
+            h('td', {}, cm.status === 'hidden'
+              ? h('span', { style: { color: '#dc2626', fontWeight: 700 } }, '已隐藏')
+              : h('span', { style: { color: '#16a34a' } }, '已通过')),
+            h('td', {}, cm.is_pinned ? '📌' : '—'),
+            h('td', {}, cm.created_at ? new Date(cm.created_at).toLocaleDateString('zh-CN') : '—'),
+            h('td', { style: { whiteSpace: 'nowrap' } }, ...actions),
+          );
+        });
+
+        tableEl.innerHTML = '';
+        tableEl.appendChild(
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+              h('thead', {},
+                h('tr', {},
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '评论内容'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '作者'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '所属作品'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '状态'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '置顶'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '时间'),
+                  h('th', { style: { textAlign: 'left', padding: '8px', borderBottom: '2px solid var(--border)' } }, '操作'),
+                ),
+              ),
+              h('tbody', {}, ...rows),
+            ),
+          ),
+        );
+
+        const totalPages = Math.ceil(data.total / 20);
+        if (pagEl && totalPages > 1) {
+          pagEl.innerHTML = '';
+          pagEl.appendChild(h('button', { className: 'page-btn', disabled: page <= 1, style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' }, onclick: () => { page--; buildUI(); } }, '‹ 上一页'));
+          for (let i = 1; i <= Math.min(totalPages, 7); i++) {
+            pagEl.appendChild(h('button', { className: `page-btn${i === page ? ' active' : ''}`, onclick: () => { page = i; buildUI(); } }, String(i)));
+          }
+          if (totalPages > 7) {
+            pagEl.appendChild(h('span', { style: { padding: '4px 8px' } }, '...'));
+            pagEl.appendChild(h('button', { className: 'page-btn', onclick: () => { page = totalPages; buildUI(); } }, String(totalPages)));
+          }
+          pagEl.appendChild(h('button', { className: 'page-btn', disabled: page >= totalPages, style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' }, onclick: () => { page++; buildUI(); } }, '下一页 ›'));
+        } else if (pagEl) {
+          pagEl.innerHTML = '';
+        }
+        return;
+      }
+
       if (tab === 'users') {
         const data = await api.adminListUsers({ page, q: searchQ });
         const items = data.items || [];
@@ -3876,6 +3961,56 @@ async function renderAdminPage() {
     } catch (e) {
       showToast('操作失败：' + e.message, 'error');
     }
+  };
+
+  const handleTogglePinComment = async (id, pinned) => {
+    try {
+      await api.adminSetCommentPinned(id, pinned);
+      showToast(pinned ? '已置顶 📌' : '已取消置顶', 'success');
+      buildUI();
+    } catch (e) {
+      showToast('操作失败：' + e.message, 'error');
+    }
+  };
+
+  const handleSetCommentStatus = async (id, status) => {
+    try {
+      await api.adminSetCommentStatus(id, status);
+      showToast(status === 'hidden' ? '已隐藏评论' : '已通过评论 ✅', 'success');
+      buildUI();
+    } catch (e) {
+      showToast('操作失败：' + e.message, 'error');
+    }
+  };
+
+  const confirmDeleteComment = (id) => {
+    const modal = h('div', {
+      id: 'confirm-modal',
+      style: { position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '9999' },
+    },
+      h('div', { style: { background: 'white', borderRadius: '12px', padding: '32px', maxWidth: '400px', width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' } },
+        h('div', { style: { fontSize: '3rem', marginBottom: '12px' } }, '⚠️'),
+        h('h3', { style: { marginBottom: '8px' } }, '确认删除评论'),
+        h('p', { style: { color: 'var(--text-sec)', marginBottom: '24px' } }, '将删除该评论及其所有回复，此操作不可撤销。确定？'),
+        h('div', { style: { display: 'flex', gap: '12px', justifyContent: 'center' } },
+          h('button', { className: 'btn btn-ghost', onclick: () => { const el = $id('confirm-modal'); if (el) el.remove(); } }, '取消'),
+          h('button', { className: 'btn btn-danger', onclick: async () => {
+            try {
+              await api.adminDeleteComment(id);
+              const el = $id('confirm-modal');
+              if (el) el.remove();
+              showToast('已删除评论 🗑', 'success');
+              buildUI();
+            } catch (e) {
+              const el = $id('confirm-modal');
+              if (el) el.remove();
+              showToast('操作失败：' + e.message, 'error');
+            }
+          } }, '确认删除'),
+        ),
+      ),
+    );
+    document.body.appendChild(modal);
   };
 
   const confirmDeleteUser = (id, username) => {
@@ -4203,7 +4338,7 @@ function organizationJsonLd() {
     contactPoint: [{
       '@type': 'ContactPoint',
       contactType: 'customer support',
-      email: 'privacy@brickplan.cn',
+      email: 'ghostjeky@hotmail.com',
       url: `${origin}/about`,
       availableLanguage: ['zh-CN'],
     }],
@@ -4409,7 +4544,7 @@ function aboutSectionsData() {
       heading: '联系方式',
       paras: [],
       bullets: [
-        '邮箱：privacy@brickplan.cn（隐私与内容相关事务）',
+        '邮箱：ghostjeky@hotmail.com（隐私与内容相关事务）',
         '侵权与下架：在作品页底部点击「举报」，或直接发送邮件，我们会在核实后处理。',
         '商务与合作：同样通过上述邮箱联系，标题请注明「合作」。',
       ],

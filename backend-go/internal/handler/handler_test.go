@@ -474,3 +474,148 @@ func TestImageOrderingBySortOrder(t *testing.T) {
 		}
 	}
 }
+
+// ── Comment moderation ──
+
+func makeAdmin(t *testing.T, gdb *gorm.DB, userID string) {
+	t.Helper()
+	if err := gdb.Model(&db.User{}).Where("id = ?", userID).Update("is_admin", true).Error; err != nil {
+		t.Fatalf("make admin: %v", err)
+	}
+}
+
+func listPublicComments(t *testing.T, r *gin.Engine, bpID string) []any {
+	t.Helper()
+	w := doJSON(t, r, "GET", "/api/blueprints/"+bpID+"/comments", nil, "")
+	if w.Code != 200 {
+		t.Fatalf("list comments: %d %s", w.Code, w.Body.String())
+	}
+	var arr []any
+	json.Unmarshal(w.Body.Bytes(), &arr)
+	return arr
+}
+
+// New comments are approved by default (publicly visible) and an admin can pin
+// one to the top of the blueprint's comment list.
+func TestCommentModerationDefaultsAndPin(t *testing.T) {
+	r, gdb := setupTest(t)
+	tokA, uidA := registerUser(t, r, "modA", "moda@x.com")
+	bpID := createBlueprint(t, r, tokA, "mod bp", true)
+	for _, c := range []string{"first", "second"} {
+		if w := doJSON(t, r, "POST", "/api/blueprints/"+bpID+"/comments",
+			map[string]string{"content": c}, tokA); w.Code != 201 {
+			t.Fatalf("comment: %d %s", w.Code, w.Body.String())
+		}
+	}
+	arr := listPublicComments(t, r, bpID)
+	if len(arr) != 2 {
+		t.Fatalf("default-approved comments expected 2, got %d", len(arr))
+	}
+	secondID := arr[1].(map[string]any)["id"].(string)
+
+	makeAdmin(t, gdb, uidA)
+	if w := doJSON(t, r, "PUT", "/api/admin/comments/"+secondID+"/pin",
+		map[string]bool{"pinned": true}, tokA); w.Code != 200 {
+		t.Fatalf("pin: %d %s", w.Code, w.Body.String())
+	}
+	arr = listPublicComments(t, r, bpID)
+	first := arr[0].(map[string]any)
+	if first["id"] != secondID {
+		t.Fatalf("pinned comment not first: %v", first["id"])
+	}
+	if first["is_pinned"] != true {
+		t.Fatal("pinned comment missing is_pinned=true")
+	}
+}
+
+func TestCommentHideRemovesFromPublicList(t *testing.T) {
+	r, gdb := setupTest(t)
+	tokA, uidA := registerUser(t, r, "hideA", "hidea@x.com")
+	bpID := createBlueprint(t, r, tokA, "hide bp", true)
+	w := doJSON(t, r, "POST", "/api/blueprints/"+bpID+"/comments",
+		map[string]string{"content": "bad"}, tokA)
+	cid := parseJSON(t, w)["id"].(string)
+	// A reply to the offending comment must also disappear when the parent is hidden.
+	if w := doJSON(t, r, "POST", "/api/blueprints/"+bpID+"/comments",
+		map[string]any{"content": "reply", "parent_id": cid}, tokA); w.Code != 201 {
+		t.Fatalf("reply: %d %s", w.Code, w.Body.String())
+	}
+
+	makeAdmin(t, gdb, uidA)
+	if w := doJSON(t, r, "PUT", "/api/admin/comments/"+cid+"/status",
+		map[string]string{"status": "hidden"}, tokA); w.Code != 200 {
+		t.Fatalf("hide: %d %s", w.Code, w.Body.String())
+	}
+	if arr := listPublicComments(t, r, bpID); len(arr) != 0 {
+		t.Fatalf("hidden comment (or its reply) still public, got %d", len(arr))
+	}
+	// Admin listing still shows both, flagged hidden.
+	w = doJSON(t, r, "GET", "/api/admin/comments", nil, tokA)
+	items := parseJSON(t, w)["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("admin list expected 2, got %d", len(items))
+	}
+	if items[0].(map[string]any)["status"] != "hidden" {
+		t.Fatal("admin list status != hidden")
+	}
+	if items[0].(map[string]any)["blueprint_title"] != "hide bp" {
+		t.Fatalf("admin list blueprint_title = %v", items[0].(map[string]any)["blueprint_title"])
+	}
+	// Invalid status is rejected.
+	if w := doJSON(t, r, "PUT", "/api/admin/comments/"+cid+"/status",
+		map[string]string{"status": "bogus"}, tokA); w.Code != 400 {
+		t.Fatalf("invalid status expected 400, got %d", w.Code)
+	}
+}
+
+// Regression: the admin guard must reject BEFORE the handler runs. Previously
+// AdminRequired delegated to AuthRequired's closure, whose c.Next() executed the
+// admin handler first — so a non-admin's mutation committed and only then got a
+// 403 appended.
+func TestAdminEndpointsRejectNonAdminBeforeHandler(t *testing.T) {
+	r, gdb := setupTest(t)
+	tokA, _ := registerUser(t, r, "victim", "victim@x.com")
+	bpID := createBlueprint(t, r, tokA, "protected bp", true)
+	tokB, _ := registerUser(t, r, "attacker", "attacker@x.com")
+
+	w := doJSON(t, r, "DELETE", "/api/admin/blueprints/"+bpID, nil, tokB)
+	if w.Code != 403 {
+		t.Fatalf("non-admin admin delete expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+	var count int64
+	gdb.Model(&db.Blueprint{}).Where("id = ?", bpID).Count(&count)
+	if count != 1 {
+		t.Fatal("non-admin executed an admin delete (privilege escalation)")
+	}
+}
+
+func TestAdminCommentEndpointsRequireAdmin(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "nope", "nope@x.com")
+	if w := doJSON(t, r, "GET", "/api/admin/comments", nil, tok); w.Code != 403 {
+		t.Fatalf("non-admin comment list expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAdminDeleteCommentRemovesReplies(t *testing.T) {
+	r, gdb := setupTest(t)
+	tokA, uidA := registerUser(t, r, "delA", "dela@x.com")
+	bpID := createBlueprint(t, r, tokA, "del bp", true)
+	w := doJSON(t, r, "POST", "/api/blueprints/"+bpID+"/comments",
+		map[string]string{"content": "parent"}, tokA)
+	pid := parseJSON(t, w)["id"].(string)
+	if w := doJSON(t, r, "POST", "/api/blueprints/"+bpID+"/comments",
+		map[string]any{"content": "reply", "parent_id": pid}, tokA); w.Code != 201 {
+		t.Fatalf("reply: %d %s", w.Code, w.Body.String())
+	}
+
+	makeAdmin(t, gdb, uidA)
+	if w := doJSON(t, r, "DELETE", "/api/admin/comments/"+pid, nil, tokA); w.Code != 204 {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	var count int64
+	gdb.Model(&db.Comment{}).Where("blueprint_id = ?", bpID).Count(&count)
+	if count != 0 {
+		t.Fatalf("expected 0 comments after cascade delete, got %d", count)
+	}
+}
