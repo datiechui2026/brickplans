@@ -42,15 +42,43 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 }
 
 func (h *Handler) Home(c *gin.Context) {
-	var bps []db.Blueprint
-	h.gdb.Where("is_published = ?", true).Order("view_count DESC").Limit(10).Find(&bps)
+	// Featured (admin-curated, falls back to latest) feeds the slideshow;
+	// latest feeds the "最新作品" grid. Mirror what the SPA renders so
+	// crawlers see the same internal links as users.
+	var featured []db.Blueprint
+	var fb []db.FeaturedBlueprint
+	h.gdb.Order("sort_order ASC, created_at ASC").Limit(8).Find(&fb)
+	if len(fb) > 0 {
+		ids := make([]string, 0, len(fb))
+		for _, f := range fb {
+			ids = append(ids, f.BlueprintID)
+		}
+		var ordered []db.Blueprint
+		h.gdb.Where("id IN ? AND is_published = ?", ids, true).Find(&ordered)
+		byID := make(map[string]db.Blueprint, len(ordered))
+		for _, b := range ordered {
+			byID[b.ID] = b
+		}
+		for _, f := range fb {
+			if b, ok := byID[f.BlueprintID]; ok {
+				featured = append(featured, b)
+			}
+		}
+	}
+	if len(featured) == 0 {
+		h.gdb.Where("is_published = ?", true).Order("created_at DESC").Limit(8).Find(&featured)
+	}
+
+	var latest []db.Blueprint
+	h.gdb.Where("is_published = ?", true).Order("created_at DESC").Limit(10).Find(&latest)
+
 	h.r.Render(c, PageData{
 		Title:       "BrickPlan — 积木图纸分享社区",
 		Description: "BrickPlan 是积木/MOC 图纸分享社区，发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。",
 		Canonical:   h.cfg.PublicURL + "/",
 		OGType:      "website",
-		JSONLD:      append(h.siteJSONLD(), itemListJSONLD(bps, h.cfg.PublicURL)),
-		Noscript:    homeNoscript(bps, h.cfg.PublicURL),
+		JSONLD:      append(h.siteJSONLD(), itemListJSONLD(latest, h.cfg.PublicURL)),
+		Noscript:    homeNoscript(featured, latest, h.cfg.PublicURL),
 	})
 }
 

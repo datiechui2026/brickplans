@@ -177,6 +177,13 @@ export async function getFeaturedBlueprints(size = 8) {
   return request(`/api/blueprints/featured?size=${size}`);
 }
 
+// Aggregated homepage payload — featured (slideshow) + latest (grid) + stats in
+// a single request, so the homepage renders with one round-trip instead of three.
+export async function getHome({ featured = 8, latest = 8 } = {}) {
+  const params = new URLSearchParams({ featured, latest });
+  return request(`/api/home?${params}`);
+}
+
 export async function getBlueprint(id) {
   return request(`/api/blueprints/${id}`);
 }

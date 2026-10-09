@@ -92,6 +92,9 @@ func NewBlueprintsHandler(cfg *config.Config, gdb *gorm.DB) *BlueprintsHandler {
 }
 
 func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	// Aggregated homepage payload (featured carousel + latest grid + stats).
+	rg.GET("/home", auth.OptionalUser(h.cfg, h.gdb), h.home)
+
 	g := rg.Group("/blueprints")
 	g.POST("", auth.AuthRequired(h.cfg, h.gdb), h.create)
 	g.GET("", auth.OptionalUser(h.cfg, h.gdb), h.list)
@@ -561,6 +564,63 @@ func (h *BlueprintsHandler) featured(c *gin.Context) {
 	}
 	user := auth.CurrentUser(c)
 
+	bps := h.loadFeatured(size)
+	items := h.toOuts(bps, user)
+	c.JSON(http.StatusOK, dto.BlueprintListOut{Items: items, Total: len(items), Page: 1, PageSize: size})
+}
+
+// home aggregates everything the homepage above-the-fold render needs —
+// the carousel's curated featured set, the "latest" grid, and platform stats —
+// into a single response. One request instead of three is the biggest load-time
+// win for the homepage on high-latency connections.
+func (h *BlueprintsHandler) home(c *gin.Context) {
+	featSize := atoiOr(c.Query("featured"), 8, 1)
+	if featSize > 20 {
+		featSize = 20
+	}
+	latestSize := atoiOr(c.Query("latest"), 8, 1)
+	if latestSize > 24 {
+		latestSize = 24
+	}
+	user := auth.CurrentUser(c)
+
+	featBPs := h.loadFeatured(featSize)
+	latestBPs := h.loadLatest(latestSize)
+
+	// One bulk count query over the deduped union of both lists.
+	seen := make(map[string]bool, len(featBPs)+len(latestBPs))
+	ids := make([]string, 0, len(featBPs)+len(latestBPs))
+	for _, bp := range featBPs {
+		if !seen[bp.ID] {
+			seen[bp.ID] = true
+			ids = append(ids, bp.ID)
+		}
+	}
+	for _, bp := range latestBPs {
+		if !seen[bp.ID] {
+			seen[bp.ID] = true
+			ids = append(ids, bp.ID)
+		}
+	}
+	favCounts, likeCounts, userLiked, userFav := h.bulkCounts(ids, user)
+	serialize := func(bps []db.Blueprint) []dto.BlueprintOut {
+		out := make([]dto.BlueprintOut, 0, len(bps))
+		for i := range bps {
+			out = append(out, *toBlueprintOut(&bps[i], favCounts[bps[i].ID], likeCounts[bps[i].ID], userLiked[bps[i].ID], userFav[bps[i].ID]))
+		}
+		return out
+	}
+
+	c.JSON(http.StatusOK, dto.HomeOut{
+		Featured: serialize(featBPs),
+		Latest:   serialize(latestBPs),
+		Stats:    platformStats(h.gdb),
+	})
+}
+
+// loadFeatured returns the curated featured blueprints (sort_order ASC). With no
+// curation it falls back to the latest published ones — never view_count.
+func (h *BlueprintsHandler) loadFeatured(size int) []db.Blueprint {
 	var featured []db.FeaturedBlueprint
 	h.gdb.Order("sort_order ASC, created_at ASC").Limit(size).Find(&featured)
 
@@ -591,17 +651,30 @@ func (h *BlueprintsHandler) featured(c *gin.Context) {
 			Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
 			Order("created_at DESC").Limit(size).Find(&bps)
 	}
+	return bps
+}
 
-	bpIDs := make([]string, 0, len(bps))
-	for _, b := range bps {
-		bpIDs = append(bpIDs, b.ID)
-	}
-	favCounts, likeCounts, userLiked, userFav := h.bulkCounts(bpIDs, user)
-	items := make([]dto.BlueprintOut, 0, len(bps))
+// loadLatest returns the most recently published blueprints.
+func (h *BlueprintsHandler) loadLatest(size int) []db.Blueprint {
+	var bps []db.Blueprint
+	h.gdb.Where("is_published = ?", true).
+		Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
+		Order("created_at DESC").Limit(size).Find(&bps)
+	return bps
+}
+
+// toOuts serializes blueprints with a single bulk count query.
+func (h *BlueprintsHandler) toOuts(bps []db.Blueprint, user *db.User) []dto.BlueprintOut {
+	ids := make([]string, 0, len(bps))
 	for i := range bps {
-		items = append(items, *toBlueprintOut(&bps[i], favCounts[bps[i].ID], likeCounts[bps[i].ID], userLiked[bps[i].ID], userFav[bps[i].ID]))
+		ids = append(ids, bps[i].ID)
 	}
-	c.JSON(http.StatusOK, dto.BlueprintListOut{Items: items, Total: len(items), Page: 1, PageSize: size})
+	favCounts, likeCounts, userLiked, userFav := h.bulkCounts(ids, user)
+	out := make([]dto.BlueprintOut, 0, len(bps))
+	for i := range bps {
+		out = append(out, *toBlueprintOut(&bps[i], favCounts[bps[i].ID], likeCounts[bps[i].ID], userLiked[bps[i].ID], userFav[bps[i].ID]))
+	}
+	return out
 }
 
 // ── Serialization ───────────────────────────────────

@@ -140,6 +140,25 @@ type BlueprintListOut struct {
 	PageSize int            `json:"page_size"`
 }
 
+// PlatformStats is the public aggregate counter block shown on the homepage.
+type PlatformStats struct {
+	TotalBlueprints int64 `json:"total_blueprints"`
+	TotalUsers      int64 `json:"total_users"`
+	TotalFavorites  int64 `json:"total_favorites"`
+	TotalLikes      int64 `json:"total_likes"`
+	TotalPieces     int64 `json:"total_pieces"`
+	TotalViews      int64 `json:"total_views"`
+}
+
+// HomeOut is the aggregated homepage payload. Fetching the carousel set, the
+// latest list, and the platform stats in one response cuts the homepage from
+// three round-trips to one (biggest single load-time win on mobile).
+type HomeOut struct {
+	Featured []BlueprintOut `json:"featured"`
+	Latest   []BlueprintOut `json:"latest"`
+	Stats    PlatformStats  `json:"stats"`
+}
+
 // CommentOut is the comment projection (one-level replies via parent_id).
 type CommentOut struct {
 	ID          string   `json:"id"`

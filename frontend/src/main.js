@@ -871,7 +871,95 @@ function renderErrorPage(code, message, detail) {
 }
 
 // ── Home ──
+// Auto-rotate handle for the homepage slideshow. Cleared at the start of every
+// renderHome() so navigating away (or re-rendering) never leaves a live timer
+// mutating detached DOM.
+let _homeSliderTimer = null;
+
+// Homepage slideshow — featured works. Slides are 16:9 with an overlay caption;
+// auto-advances every 4.5s, pauses on hover, and supports arrows + dots.
+function renderHomeSlider(items) {
+  const root = $id('home-slider');
+  if (!root) return;
+  root.innerHTML = '';
+  if (!items || !items.length) { root.style.display = 'none'; return; }
+
+  const emojis = { '建筑': '🏰', '车辆': '🚗', '机甲': '🤖', '奇幻': '🐉', '科幻': '🛸', '场景': '🎨' };
+  const count = items.length;
+  let idx = 0;
+
+  const track = h('div', { className: 'home-slider-track' });
+  const dotsWrap = h('div', { className: 'home-slider-dots' });
+
+  const go = (n) => {
+    idx = (n % count + count) % count;
+    track.style.transform = `translateX(${-idx * 100}%)`;
+    [...dotsWrap.children].forEach((d, i) => { d.className = 'home-slider-dot' + (i === idx ? ' active' : ''); });
+  };
+
+  // Declared here (not inside the `if (count > 1)` block below) so the dot and
+  // arrow click handlers can all close over them.
+  const start = () => { _homeSliderTimer = setInterval(() => go(idx + 1), 4500); };
+  const restart = () => { if (count < 2) return; clearInterval(_homeSliderTimer); start(); };
+  const stop = () => clearInterval(_homeSliderTimer);
+
+  items.forEach((bp, i) => {
+    const cover = getCoverImage(bp.images);
+    const emoji = emojis[bp.category] || '🧱';
+    track.appendChild(h('a', {
+      className: 'home-slide',
+      href: `/detail/${bp.id}`,
+      onclick: (e) => { e.preventDefault(); navigate('detail', { id: bp.id }); },
+    },
+      cover
+        ? h('img', {
+            className: 'home-slide-img',
+            src: cover,
+            alt: bp.title,
+            // First slide is the LCP element → eager + high priority; the rest
+            // load lazily so the initial paint isn't blocked by extra images.
+            loading: i === 0 ? 'eager' : 'lazy',
+            fetchpriority: i === 0 ? 'high' : 'auto',
+            decoding: 'async',
+            onerror: "this.style.display='none'",
+          })
+        : h('div', { className: 'home-slide-noimg' }, emoji),
+      h('div', { className: 'home-slide-overlay' },
+        h('span', { className: 'home-slide-cat' }, `${emoji} ${bp.category || '积木'}`),
+        h('h3', { className: 'home-slide-title' }, bp.title),
+        h('p', { className: 'home-slide-meta' },
+          h('span', {}, bp.author?.username || '匿名'),
+          h('span', {}, `👁 ${bp.view_count || 0}`),
+          h('span', {}, `⭐ ${bp.favorite_count || 0}`),
+        ),
+      ),
+    ));
+  });
+
+  items.forEach((_, i) => {
+    dotsWrap.appendChild(h('button', {
+      className: 'home-slider-dot' + (i === 0 ? ' active' : ''),
+      'aria-label': `第 ${i + 1} 张`,
+      onclick: () => { go(i); restart(); },
+    }));
+  });
+
+  root.appendChild(track);
+  if (count > 1) {
+    root.appendChild(h('button', { className: 'home-slider-arrow prev', 'aria-label': '上一张', onclick: () => { go(idx - 1); restart(); } }, '‹'));
+    root.appendChild(h('button', { className: 'home-slider-arrow next', 'aria-label': '下一张', onclick: () => { go(idx + 1); restart(); } }, '›'));
+    root.appendChild(dotsWrap);
+
+    start();
+    root.addEventListener('mouseenter', stop);
+    root.addEventListener('mouseleave', restart);
+  }
+}
+
 function renderHome() {
+  // Stop any slideshow timer left over from a previous render/navigation.
+  if (_homeSliderTimer) { clearInterval(_homeSliderTimer); _homeSliderTimer = null; }
+
   const container = $id('page-home');
   container.innerHTML = '';
 
@@ -887,43 +975,14 @@ function renderHome() {
   const mainWrap = h('div', { className: 'main' });
   container.appendChild(mainWrap);
 
-  // Stats bar — dynamic from API, fallback to placeholders
-  const statsBar = h('div', { id: 'home-stats', className: 'stats-bar' },
-    ...[
-      ['...', '图纸作品'],
-      ['...', '创作者'],
-      ['...', '总浏览'],
-      ['...', '总收藏'],
-    ].map(([num, label]) =>
-      h('div', { className: 'stat-item' },
-        h('div', { className: 'stat-value' }, num),
-        h('div', { className: 'stat-label' }, label),
-      ),
+  // ① Slideshow — current 推荐作品 (featured), skeleton until data arrives.
+  mainWrap.appendChild(
+    h('section', { id: 'home-slider', className: 'home-slider' },
+      h('div', { className: 'home-slider-skeleton' }, h('div', { className: 'spinner' })),
     ),
   );
-  mainWrap.appendChild(statsBar);
 
-  // Fetch real stats
-  api.getStats().then(s => {
-    const el = $id('home-stats');
-    if (!el) return;
-    const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(1) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-    el.innerHTML = '';
-    const data = [
-      [fmt(s.total_blueprints), '图纸作品'],
-      [fmt(s.total_users), '创作者'],
-      [fmt(s.total_views || 0), '总浏览'],
-      [fmt(s.total_favorites), '总收藏'],
-    ];
-    data.forEach(([num, label]) => {
-      el.appendChild(h('div', { className: 'stat-item' },
-        h('div', { className: 'stat-value' }, num),
-        h('div', { className: 'stat-label' }, label),
-      ));
-    });
-  }).catch(() => {});
-
-  // Category pills
+  // ② Category pills
   const categories = ['全部', '建筑', '机甲', '车辆', '科幻', '场景', '奇幻'];
   const emojis = { '全部': '🏠', '建筑': '🏰', '机甲': '🤖', '车辆': '🚗', '科幻': '🛸', '场景': '🎨', '奇幻': '🐉' };
   mainWrap.appendChild(
@@ -943,74 +1002,32 @@ function renderHome() {
     ),
   );
 
-  // Section header + card grid
+  // ③ 最新作品 section (was 热门推荐)
   mainWrap.appendChild(
     h('div', { className: 'section-header' },
-      h('h2', { className: 'section-title' }, '🔥 热门推荐'),
-      h('button', { className: 'btn btn-ghost', onclick: () => navigate('explore', { sort: 'popular' }) }, '查看全部 →'),
+      h('h2', { className: 'section-title' }, '🆕 最新作品'),
+      h('button', { className: 'btn btn-ghost', onclick: () => navigate('explore') }, '查看全部 →'),
+    ),
+  );
+  mainWrap.appendChild(
+    h('div', { id: 'home-latest', className: 'card-grid' },
+      h('div', { className: 'loading', style: { gridColumn: '1/-1' } }, h('div', { className: 'spinner' })),
     ),
   );
 
-  const featuredGrid = h('div', { id: 'home-featured', className: 'card-grid' },
-    h('div', { className: 'loading', style: { gridColumn: '1/-1' } }, h('div', { className: 'spinner' })),
+  // ④ Platform stats — single row, at the very end of the homepage content.
+  mainWrap.appendChild(
+    h('div', { id: 'home-stats', className: 'stats-bar stats-bar-end' },
+      ...['图纸作品', '创作者', '总浏览', '总收藏'].map(label =>
+        h('div', { className: 'stat-item' },
+          h('div', { className: 'stat-value' }, '...'),
+          h('div', { className: 'stat-label' }, label),
+        ),
+      ),
+    ),
   );
-  mainWrap.appendChild(featuredGrid);
 
-  // Load-more button container
-  mainWrap.appendChild(h('div', { id: 'home-load-more', className: 'load-more' }));
-
-  // Fetch featured - admin-curated 热门推荐 (server falls back to latest)
-  const loadFeatured = () => {
-    api.getFeaturedBlueprints(8).then(data => {
-      const grid = $id('home-featured');
-      if (!grid) return;
-      grid.innerHTML = '';
-      if (!data?.items?.length) {
-        grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>还没有图纸，快来上传第一个吧！</p></div>';
-        return;
-      }
-      data.items.forEach(bp => { grid.appendChild(renderBlueprintCard(bp)); });
-      // Show load-more if there are more pages
-      const totalPages = Math.ceil(data.total / 8);
-      const moreEl = $id('home-load-more');
-      if (moreEl && totalPages > 1) {
-        moreEl.innerHTML = '';
-        moreEl.appendChild(h('button', {
-          className: 'btn btn-outline',
-          onclick: () => navigate('explore', { sort: 'popular' }),
-        }, '加载更多 →'));
-      }
-    }).catch(() => {
-      const grid = $id('home-featured');
-      if (grid) grid.innerHTML = '<div class="error-block" style="grid-column:1/-1"><div class="error-icon">🔌</div><p>加载失败，请检查后端服务</p><button class="btn btn-primary btn-sm" onclick="window._retryHome?.()">🔄 重试</button></div>';
-      window._retryHome = () => {
-        const g = $id('home-featured');
-        if (g) { g.innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div></div>'; }
-        api.getFeaturedBlueprints(8).then(data => {
-          const g2 = $id('home-featured');
-          if (!g2) return;
-          g2.innerHTML = '';
-          data.items.forEach(bp => { g2.appendChild(renderBlueprintCard(bp)); });
-          const totalPages = Math.ceil(data.total / 8);
-          const moreEl = $id('home-load-more');
-          if (moreEl && totalPages > 1) {
-            moreEl.innerHTML = '';
-            moreEl.appendChild(h('button', {
-              className: 'btn btn-outline',
-              onclick: () => navigate('explore', { sort: 'popular' }),
-            }, '加载更多 →'));
-          }
-        }).catch(() => {
-          const g3 = $id('home-featured');
-          if (g3) g3.innerHTML = '<div class="error-block" style="grid-column:1/-1"><div class="error-icon">🔌</div><p>加载失败</p><button class="btn btn-primary btn-sm" onclick="window._retryHome?.()">🔄 重试</button></div>';
-        });
-      };
-      showToast('加载热门作品失败', 'error');
-    });
-  };
-  loadFeatured();
-
-  // Footer
+  // ⑤ Footer
   mainWrap.appendChild(
     h('footer', { className: 'footer' },
       h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlan'),
@@ -1024,6 +1041,53 @@ function renderHome() {
       ),
     ),
   );
+
+  // One aggregated request renders the slideshow, the latest grid, and the
+  // stats bar. Fewer round-trips = faster first meaningful paint.
+  api.getHome({ featured: 8, latest: 8 }).then(data => {
+    renderHomeSlider(data.featured || []);
+
+    const grid = $id('home-latest');
+    if (grid) {
+      const items = data.latest || [];
+      grid.innerHTML = '';
+      if (!items.length) {
+        grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>还没有图纸，快来上传第一个吧！</p></div>';
+      } else {
+        items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
+      }
+    }
+
+    const s = data.stats;
+    const el = $id('home-stats');
+    if (el && s) {
+      const fmt = (n) => {
+        n = n || 0;
+        if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + 'w';
+        if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return String(n);
+      };
+      el.innerHTML = '';
+      [
+        [fmt(s.total_blueprints), '图纸作品'],
+        [fmt(s.total_users), '创作者'],
+        [fmt(s.total_views), '总浏览'],
+        [fmt(s.total_favorites), '总收藏'],
+      ].forEach(([num, label]) => {
+        el.appendChild(h('div', { className: 'stat-item' },
+          h('div', { className: 'stat-value' }, num),
+          h('div', { className: 'stat-label' }, label),
+        ));
+      });
+    }
+  }).catch(() => {
+    const grid = $id('home-latest');
+    if (grid) grid.innerHTML = '<div class="error-block" style="grid-column:1/-1"><div class="error-icon">🔌</div><p>加载失败，请检查后端服务</p><button class="btn btn-primary btn-sm" onclick="window._retryHome?.()">🔄 重试</button></div>';
+    const slider = $id('home-slider');
+    if (slider) slider.style.display = 'none';
+    window._retryHome = () => navigate('home');
+    showToast('加载首页内容失败', 'error');
+  });
 }
 
 
@@ -2332,6 +2396,8 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
             className: 'card-img',
             src: coverUrl,
             alt: bp.title,
+            loading: 'lazy',
+            decoding: 'async',
             onerror: "this.style.display='none';this.parentElement.style.background='linear-gradient(135deg," + bg + "," + bg2 + ")'",
           })
         : h('div', {
@@ -2344,7 +2410,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
     h('div', { className: 'card-body' },
       h('div', { className: 'card-title' }, bp.title),
       h('div', { className: 'card-author' },
-        h('img', { src: authorAvatar, alt: '' }),
+        h('img', { src: authorAvatar, alt: '', loading: 'lazy', decoding: 'async' }),
         h('span', {}, bp.author?.username || '匿名'),
       ),
       h('div', { className: 'card-stats' },

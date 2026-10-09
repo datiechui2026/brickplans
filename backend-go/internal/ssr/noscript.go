@@ -127,13 +127,17 @@ func listNoscript(bps []db.Blueprint, public string) template.HTML {
 	return template.HTML(b.String())
 }
 
-func homeNoscript(bps []db.Blueprint, public string) template.HTML {
+func homeNoscript(featured, latest []db.Blueprint, public string) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<h1>BrickPlan — 积木图纸分享社区</h1>`)
 	b.WriteString("<p>发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。</p>")
-	if len(bps) > 0 {
-		b.WriteString("<h2>热门作品</h2>")
-		b.WriteString(string(listNoscript(bps, public)))
+	if len(featured) > 0 {
+		b.WriteString("<h2>推荐作品</h2>")
+		b.WriteString(string(listNoscript(featured, public)))
+	}
+	if len(latest) > 0 {
+		b.WriteString("<h2>最新作品</h2>")
+		b.WriteString(string(listNoscript(latest, public)))
 	}
 	b.WriteString(fmt.Sprintf(`<p><a href="%s/explore">浏览全部作品</a></p>`, public))
 	return template.HTML(b.String())

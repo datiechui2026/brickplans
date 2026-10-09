@@ -8,6 +8,7 @@ import (
 
 	"brickplans/internal/config"
 	"brickplans/internal/db"
+	"brickplans/internal/dto"
 )
 
 type StatsHandler struct {
@@ -23,29 +24,36 @@ func (h *StatsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/stats", h.get)
 }
 
-func (h *StatsHandler) get(c *gin.Context) {
-	var totalBlueprints, totalUsers, totalFavorites, totalLikes, pending, reportCount int64
-	var totalPieces, totalViews int64
+// platformStats aggregates the public counters. Shared by GET /api/stats and
+// the homepage aggregate endpoint so both report identical numbers.
+func platformStats(gdb *gorm.DB) dto.PlatformStats {
+	var s dto.PlatformStats
 
-	h.gdb.Model(&db.Blueprint{}).Where("is_published = ?", true).Count(&totalBlueprints)
-	h.gdb.Model(&db.User{}).Count(&totalUsers)
-	h.gdb.Model(&db.Favorite{}).Count(&totalFavorites)
-	h.gdb.Model(&db.Like{}).Count(&totalLikes)
+	gdb.Model(&db.Blueprint{}).Where("is_published = ?", true).Count(&s.TotalBlueprints)
+	gdb.Model(&db.User{}).Count(&s.TotalUsers)
+	gdb.Model(&db.Favorite{}).Count(&s.TotalFavorites)
+	gdb.Model(&db.Like{}).Count(&s.TotalLikes)
+	gdb.Model(&db.Blueprint{}).Where("is_published = ?", true).
+		Select("COALESCE(SUM(piece_count), 0)").Scan(&s.TotalPieces)
+	gdb.Model(&db.Blueprint{}).
+		Select("COALESCE(SUM(view_count), 0)").Scan(&s.TotalViews)
+
+	return s
+}
+
+func (h *StatsHandler) get(c *gin.Context) {
+	var pending, reportCount int64
 	h.gdb.Model(&db.Blueprint{}).Where("is_published = ?", false).Count(&pending)
 	h.gdb.Model(&db.Report{}).Distinct("blueprint_id").Count(&reportCount)
 
-	h.gdb.Model(&db.Blueprint{}).Where("is_published = ?", true).
-		Select("COALESCE(SUM(piece_count), 0)").Scan(&totalPieces)
-	h.gdb.Model(&db.Blueprint{}).
-		Select("COALESCE(SUM(view_count), 0)").Scan(&totalViews)
-
+	s := platformStats(h.gdb)
 	c.JSON(http.StatusOK, gin.H{
-		"total_blueprints": totalBlueprints,
-		"total_users":      totalUsers,
-		"total_favorites":  totalFavorites,
-		"total_pieces":     totalPieces,
-		"total_views":      totalViews,
-		"total_likes":      totalLikes,
+		"total_blueprints": s.TotalBlueprints,
+		"total_users":      s.TotalUsers,
+		"total_favorites":  s.TotalFavorites,
+		"total_pieces":     s.TotalPieces,
+		"total_views":      s.TotalViews,
+		"total_likes":      s.TotalLikes,
 		"pending_count":    pending,
 		"report_count":     reportCount,
 	})

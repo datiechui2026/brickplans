@@ -166,3 +166,53 @@ func TestFeaturedReorderAndRemove(t *testing.T) {
 		t.Fatalf("after remove = %v, want [A]", remaining)
 	}
 }
+
+// TestHomeAggregate verifies GET /api/home returns the featured set, the latest
+// grid, and platform stats in a single response — the SPA home renders from it.
+func TestHomeAggregate(t *testing.T) {
+	r, gdb := setupTest(t)
+	token, _ := registerUser(t, r, "homeuser", "home@x.com")
+
+	a := createBlueprint(t, r, token, "A", true)
+	b := createBlueprint(t, r, token, "B", true)
+	c := createBlueprint(t, r, token, "C", true)
+	_ = createBlueprint(t, r, token, "hidden", false) // unpublished must be excluded
+
+	// Distinguish "latest" (created_at DESC) from any popular ordering.
+	gdb.Model(&db.Blueprint{}).Where("id = ?", a).Updates(map[string]any{"view_count": 999, "created_at": time.Now().Add(-2 * time.Hour)})
+	gdb.Model(&db.Blueprint{}).Where("id = ?", b).Updates(map[string]any{"view_count": 5, "created_at": time.Now().Add(-1 * time.Hour)})
+	gdb.Model(&db.Blueprint{}).Where("id = ?", c).Updates(map[string]any{"view_count": 1, "created_at": time.Now().Add(-1 * time.Minute)})
+
+	w := doJSON(t, r, "GET", "/api/home?featured=2&latest=3", nil, "")
+	if w.Code != 200 {
+		t.Fatalf("home: %d %s", w.Code, w.Body.String())
+	}
+	m := parseJSON(t, w)
+
+	featured := m["featured"].([]any)
+	if len(featured) != 2 {
+		t.Fatalf("featured len = %d, want 2", len(featured))
+	}
+	latest := m["latest"].([]any)
+	if len(latest) != 3 {
+		t.Fatalf("latest len = %d, want 3 (unpublished excluded)", len(latest))
+	}
+	got := []string{
+		latest[0].(map[string]any)["title"].(string),
+		latest[1].(map[string]any)["title"].(string),
+		latest[2].(map[string]any)["title"].(string),
+	}
+	want := []string{"C", "B", "A"} // newest first, NOT view_count
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("latest order = %v, want %v", got, want)
+		}
+	}
+	stats := m["stats"].(map[string]any)
+	if stats["total_blueprints"].(float64) != 3 {
+		t.Fatalf("stats.total_blueprints = %v, want 3", stats["total_blueprints"])
+	}
+	if stats["total_views"].(float64) != 1005 {
+		t.Fatalf("stats.total_views = %v, want 1005", stats["total_views"])
+	}
+}
