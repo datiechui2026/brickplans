@@ -102,36 +102,43 @@ type ImageOut struct {
 
 // BlueprintOut is the list/card projection.
 type BlueprintOut struct {
-	ID                string          `json:"id"`
-	AuthorID          string          `json:"author_id"`
-	Title             string          `json:"title"`
-	Slug              string          `json:"slug"`
-	Description       *string         `json:"description"`
-	Difficulty        *int            `json:"difficulty"`
-	PieceCount        *int            `json:"piece_count"`
-	Category          *string         `json:"category"`
-	Brand             *string         `json:"brand"`
-	ProductCode       *string         `json:"product_code"`
-	Dimensions        *string         `json:"dimensions"`
-	PartList          json.RawMessage `json:"part_list"`
-	ViewCount         int             `json:"view_count"`
-	LikeCount         int             `json:"like_count"`
-	FavoriteCount     int             `json:"favorite_count"`
-	IsLiked           bool            `json:"is_liked"`
-	CoverURL          *string         `json:"cover_url"`
-	IsPublished       bool            `json:"is_published"`
-	CreatedAt         string          `json:"created_at"`
-	UpdatedAt         string          `json:"updated_at"`
-	Author            *UserOut        `json:"author"`
-	Images            []ImageOut      `json:"images"`
-	Tags              []string        `json:"tags"`
-	ModerationStatus  *string         `json:"moderation_status"`
+	ID               string          `json:"id"`
+	AuthorID         string          `json:"author_id"`
+	Title            string          `json:"title"`
+	Slug             string          `json:"slug"`
+	Description      *string         `json:"description"`
+	Difficulty       *int            `json:"difficulty"`
+	PieceCount       *int            `json:"piece_count"`
+	Category         *string         `json:"category"`
+	Brand            *string         `json:"brand"`
+	ProductCode      *string         `json:"product_code"`
+	Dimensions       *string         `json:"dimensions"`
+	PartList         json.RawMessage `json:"part_list"`
+	ViewCount        int             `json:"view_count"`
+	LikeCount        int             `json:"like_count"`
+	FavoriteCount    int             `json:"favorite_count"`
+	IsLiked          bool            `json:"is_liked"`
+	CoverURL         *string         `json:"cover_url"`
+	IsPublished      bool            `json:"is_published"`
+	CreatedAt        string          `json:"created_at"`
+	UpdatedAt        string          `json:"updated_at"`
+	Author           *UserOut        `json:"author"`
+	Images           []ImageOut      `json:"images"`
+	Tags             []string        `json:"tags"`
+	ModerationStatus *string         `json:"moderation_status"`
 }
 
 // BlueprintDetail adds the viewer's favorite state on top of BlueprintOut.
 type BlueprintDetail struct {
 	BlueprintOut
 	IsFavorited bool `json:"is_favorited"`
+}
+
+// BlueprintLookupOut is the response of the strict brand + product-code lookup.
+// A set number can be uploaded by several authors, so it is always a list.
+type BlueprintLookupOut struct {
+	Items []BlueprintOut `json:"items"`
+	Total int            `json:"total"`
 }
 
 // BlueprintListOut is the paginated list envelope.
@@ -213,9 +220,9 @@ type NotificationOut struct {
 }
 
 type NotificationListOut struct {
-	Items      []NotificationOut `json:"items"`
-	Total      int               `json:"total"`
-	UnreadCount int              `json:"unread_count"`
-	Page       int               `json:"page"`
-	PageSize   int               `json:"page_size"`
+	Items       []NotificationOut `json:"items"`
+	Total       int               `json:"total"`
+	UnreadCount int               `json:"unread_count"`
+	Page        int               `json:"page"`
+	PageSize    int               `json:"page_size"`
 }

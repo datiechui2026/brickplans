@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -466,6 +467,210 @@ func TestBrandAndProductCodeRoundTrip(t *testing.T) {
 	got = parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+bpID, nil, ""))
 	if got["brand"] != nil || got["product_code"] != nil {
 		t.Fatalf("blank input should clear the fields, got %v / %v", got["brand"], got["product_code"])
+	}
+}
+
+// TestListFiltersByBrandAndProductCode covers the brand / product-code lookup on
+// the public list endpoint: AND-combined filters, LEGO -> 乐高 alias, case-insensitive
+// code match, multiple hits per code, and unpublished rows staying hidden.
+func TestListFiltersByBrandAndProductCode(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "filteruser", "filter@x.com")
+
+	mk := func(title, brand, code string, published bool) string {
+		body := map[string]any{"title": title}
+		if brand != "" {
+			body["brand"] = brand
+		}
+		if code != "" {
+			body["product_code"] = code
+		}
+		if !published {
+			body["is_published"] = false
+		}
+		w := doJSON(t, r, "POST", "/api/blueprints", body, tok)
+		if w.Code != 201 {
+			t.Fatalf("create %s: %d %s", title, w.Code, w.Body.String())
+		}
+		return parseJSON(t, w)["id"].(string)
+	}
+
+	// Two authors' uploads of the same set: a code lookup must return both.
+	a1 := mk("乐高款A (LEGO 76344)", "乐高", "76344", true)
+	a2 := mk("乐高款A副本 (LEGO 76344)", "乐高", "76344", true)
+	mk("奇积款B (奇积 23025)", "奇积", "23025", true)
+	mk("乐高未发布款", "乐高", "88888", false)
+
+	total := func(qs string) (int, []any) {
+		m := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints?"+qs, nil, ""))
+		items, _ := m["items"].([]any)
+		return int(m["total"].(float64)), items
+	}
+
+	// brand only (Chinese + LEGO alias resolve to the same rows)
+	lego := url.QueryEscape("乐高")
+	if n, _ := total("brand=" + lego); n != 2 {
+		t.Fatalf("brand=乐高 total = %d, want 2", n)
+	}
+	if n, _ := total("brand=LEGO"); n != 2 {
+		t.Fatalf("brand=LEGO alias total = %d, want 2", n)
+	}
+
+	// brand + code -> both uploads of that set, with the attributes exposed
+	n, items := total("brand=" + lego + "&product_code=76344")
+	if n != 2 || len(items) != 2 {
+		t.Fatalf("brand+code total = %d (items %d), want 2", n, len(items))
+	}
+	first, _ := items[0].(map[string]any)
+	if first["brand"] != "乐高" || first["product_code"] != "76344" {
+		t.Fatalf("published payload missing brand/product_code: %v", first)
+	}
+	ids := map[string]bool{}
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		ids[m["id"].(string)] = true
+	}
+	if !ids[a1] || !ids[a2] {
+		t.Fatalf("both uploads of the same code must be returned, got %v", ids)
+	}
+
+	// code only, lowercase -> case-insensitive single hit
+	if n, _ := total("product_code=23025"); n != 1 {
+		t.Fatalf("code lookup total = %d, want 1", n)
+	}
+	if n, _ := total("product_code=-1"); n != 0 {
+		t.Fatalf("unknown code total = %d, want 0", n)
+	}
+
+	// mismatched brand+code pair returns nothing, and unpublished rows stay hidden
+	qiji := url.QueryEscape("奇积")
+	if n, _ := total("brand=" + qiji + "&product_code=76344"); n != 0 {
+		t.Fatalf("mismatched pair total = %d, want 0", n)
+	}
+	if n, _ := total("product_code=88888"); n != 0 {
+		t.Fatalf("unpublished code total = %d, want 0", n)
+	}
+
+	// free-text search also matches the code
+	if n, _ := total("q=76344"); n != 2 {
+		t.Fatalf("q=76344 total = %d, want 2", n)
+	}
+}
+
+// TestLookupRequiresBothAndMatchesExactly covers GET /api/blueprints/lookup: both
+// parameters are mandatory (400 otherwise), matching is strict equality on brand and
+// product code (no prefix / fuzzy hits), several uploads of one set are all returned,
+// and unpublished rows stay hidden.
+func TestLookupRequiresBothAndMatchesExactly(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "lookupuser", "lookup@x.com")
+
+	mk := func(title, brand, code string, published bool) string {
+		body := map[string]any{"title": title}
+		if brand != "" {
+			body["brand"] = brand
+		}
+		if code != "" {
+			body["product_code"] = code
+		}
+		if !published {
+			body["is_published"] = false
+		}
+		w := doJSON(t, r, "POST", "/api/blueprints", body, tok)
+		if w.Code != 201 {
+			t.Fatalf("create %s: %d %s", title, w.Code, w.Body.String())
+		}
+		// product_code must be stored upper-cased (write-side normalisation).
+		got := parseJSON(t, w)
+		if code != "" {
+			if want := strings.ToUpper(code); got["product_code"] != want {
+				t.Fatalf("product_code stored as %v, want %q", got["product_code"], want)
+			}
+		}
+		return got["id"].(string)
+	}
+
+	a1 := mk("乐高款A (LEGO 76344)", "乐高", "76344", true)
+	a2 := mk("乐高款A副本 (LEGO 76344)", "乐高", "76344", true)
+	mk("前缀诱饵 (LEGO 7634)", "乐高", "7634", true) // must NOT match 76344
+	mk("奇积款B", "奇积", "23025", true)
+	mk("乐高未发布款", "乐高", "76344", false) // same pair but unpublished
+	mk("小写编码款", "小米", "abc12", true)   // stored as ABC12
+
+	lookup := func(brand, code string) (int, int, string) {
+		qs := ""
+		if brand != "" {
+			qs += "brand=" + url.QueryEscape(brand)
+		}
+		if code != "" {
+			if qs != "" {
+				qs += "&"
+			}
+			qs += "product_code=" + url.QueryEscape(code)
+		}
+		w := doJSON(t, r, "GET", "/api/blueprints/lookup?"+qs, nil, "")
+		if w.Code != 200 {
+			if w.Code == 400 {
+				return -1, -1, parseJSON(t, w)["detail"].(string)
+			}
+			t.Fatalf("lookup %q: %d %s", qs, w.Code, w.Body.String())
+		}
+		m := parseJSON(t, w)
+		items, _ := m["items"].([]any)
+		return int(m["total"].(float64)), len(items), ""
+	}
+
+	// both parameters required
+	for _, tc := range []struct{ brand, code string }{{"", ""}, {"乐高", ""}, {"", "76344"}} {
+		n, _, detail := lookup(tc.brand, tc.code)
+		if n != -1 {
+			t.Fatalf("lookup(brand=%q, code=%q) should be 400, got total=%d", tc.brand, tc.code, n)
+		}
+		if detail == "" {
+			t.Fatalf("400 response must carry a detail message")
+		}
+	}
+
+	// exact hit -> every upload of that set (unpublished one excluded)
+	n, items, _ := lookup("乐高", "76344")
+	if n != 2 || items != 2 {
+		t.Fatalf("lookup(乐高, 76344) total=%d items=%d, want 2/2", n, items)
+	}
+	w := doJSON(t, r, "GET", "/api/blueprints/lookup?brand="+url.QueryEscape("乐高")+"&product_code=76344", nil, "")
+	found := map[string]bool{}
+	for _, it := range parseJSON(t, w)["items"].([]any) {
+		found[it.(map[string]any)["id"].(string)] = true
+	}
+	if !found[a1] || !found[a2] {
+		t.Fatalf("all uploads of the set must be returned, got %v", found)
+	}
+	// LEGO alias resolves to the same row set
+	if n, _, _ := lookup("LEGO", "76344"); n != 2 {
+		t.Fatalf("lookup(LEGO, 76344) total=%d, want 2", n)
+	}
+	// strict: no prefix match (7634 must hit only its own row, never the 76344 ones;
+	// "763" has no exact row at all), no fuzzy brand, no mismatched pair
+	if n, _, _ := lookup("乐高", "7634"); n != 1 {
+		t.Fatalf("lookup(乐高, 7634) must return only the exact 7634 row, total=%d", n)
+	}
+	if n, _, _ := lookup("乐高", "763"); n != 0 {
+		t.Fatalf("prefix-only code must not match, total=%d", n)
+	}
+	if n, _, _ := lookup("乐", "76344"); n != 0 {
+		t.Fatalf("partial brand must not match, total=%d", n)
+	}
+	if n, _, _ := lookup("奇积", "76344"); n != 0 {
+		t.Fatalf("mismatched pair must not match, total=%d", n)
+	}
+	if n, _, _ := lookup("乐高", "76344 "); n != 2 {
+		t.Fatalf("surrounding whitespace should be tolerated, total=%d", n)
+	}
+	// write-side upper-casing + case-insensitive compare
+	if n, _, _ := lookup("小米", "abc12"); n != 1 {
+		t.Fatalf("lowercase code input must match the stored uppercase code, total=%d", n)
+	}
+	if n, _, _ := lookup("小米", "ABC12"); n != 1 {
+		t.Fatalf("uppercase code input must match, total=%d", n)
 	}
 }
 

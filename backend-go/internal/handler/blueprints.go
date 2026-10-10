@@ -99,6 +99,8 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.POST("", auth.AuthRequired(h.cfg, h.gdb), h.create)
 	g.GET("", auth.OptionalUser(h.cfg, h.gdb), h.list)
 	g.GET("/featured", auth.OptionalUser(h.cfg, h.gdb), h.featured)
+	// 品牌 + 产品编号精确查询（两个参数都是必填）。
+	g.GET("/lookup", auth.OptionalUser(h.cfg, h.gdb), h.lookup)
 	g.GET("/:blueprint_id", auth.OptionalUser(h.cfg, h.gdb), h.get)
 	g.PUT("/:blueprint_id", auth.AuthRequired(h.cfg, h.gdb), h.update)
 	g.DELETE("/:blueprint_id", auth.AuthRequired(h.cfg, h.gdb), h.delete)
@@ -116,7 +118,22 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 const (
 	maxBrandLen       = 30
 	maxProductCodeLen = 60
+	// lookupLimit bounds the strict brand+code lookup response; a set with more
+	// uploads than this is truncated while Total still reports the real count.
+	lookupLimit = 50
 )
+
+// normProductCode normalises a set/model number: trimmed, blank collapsed to nil and
+// upper-cased, so the stored value always matches what the strict brand+code lookup
+// compares against (backfilled rows are upper-cased too).
+func normProductCode(s *string, maxLen int) (*string, bool) {
+	v, ok := normOptional(s, maxLen)
+	if !ok || v == nil {
+		return v, ok
+	}
+	upper := strings.ToUpper(*v)
+	return &upper, true
+}
 
 // normOptional trims an optional free-text field and collapses blank input to nil
 // so the DB stores NULL instead of "". Returns ok=false when the value exceeds
@@ -166,7 +183,7 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "brand must be at most 30 chars"})
 		return
 	}
-	productCode, ok := normOptional(req.ProductCode, maxProductCodeLen)
+	productCode, ok := normProductCode(req.ProductCode, maxProductCodeLen)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "product_code must be at most 60 chars"})
 		return
@@ -301,7 +318,7 @@ func (h *BlueprintsHandler) update(c *gin.Context) {
 		bp.Brand = v
 	}
 	if req.ProductCode != nil {
-		v, ok := normOptional(req.ProductCode, maxProductCodeLen)
+		v, ok := normProductCode(req.ProductCode, maxProductCodeLen)
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"detail": "product_code must be at most 60 chars"})
 			return
@@ -350,6 +367,18 @@ func (h *BlueprintsHandler) delete(c *gin.Context) {
 
 // ── LIST ────────────────────────────────────────────
 
+// list serves the public blueprint list. In addition to the paging / category /
+// tag / q filters it accepts a brand + product-code lookup, which is how the
+// mini program resolves a scanned or manually typed set number to blueprints:
+//
+//	GET /api/blueprints?brand=乐高&product_code=76344
+//
+// Both filters are optional and AND-combined, so `?brand=乐高` lists everything of
+// that brand while `?product_code=76344` works without a brand. brand accepts the
+// same aliases as the upload dropdown (LEGO -> 乐高) and product_code is compared
+// case-insensitively, so `?product_code=abc12` matches a stored "ABC12". Because a
+// set number can be uploaded by several authors, the response is always the
+// paged envelope (`items[]` + `total`) rather than a single object.
 func (h *BlueprintsHandler) list(c *gin.Context) {
 	page := atoiOr(c.Query("page"), 1, 1)
 	size := atoiOr(c.Query("size"), 12, 12)
@@ -360,12 +389,25 @@ func (h *BlueprintsHandler) list(c *gin.Context) {
 	category := c.Query("category")
 	sort := c.Query("sort")
 	tag := c.Query("tag")
+	brandQuery := strings.TrimSpace(c.Query("brand")) // optional browse filter; the strict lookup lives at /blueprints/lookup
+	codeQuery := strings.TrimSpace(c.Query("product_code"))
 	user := auth.CurrentUser(c)
 
 	qry := h.gdb.Model(&db.Blueprint{}).Where("is_published = ?", true)
 	if q != "" {
 		like := "%" + escapeLike(q) + "%"
-		qry = qry.Where("title LIKE ? OR description LIKE ?", like, like)
+		// product_code participates in the free-text search too, so pasting a set
+		// number ("76344") into the search box finds the blueprint.
+		qry = qry.Where("title LIKE ? OR description LIKE ? OR product_code LIKE ?", like, like, like)
+	}
+	if brandQuery != "" {
+		// normalizeBrand collapses the LEGO/乐高 spellings to the stored value.
+		qry = qry.Where("brand = ?", normalizeBrand(brandQuery))
+	}
+	if codeQuery != "" {
+		// UPPER() on both sides keeps the match case-insensitive on SQLite as well
+		// as MySQL (whose collation is already case-insensitive).
+		qry = qry.Where("UPPER(product_code) = ?", strings.ToUpper(codeQuery))
 	}
 	if category != "" {
 		qry = qry.Where("category = ?", category)
@@ -440,6 +482,63 @@ func (h *BlueprintsHandler) bulkCounts(bpIDs []string, user *db.User) (favCounts
 		}
 	}
 	return
+}
+
+// ── LOOKUP (品牌 + 产品编号, 两个参数都必填) ──────────
+
+// lookup resolves an exact brand + product-code pair to blueprints.
+//
+//	GET /api/blueprints/lookup?brand=乐高&product_code=76344
+//
+// Both parameters are REQUIRED; a missing or blank one is a 400 rather than a
+// silent "match everything" query. Matching is strict equality on both fields (no
+// LIKE / prefix / fuzzy): a set number belongs to exactly one product, and a wrong
+// hit here would send someone to the wrong instructions. Two normalisations are
+// applied so the comparison is still well defined:
+//   - brand goes through normalizeBrand(), i.e. the LEGO/乐高 spelling variants
+//     collapse to the single stored canonical value;
+//   - product_code is compared upper-case on both sides (stored values are
+//     upper-cased on write and by the title backfill).
+//
+// Several authors may upload the same set, so the result is always a list.
+func (h *BlueprintsHandler) lookup(c *gin.Context) {
+	brandIn := strings.TrimSpace(c.Query("brand"))
+	codeIn := strings.TrimSpace(c.Query("product_code"))
+	if brandIn == "" || codeIn == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "brand and product_code are required"})
+		return
+	}
+	brand := normalizeBrand(brandIn)
+	code := strings.ToUpper(codeIn)
+
+	qry := h.gdb.Model(&db.Blueprint{}).
+		Where("is_published = ?", true).
+		Where("brand = ?", brand).
+		Where("UPPER(product_code) = ?", code)
+
+	var total int64
+	qry.Count(&total)
+
+	var bps []db.Blueprint
+	if err := qry.Preload("Author").Preload("Images", db.OrderImages).Preload("Tags.Tag").
+		Order("created_at DESC").Limit(lookupLimit).Find(&bps).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+
+	ids := make([]string, 0, len(bps))
+	for i := range bps {
+		ids = append(ids, bps[i].ID)
+	}
+	user := auth.CurrentUser(c)
+	favCounts, likeCounts, userLiked, userFav := h.bulkCounts(ids, user)
+
+	items := make([]dto.BlueprintOut, 0, len(bps))
+	for i := range bps {
+		items = append(items, *toBlueprintOut(&bps[i], favCounts[bps[i].ID], likeCounts[bps[i].ID],
+			userLiked[bps[i].ID], userFav[bps[i].ID]))
+	}
+	c.JSON(http.StatusOK, dto.BlueprintLookupOut{Items: items, Total: int(total)})
 }
 
 // ── FAVORITE ────────────────────────────────────────
