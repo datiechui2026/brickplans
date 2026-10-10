@@ -43,6 +43,114 @@ func (h *AdminHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.POST("/featured", h.addFeatured)
 	g.PUT("/featured/reorder", h.reorderFeatured)
 	g.DELETE("/featured/:id", h.removeFeatured)
+	// 扫描本机图纸标题，把最后 () 里的品牌与产品编码回填到 brand / product_code。
+	g.POST("/blueprints/backfill-brands", h.backfillBrands)
+}
+
+// ── BACKFILL 品牌 / 编号(型号) ─────────────────────────
+
+type backfillBrandReq struct {
+	// DryRun previews the extraction without writing. Defaults to true so a
+	// no-body call can never mutate data by accident.
+	DryRun *bool `json:"dry_run"`
+	// Overwrite re-extracts and replaces brand / product_code even on rows that
+	// already carry both values. Defaults to false: rows that already have a brand
+	// AND a product code are left untouched.
+	Overwrite bool `json:"overwrite"`
+	// Limit caps how many rows are scanned (0 = all).
+	Limit int `json:"limit"`
+}
+
+// backfillBrands scans the blueprints table on THIS machine and fills the brand /
+// product_code attributes from the manufacturer reference in the last parenthesis
+// group of the title, e.g. "钢铁侠 Mark 3 收藏版 (LEGO 76344)" -> 乐高 / 76344.
+//
+// Rules:
+//   - rows that already have BOTH brand and product_code are skipped (no re-extraction)
+//   - a row missing only one of the two has just the missing field filled
+//   - dry_run defaults to true, so previewing never writes
+func (h *AdminHandler) backfillBrands(c *gin.Context) {
+	var req backfillBrandReq
+	if c.Request != nil && c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+			return
+		}
+	}
+	dryRun := true
+	if req.DryRun != nil {
+		dryRun = *req.DryRun
+	}
+
+	qry := h.gdb.Model(&db.Blueprint{}).Order("created_at ASC")
+	if req.Limit > 0 {
+		qry = qry.Limit(req.Limit)
+	}
+	var bps []db.Blueprint
+	if err := qry.Find(&bps).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+		return
+	}
+
+	type item struct {
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Brand       string   `json:"brand"`
+		ProductCode string   `json:"product_code"`
+		Updated     []string `json:"updated_fields"`
+	}
+	items := []item{}
+	parsed, alreadySet, skipped := 0, 0, 0
+
+	for i := range bps {
+		bp := &bps[i]
+		if !req.Overwrite && nonEmpty(bp.Brand) && nonEmpty(bp.ProductCode) {
+			alreadySet++
+			continue
+		}
+		brand, code, ok := parseBrandFromTitle(bp.Title)
+		if !ok {
+			continue
+		}
+		parsed++
+
+		updates := map[string]interface{}{}
+		filled := []string{}
+		if brand != "" && (req.Overwrite || !nonEmpty(bp.Brand)) {
+			updates["brand"] = brand
+			filled = append(filled, "brand")
+		}
+		if code != "" && (req.Overwrite || !nonEmpty(bp.ProductCode)) {
+			updates["product_code"] = code
+			filled = append(filled, "product_code")
+		}
+		if len(updates) == 0 {
+			skipped++
+			continue
+		}
+		if !dryRun {
+			if err := h.gdb.Model(&db.Blueprint{}).Where("id = ?", bp.ID).Updates(updates).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
+				return
+			}
+		}
+		items = append(items, item{ID: bp.ID, Title: bp.Title, Brand: brand, ProductCode: code, Updated: filled})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"dry_run":     dryRun,
+		"scanned":     len(bps),
+		"parsed":      parsed,
+		"already_set": alreadySet,
+		"changed":     len(items),
+		"skipped":     skipped,
+		"items":       items,
+	})
+}
+
+// nonEmpty reports whether an optional string column carries a usable value.
+func nonEmpty(s *string) bool {
+	return s != nil && strings.TrimSpace(*s) != ""
 }
 
 func (h *AdminHandler) listBlueprints(c *gin.Context) {

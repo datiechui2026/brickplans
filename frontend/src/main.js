@@ -55,6 +55,19 @@ const state = {
 };
 
 // ═══════════════════════════════════════════
+// Brand list (图纸属性: 品牌)
+// ═══════════════════════════════════════════
+// Curated brick-brand list rendered as the 品牌 dropdown on upload/edit. The backend
+// stores `brand` as a plain (indexed) string, so adding or renaming an entry here is
+// the only change needed — no schema migration. "其他" is the escape hatch for brands
+// not listed yet; 型号 (product_code) accepts any manufacturer set number.
+const BRANDS = [
+  '乐高', '小米', '森宝', '双鹰', '万格', '邦宝', '沃马', '开智',
+  '启蒙', '布鲁可', '潘洛斯', '宇星模王', '星堡', '奇积', '卫积',
+  '咔搭', '双钻', '得高', '小鲁班', '高砖', '星钻', '酷彼', '美高', '其他',
+];
+
+// ═══════════════════════════════════════════
 // Cover image helpers
 // ═══════════════════════════════════════════
 function getCoverImage(images) {
@@ -1360,7 +1373,7 @@ async function loadDetail(id) {
         name: bp.title,
         description: bp.description || '',
         image: coverImg,
-        brand: { '@type': 'Brand', name: 'BrickPlans' },
+        brand: { '@type': 'Brand', name: bp.brand || 'BrickPlan' },
         offers: {
           '@type': 'Offer',
           price: '0',
@@ -1372,6 +1385,10 @@ async function loadDetail(id) {
     ];
     if (bp.category) {
       ldScripts[1].category = bp.category;
+    }
+    if (bp.product_code) {
+      // mpn = the manufacturer's set/model number people actually search for.
+      ldScripts[1].mpn = bp.product_code;
     }
     if (bp.piece_count != null) {
       ldScripts[1].additionalProperty = { '@type': 'PropertyValue', name: '零件数', value: bp.piece_count };
@@ -1618,6 +1635,14 @@ async function loadDetail(id) {
                 bp.category ? h('div', { className: 'meta-item' },
                   h('span', { className: 'meta-label' }, '分类'),
                   h('span', { className: 'meta-value' }, bp.category),
+                ) : null,
+                bp.brand ? h('div', { className: 'meta-item' },
+                  h('span', { className: 'meta-label' }, '品牌'),
+                  h('span', { className: 'meta-value' }, bp.brand),
+                ) : null,
+                bp.product_code ? h('div', { className: 'meta-item' },
+                  h('span', { className: 'meta-label' }, '编号'),
+                  h('span', { className: 'meta-value' }, bp.product_code),
                 ) : null,
               ].filter(Boolean),
             ),
@@ -2046,6 +2071,21 @@ function renderUpload() {
           ),
         ),
 
+        // Brand + Product code (2-col)
+        h('div', { className: 'form-row' },
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, '品牌'),
+            h('select', { id: 'upload-brand', className: 'form-select' },
+              h('option', { value: '' }, '选择品牌'),
+              ...BRANDS.map(b => h('option', { value: b }, b)),
+            ),
+          ),
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, '型号'),
+            h('input', { type: 'text', id: 'upload-product-code', className: 'form-input', placeholder: '例如: 42115' }),
+          ),
+        ),
+
         // Piece count + Dimensions (2-col)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
@@ -2313,6 +2353,8 @@ async function handleUpload() {
   const difficulty = parseInt($id('upload-difficulty')?.value) || undefined;
   const piece_count = parseInt($id('upload-pieces')?.value) || undefined;
   const dimensions = $id('upload-dimensions')?.value.trim();
+  const brand = $id('upload-brand')?.value;
+  const product_code = $id('upload-product-code')?.value.trim();
   const is_published = true; // always published
 
   if (!title) { if (errEl) errEl.innerHTML = '<div class="msg msg-error">请输入标题</div>'; return; }
@@ -2324,7 +2366,10 @@ async function handleUpload() {
       title, description: description || undefined,
       category: category || undefined, difficulty,
       piece_count: piece_count || undefined,
-      dimensions: dimensions || undefined, is_published,
+      dimensions: dimensions || undefined,
+      brand: brand || undefined,
+      product_code: product_code || undefined,
+      is_published,
     });
 
     // 2. Upload images if any
@@ -3084,6 +3129,11 @@ async function loadEditPage(id) {
 
   const categories = ['建筑', '车辆', '机甲', '奇幻', '科幻', '场景'];
 
+  // Keep a brand the visitor typed before it was in the curated list selectable.
+  const editBrand = bp.brand || '';
+  const editBrandOptions = BRANDS.slice();
+  if (editBrand && !editBrandOptions.includes(editBrand)) editBrandOptions.push(editBrand);
+
   const renderEditTagsChips = () => {
     const chipsEl = document.getElementById('edit-tags-chips');
     if (!chipsEl) return;
@@ -3153,6 +3203,21 @@ async function loadEditPage(id) {
               h('option', { value: '' }, '选择难度'),
               ...[1, 2, 3, 4, 5].map(n => h('option', { value: String(n), ...(bp.difficulty === n ? { selected: '' } : {}) }, '\u2b50'.repeat(n))),
             ),
+          ),
+        ),
+
+        // Brand + Product code (form-row)
+        h('div', { className: 'form-row' },
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, '品牌'),
+            h('select', { id: 'edit-bp-brand', className: 'form-select' },
+              h('option', { value: '' }, '选择品牌'),
+              ...editBrandOptions.map(b => h('option', { value: b, ...(editBrand === b ? { selected: '' } : {}) }, b)),
+            ),
+          ),
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, '型号'),
+            h('input', { type: 'text', id: 'edit-bp-product-code', className: 'form-input', value: bp.product_code || '', placeholder: '例如: 42115' }),
           ),
         ),
 
@@ -3264,6 +3329,8 @@ async function handleSaveEditBlueprint(id) {
   const piecesRaw = document.getElementById('edit-bp-pieces')?.value;
   const piece_count = piecesRaw ? parseInt(piecesRaw) || undefined : undefined;
   const dimensions = document.getElementById('edit-bp-dimensions')?.value.trim() || undefined;
+  const brand = document.getElementById('edit-bp-brand')?.value || '';
+  const product_code = document.getElementById('edit-bp-product-code')?.value.trim() || '';
 
   if (!title) {
     if (errEl) errEl.innerHTML = '<div class="msg msg-error">标题不能为空</div>';
@@ -3278,6 +3345,10 @@ async function handleSaveEditBlueprint(id) {
       difficulty: difficulty || undefined,
       piece_count,
       dimensions,
+      // brand / product_code are sent even when empty so clearing the dropdown
+      // actually removes the attribute (the backend treats "" as "clear").
+      brand,
+      product_code,
       tags: _editTags,
     });
 

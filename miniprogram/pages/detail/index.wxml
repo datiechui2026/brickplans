@@ -37,6 +37,8 @@
         <view wx:if="{{bp.piece_count}}" class="meta-item"><text class="muted">零件数</text><text>{{bp.piece_count}}</text></view>
         <view wx:if="{{bp.dimensions}}" class="meta-item"><text class="muted">尺寸</text><text>{{bp.dimensions}}</text></view>
         <view wx:if="{{bp.category}}" class="meta-item"><text class="muted">分类</text><text>{{bp.catEmoji}} {{bp.category}}</text></view>
+        <view wx:if="{{bp.brand}}" class="meta-item"><text class="muted">品牌</text><text>{{bp.brand}}</text></view>
+        <view wx:if="{{bp.product_code}}" class="meta-item"><text class="muted">编号</text><text>{{bp.product_code}}</text></view>
       </view>
 
       <view class="stat-row">

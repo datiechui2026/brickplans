@@ -124,6 +124,17 @@ func creativeWorkJSONLD(bp *db.Blueprint, cover, public string) template.JS {
 	return mustJSON(m)
 }
 
+// brandNode returns the Schema.org Brand node for a blueprint. It prefers the
+// brick brand the uploader selected (乐高/森宝/双鹰/...) and falls back to the
+// site's own name for rows uploaded before the field existed.
+func brandNode(bp *db.Blueprint) map[string]interface{} {
+	name := "BrickPlan"
+	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
+		name = strings.TrimSpace(*bp.Brand)
+	}
+	return map[string]interface{}{"@type": "Brand", "name": name}
+}
+
 // productJSONLD emits a Schema.org Product structured data for blueprint detail pages.
 // This helps search engines (especially Baidu) display rich snippets with product info.
 // The blueprint is always a free (price 0) downloadable design, so offers carries
@@ -137,7 +148,7 @@ func productJSONLD(bp *db.Blueprint, cover, public string) template.JS {
 		"image":       cover,
 		"url":         public + "/detail/" + bp.ID,
 		"sku":         bp.ID,
-		"brand":       map[string]interface{}{"@type": "Brand", "name": "BrickPlan"},
+		"brand":       brandNode(bp),
 		"inLanguage":  "zh-CN",
 		"offers": map[string]interface{}{
 			"@type":         "Offer",
@@ -150,6 +161,11 @@ func productJSONLD(bp *db.Blueprint, cover, public string) template.JS {
 	}
 	if bp.Category != nil {
 		m["category"] = *bp.Category
+	}
+	// mpn (manufacturer part number) carries the real set/model number, which is
+	// what people literally search for ("乐高 42115"). sku stays the internal id.
+	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
+		m["mpn"] = strings.TrimSpace(*bp.ProductCode)
 	}
 	if bp.PieceCount != nil {
 		m["additionalProperty"] = map[string]interface{}{
@@ -199,7 +215,7 @@ func blueprintListItem(bp db.Blueprint, public string) map[string]interface{} {
 		"name":        bp.Title,
 		"url":         url,
 		"description": derefStr(bp.Description),
-		"brand":       map[string]interface{}{"@type": "Brand", "name": "BrickPlan"},
+		"brand":       brandNode(&bp),
 		"offers": map[string]interface{}{
 			"@type":         "Offer",
 			"price":         "0",
@@ -210,6 +226,9 @@ func blueprintListItem(bp db.Blueprint, public string) map[string]interface{} {
 	}
 	if bp.Category != nil {
 		m["category"] = *bp.Category
+	}
+	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
+		m["mpn"] = strings.TrimSpace(*bp.ProductCode)
 	}
 	if bp.Difficulty != nil {
 		m["aggregateRating"] = map[string]interface{}{

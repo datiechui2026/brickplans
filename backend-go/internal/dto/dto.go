@@ -110,6 +110,8 @@ type BlueprintOut struct {
 	Difficulty        *int            `json:"difficulty"`
 	PieceCount        *int            `json:"piece_count"`
 	Category          *string         `json:"category"`
+	Brand             *string         `json:"brand"`
+	ProductCode       *string         `json:"product_code"`
 	Dimensions        *string         `json:"dimensions"`
 	PartList          json.RawMessage `json:"part_list"`
 	ViewCount         int             `json:"view_count"`

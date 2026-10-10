@@ -59,6 +59,13 @@ type Blueprint struct {
 	Difficulty  *int            `json:"difficulty"`
 	PieceCount  *int            `json:"piece_count"`
 	Category    *string         `gorm:"type:varchar(30);index" json:"category"`
+	// Brand is the brick brand the design belongs to (乐高/森宝/双鹰/...). Stored as a
+	// plain string so the curated list can grow without a schema change; the frontend
+	// renders it as a dropdown, the backend only enforces the length.
+	Brand *string `gorm:"type:varchar(30);index" json:"brand"`
+	// ProductCode is the manufacturer's set/model number (e.g. 42115). Shown as
+	// "编号" on the detail page and "型号" in the upload form.
+	ProductCode *string         `gorm:"type:varchar(60);index" json:"product_code"`
 	Dimensions  *string         `gorm:"type:varchar(50)" json:"dimensions"`
 	PartList    json.RawMessage `gorm:"type:json" json:"part_list"`
 	ViewCount   int             `gorm:"not null;default:0" json:"view_count"`

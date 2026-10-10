@@ -111,6 +111,30 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.GET("/:blueprint_id/related", h.related)
 }
 
+// Free-text attribute limits. Brand comes from a curated dropdown but is stored as
+// a plain string, so the backend only enforces these bounds.
+const (
+	maxBrandLen       = 30
+	maxProductCodeLen = 60
+)
+
+// normOptional trims an optional free-text field and collapses blank input to nil
+// so the DB stores NULL instead of "". Returns ok=false when the value exceeds
+// maxLen (counted in runes, not bytes — Chinese brand names are 3 bytes each).
+func normOptional(s *string, maxLen int) (*string, bool) {
+	if s == nil {
+		return nil, true
+	}
+	v := strings.TrimSpace(*s)
+	if v == "" {
+		return nil, true
+	}
+	if len([]rune(v)) > maxLen {
+		return nil, false
+	}
+	return &v, true
+}
+
 // ── CREATE ──────────────────────────────────────────
 
 type blueprintCreateReq struct {
@@ -119,6 +143,8 @@ type blueprintCreateReq struct {
 	Difficulty  *int            `json:"difficulty"`
 	PieceCount  *int            `json:"piece_count"`
 	Category    *string         `json:"category"`
+	Brand       *string         `json:"brand"`
+	ProductCode *string         `json:"product_code"`
 	Dimensions  *string         `json:"dimensions"`
 	PartList    json.RawMessage `json:"part_list"`
 	IsPublished *bool           `json:"is_published"`
@@ -135,6 +161,16 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "difficulty must be 1-5"})
 		return
 	}
+	brand, ok := normOptional(req.Brand, maxBrandLen)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "brand must be at most 30 chars"})
+		return
+	}
+	productCode, ok := normOptional(req.ProductCode, maxProductCodeLen)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "product_code must be at most 60 chars"})
+		return
+	}
 	bp := db.Blueprint{
 		Title:       req.Title,
 		Slug:        slugify(req.Title),
@@ -142,6 +178,8 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 		Difficulty:  req.Difficulty,
 		PieceCount:  req.PieceCount,
 		Category:    req.Category,
+		Brand:       brand,
+		ProductCode: productCode,
 		Dimensions:  req.Dimensions,
 		PartList:    req.PartList,
 		IsPublished: true,
@@ -205,6 +243,8 @@ type blueprintUpdateReq struct {
 	Difficulty  *int            `json:"difficulty"`
 	PieceCount  *int            `json:"piece_count"`
 	Category    *string         `json:"category"`
+	Brand       *string         `json:"brand"`
+	ProductCode *string         `json:"product_code"`
 	Dimensions  *string         `json:"dimensions"`
 	PartList    json.RawMessage `json:"part_list"`
 	IsPublished *bool           `json:"is_published"`
@@ -250,6 +290,23 @@ func (h *BlueprintsHandler) update(c *gin.Context) {
 	}
 	if req.Category != nil {
 		bp.Category = req.Category
+	}
+	if req.Brand != nil {
+		v, ok := normOptional(req.Brand, maxBrandLen)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "brand must be at most 30 chars"})
+			return
+		}
+		// A blank string clears the field instead of storing "".
+		bp.Brand = v
+	}
+	if req.ProductCode != nil {
+		v, ok := normOptional(req.ProductCode, maxProductCodeLen)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "product_code must be at most 60 chars"})
+			return
+		}
+		bp.ProductCode = v
 	}
 	if req.Dimensions != nil {
 		bp.Dimensions = req.Dimensions
@@ -713,6 +770,8 @@ func toBlueprintOut(bp *db.Blueprint, favCount, likeCount int, isLiked, isFav bo
 		Difficulty:       bp.Difficulty,
 		PieceCount:       bp.PieceCount,
 		Category:         bp.Category,
+		Brand:            bp.Brand,
+		ProductCode:      bp.ProductCode,
 		Dimensions:       bp.Dimensions,
 		PartList:         partList,
 		ViewCount:        bp.ViewCount,

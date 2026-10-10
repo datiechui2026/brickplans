@@ -143,9 +143,9 @@ func TestRegisterLoginMe(t *testing.T) {
 func TestPasswordPolicy(t *testing.T) {
 	r, _ := setupTest(t)
 	cases := []struct{ pw string }{
-		{"123"},          // too short
-		{"allletters"},   // no digit
-		{"12345678"},     // no letter
+		{"123"},        // too short
+		{"allletters"}, // no digit
+		{"12345678"},   // no letter
 	}
 	for _, c := range cases {
 		w := doJSON(t, r, "POST", "/api/auth/register",
@@ -401,6 +401,143 @@ func TestSSRDetailHTML(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("SSR HTML missing %q\nbody: %s", want, body)
 		}
+	}
+}
+
+// TestBrandAndProductCodeRoundTrip covers the 品牌 / 编号(型号) attributes added to
+// blueprint attributes: they must survive create → read → update → clear, appear in
+// the public API payload, and reach the SSR noscript + Product JSON-LD.
+func TestBrandAndProductCodeRoundTrip(t *testing.T) {
+	r, _ := setupTest(t)
+	tok, _ := registerUser(t, r, "branduser", "brand@x.com")
+
+	// Create with both attributes set.
+	w := doJSON(t, r, "POST", "/api/blueprints", map[string]any{
+		"title":        "品牌型号测试图纸",
+		"brand":        "乐高",
+		"product_code": "42115",
+	}, tok)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	bpID := parseJSON(t, w)["id"].(string)
+
+	got := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+bpID, nil, ""))
+	if got["brand"] != "乐高" || got["product_code"] != "42115" {
+		t.Fatalf("brand/product_code not persisted: %v / %v", got["brand"], got["product_code"])
+	}
+
+	// Update replaces both values.
+	w = doJSON(t, r, "PUT", "/api/blueprints/"+bpID, map[string]any{
+		"brand":        "森宝",
+		"product_code": " 10236 ",
+	}, tok)
+	if w.Code != 200 {
+		t.Fatalf("update: %d %s", w.Code, w.Body.String())
+	}
+	got = parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+bpID, nil, ""))
+	if got["brand"] != "森宝" {
+		t.Fatalf("brand not updated: %v", got["brand"])
+	}
+	if got["product_code"] != "10236" {
+		t.Fatalf("product_code not trimmed: %q", got["product_code"])
+	}
+
+	// SSR must expose the attributes and the Product mpn for SEO.
+	req := httptest.NewRequest("GET", "/detail/"+bpID, nil)
+	sw := httptest.NewRecorder()
+	r.ServeHTTP(sw, req)
+	body := sw.Body.String()
+	for _, want := range []string{"品牌：森宝", "编号：10236", `"mpn":"10236"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SSR body missing %q", want)
+		}
+	}
+
+	// Over-long brand is rejected.
+	if w := doJSON(t, r, "PUT", "/api/blueprints/"+bpID, map[string]any{"brand": strings.Repeat("品", 31)}, tok); w.Code != 400 {
+		t.Fatalf("expected 400 for over-long brand, got %d", w.Code)
+	}
+
+	// Blank string clears the field (stored as NULL, not "").
+	if w := doJSON(t, r, "PUT", "/api/blueprints/"+bpID, map[string]any{"brand": "  ", "product_code": ""}, tok); w.Code != 200 {
+		t.Fatalf("clear update: %d %s", w.Code, w.Body.String())
+	}
+	got = parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+bpID, nil, ""))
+	if got["brand"] != nil || got["product_code"] != nil {
+		t.Fatalf("blank input should clear the fields, got %v / %v", got["brand"], got["product_code"])
+	}
+}
+
+// TestBackfillBrandsFromTitles covers the admin backfill endpoint: titles that end
+// with "(<brand> <code>)" are parsed into brand / product_code, rows that already
+// carry BOTH values are left alone, dry_run writes nothing, and the call is
+// idempotent.
+func TestBackfillBrandsFromTitles(t *testing.T) {
+	r, gdb := setupTest(t)
+	tok, userID := registerUser(t, r, "bfadmin", "bf@x.com")
+	if err := gdb.Model(&db.User{}).Where("id = ?", userID).Update("is_admin", true).Error; err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+
+	a := createBlueprint(t, r, tok, "钢铁侠 Mark 3 收藏版 (LEGO 76344)", true)
+	b := createBlueprint(t, r, tok, "林间蘑菇 (LEGO 11505)", true)
+	c := createBlueprint(t, r, tok, "纯中文标题没有编码", true)
+	// b already carries both attributes -> must never be re-extracted.
+	if w := doJSON(t, r, "PUT", "/api/blueprints/"+b, map[string]any{"brand": "乐高", "product_code": "11505"}, tok); w.Code != 200 {
+		t.Fatalf("seed b: %d %s", w.Code, w.Body.String())
+	}
+
+	// Default (no body) is a dry run: preview only, nothing written.
+	w := doJSON(t, r, "POST", "/api/admin/blueprints/backfill-brands", nil, tok)
+	if w.Code != 200 {
+		t.Fatalf("dry run: %d %s", w.Code, w.Body.String())
+	}
+	m := parseJSON(t, w)
+	if m["dry_run"] != true {
+		t.Fatalf("dry_run must default to true, got %v", m["dry_run"])
+	}
+	// scanned 3 rows: a parses, b is already complete, c has no code in the title.
+	if m["scanned"].(float64) != 3 || m["parsed"].(float64) != 1 || m["changed"].(float64) != 1 {
+		t.Fatalf("dry run counters: %v", m)
+	}
+	if m["already_set"].(float64) != 1 {
+		t.Fatalf("row b must be skipped as already set, got already_set=%v", m["already_set"])
+	}
+	if got := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+a, nil, "")); got["brand"] != nil {
+		t.Fatalf("dry run wrote data: %v", got["brand"])
+	}
+
+	// Real run writes only the parsed row and touches nothing else.
+	w = doJSON(t, r, "POST", "/api/admin/blueprints/backfill-brands", map[string]any{"dry_run": false}, tok)
+	if w.Code != 200 {
+		t.Fatalf("apply: %d %s", w.Code, w.Body.String())
+	}
+	m = parseJSON(t, w)
+	if m["changed"].(float64) != 1 || m["already_set"].(float64) != 1 {
+		t.Fatalf("apply counters: %v", m)
+	}
+	got := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+a, nil, ""))
+	if got["brand"] != "乐高" || got["product_code"] != "76344" {
+		t.Fatalf("LEGO not normalised or code missing: %v / %v", got["brand"], got["product_code"])
+	}
+	if gotB := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+b, nil, "")); gotB["product_code"] != "11505" {
+		t.Fatalf("already-set row changed: %v", gotB["product_code"])
+	}
+	if gotC := parseJSON(t, doJSON(t, r, "GET", "/api/blueprints/"+c, nil, "")); gotC["brand"] != nil || gotC["product_code"] != nil {
+		t.Fatalf("unparseable title must stay empty: %v / %v", gotC["brand"], gotC["product_code"])
+	}
+
+	// Idempotent: a second pass finds nothing new to change.
+	m = parseJSON(t, doJSON(t, r, "POST", "/api/admin/blueprints/backfill-brands", map[string]any{"dry_run": false}, tok))
+	if m["changed"].(float64) != 0 {
+		t.Fatalf("backfill not idempotent: %v", m["changed"])
+	}
+
+	// Non-admins are rejected before the handler runs.
+	tok2, _ := registerUser(t, r, "bfuser", "bf2@x.com")
+	if w := doJSON(t, r, "POST", "/api/admin/blueprints/backfill-brands", nil, tok2); w.Code != 403 {
+		t.Fatalf("non-admin expected 403, got %d", w.Code)
 	}
 }
 

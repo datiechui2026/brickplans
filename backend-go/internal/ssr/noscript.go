@@ -72,6 +72,12 @@ func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Bluepri
 	if bp.Dimensions != nil {
 		b.WriteString(fmt.Sprintf("<li>尺寸：%s</li>", esc(*bp.Dimensions)))
 	}
+	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
+		b.WriteString(fmt.Sprintf("<li>品牌：%s</li>", esc(strings.TrimSpace(*bp.Brand))))
+	}
+	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
+		b.WriteString(fmt.Sprintf("<li>编号：%s</li>", esc(strings.TrimSpace(*bp.ProductCode))))
+	}
 	b.WriteString(fmt.Sprintf("<li>浏览：%d</li>", bp.ViewCount))
 	b.WriteString(fmt.Sprintf("<li>点赞：%d</li>", bp.LikeCount))
 	b.WriteString("</ul>")
