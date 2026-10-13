@@ -56,9 +56,17 @@ func Load(dir string) (*Store, error) {
 		s.posts = append(s.posts, *post)
 	}
 
-	// Sort by date descending (newest first)
-	sort.Slice(s.posts, func(i, j int) bool {
-		return s.posts[i].Date.After(s.posts[j].Date)
+	// Sort by date descending (newest first).
+	// Tie-break on slug so the order is fully deterministic: paginating a
+	// date-sorted feed is only correct if equal-date posts never swap places
+	// between two requests (otherwise an item could appear on two pages or
+	// vanish entirely). ReadDir already returns filename order, and slug ==
+	// filename minus ".md", so this preserves today's ordering exactly.
+	sort.SliceStable(s.posts, func(i, j int) bool {
+		if !s.posts[i].Date.Equal(s.posts[j].Date) {
+			return s.posts[i].Date.After(s.posts[j].Date)
+		}
+		return s.posts[i].Slug < s.posts[j].Slug
 	})
 
 	// Build slug index
@@ -124,6 +132,78 @@ func (s *Store) Tags() []string {
 		}
 	}
 	return tags
+}
+
+// Pagination defaults shared by the JSON API and the SSR blog list page.
+const (
+	// DefaultPageSize is the page size for GET /api/blog when ?page_size= is absent.
+	DefaultPageSize = 24
+	// MaxPageSize caps ?page_size= so a caller cannot ask for the whole corpus.
+	MaxPageSize = 100
+	// SSRPageSize is the number of links rendered into the crawlable
+	// (server-rendered) blog index page.
+	SSRPageSize = 50
+)
+
+// Filter returns posts for the given category or tag (category wins when both
+// are set), falling back to every post. Shared by the JSON API and the SSR
+// handler so the two layers can never disagree about which posts belong to a
+// filtered listing.
+func (s *Store) Filter(cat, tag string) []Post {
+	switch {
+	case cat != "":
+		return s.FilterByCategory(cat)
+	case tag != "":
+		return s.FilterByTag(tag)
+	default:
+		return s.posts
+	}
+}
+
+// NormPageSize resolves a requested page size to the value that will actually
+// be used: non-positive falls back to DefaultPageSize, oversized is capped at
+// MaxPageSize. Callers must report THIS value, not the raw request, or the
+// response advertises a page size it did not honour.
+func NormPageSize(size int) int {
+	if size <= 0 {
+		return DefaultPageSize
+	}
+	if size > MaxPageSize {
+		return MaxPageSize
+	}
+	return size
+}
+
+// Paginate slices posts into a 1-based page. page < 1 is clamped to 1; a page
+// past the end yields an empty slice (never nil, so JSON encodes [] not null).
+// size is resolved through NormPageSize. Returns the page items and the total
+// number of posts before slicing.
+func Paginate(posts []Post, page, size int) (items []Post, total int) {
+	total = len(posts)
+	size = NormPageSize(size)
+	if page < 1 {
+		page = 1
+	}
+	start := (page - 1) * size
+	if start >= total {
+		return []Post{}, total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return posts[start:end], total
+}
+
+// PageCount returns the number of pages needed to hold total items at size per
+// page. size is resolved through NormPageSize so it agrees with Paginate.
+// Always >= 1 so an empty listing still reports one (empty) page.
+func PageCount(total, size int) int {
+	size = NormPageSize(size)
+	if total <= 0 {
+		return 1
+	}
+	return (total + size - 1) / size
 }
 
 // FilterByCategory returns posts matching the given category.

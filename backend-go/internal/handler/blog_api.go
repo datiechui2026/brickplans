@@ -51,22 +51,26 @@ type BlogPostBrief struct {
 	Date     string `json:"date"`
 }
 
-// List returns all blog posts (metadata only, no body).
+// List returns one page of blog posts (metadata only, no body).
+//
+// The blog grew to 1500+ posts; returning all of them cost ~720 KB raw / 215 KB
+// gzip per request, which dominated first paint on slow links. Now paginated:
+// ?page= (1-based, default 1) and ?page_size= (default blog.DefaultPageSize,
+// capped at blog.MaxPageSize).
+//
+// The top-level "tags" array (every tag in the corpus, ~2500 entries / 46 KB)
+// was never consumed by the frontend — only "categories" drives the filter bar —
+// so it is now omitted unless explicitly requested with ?with_tags=1.
 func (h *BlogAPIHandler) List(c *gin.Context) {
 	cat := c.Query("category")
 	tag := c.Query("tag")
+	page := atoiOr(c.Query("page"), 1, 1)
+	size := blog.NormPageSize(atoiOr(c.Query("page_size"), blog.DefaultPageSize, 1))
 
-	var posts []blog.Post
-	if cat != "" {
-		posts = h.store.FilterByCategory(cat)
-	} else if tag != "" {
-		posts = h.store.FilterByTag(tag)
-	} else {
-		posts = h.store.All()
-	}
+	items, total := blog.Paginate(h.store.Filter(cat, tag), page, size)
 
-	out := make([]BlogPostOut, 0, len(posts))
-	for _, p := range posts {
+	out := make([]BlogPostOut, 0, len(items))
+	for _, p := range items {
 		out = append(out, BlogPostOut{
 			Slug:        p.Slug,
 			Title:       p.Title,
@@ -78,11 +82,19 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"items":      out,
-		"categories": h.store.Categories(),
-		"tags":       h.store.Tags(),
-	})
+	resp := gin.H{
+		"items":       out,
+		"total":       total,
+		"page":        page,
+		"page_size":   size,
+		"total_pages": blog.PageCount(total, size),
+		"categories":  h.store.Categories(),
+	}
+	if c.Query("with_tags") == "1" {
+		resp["tags"] = h.store.Tags()
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // Detail returns a single blog post with body, prev/next info, and related posts.

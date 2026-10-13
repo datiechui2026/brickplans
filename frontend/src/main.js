@@ -156,6 +156,10 @@ function buildPath(page, params = {}) {
     const q = new URLSearchParams();
     if (params.category) q.set('category', params.category);
     if (params.tag) q.set('tag', params.tag);
+    // Only keep ?page= for deep links (SSR pager / shared URLs). Page 1 stays
+    // canonical /blog so the SPA never pushes /blog?page=1 into history.
+    const pg = parseInt(params.page, 10);
+    if (pg > 1) q.set('page', pg);
     const qs = q.toString();
     return '/blog' + (qs ? '?' + qs : '');
   }
@@ -205,7 +209,13 @@ function applyState(page, params = {}) {
   if (page === 'edit' && params.id) state.editId = params.id;
   if (page === 'blog-detail' && params.slug) state.blogSlug = params.slug;
   if (page === 'blog') {
-    state.blogFilter = { category: params.category || '', tag: params.tag || '' };
+    state.blogFilter = {
+      category: params.category || '',
+      tag: params.tag || '',
+      // Deep link from the SSR pager: the SPA walks pages 1..page so the list
+      // stays continuous. Clamped to >= 1; garbage falls back to 1.
+      page: Math.max(1, parseInt(params.page, 10) || 1),
+    };
   }
   if (page === 'user' && params.id) {
     state.userProfile = { ...state.userProfile, id: params.id };
@@ -269,6 +279,13 @@ function h(tag, attrs = {}, ...children) {
       Object.assign(el.style, v);
     } else if (k === 'dataset') {
       Object.assign(el.dataset, v);
+    } else if (typeof v === 'boolean') {
+      // Boolean attributes (disabled, checked, …) are true by PRESENCE — the
+      // value is ignored, so setAttribute(k, false) yields disabled="false",
+      // which is still disabled. Set/remove the attribute instead. Without this
+      // every `disabled: page <= 1` button was permanently dead.
+      if (v) el.setAttribute(k, '');
+      else el.removeAttribute(k);
     } else el.setAttribute(k, v);
   }
   for (const child of children.flat()) {
@@ -4191,12 +4208,117 @@ function renderNavbarIntoDOM() {
 // ═══════════════════════════════════════════
 // Blog Pages
 // ═══════════════════════════════════════════
+
+// Module-level pagination state for the blog index.
+// `page` is the last page successfully appended. There is no generic page
+// cleanup hook, so renderBlogList() must reset this at its top (same pattern as
+// _homeSliderTimer) or the counter would carry over between navigations.
+let _blogPage = 1;
+let _blogTotalPages = 1;
+let _blogItems = 0;
+let _blogTotal = 0;
+let _blogLoading = false;
+
+function buildBlogCard(post) {
+  return h('div', {
+    className: 'blog-card',
+    onclick: () => navigate('blog-detail', { slug: post.slug }),
+  },
+    h('h2', {}, post.title),
+    h('div', { className: 'blog-meta' },
+      h('span', {}, post.date),
+      post.category ? h('span', { className: 'blog-category' }, post.category) : null,
+      post.author ? h('span', {}, post.author) : null,
+    ),
+    post.description ? h('div', { className: 'blog-desc' }, post.description) : null,
+    ...(post.tags && post.tags.length ? [
+      h('div', { className: 'blog-tags' },
+        ...post.tags.map(t => h('span', { className: 'blog-tag' }, t)),
+      ),
+    ] : []),
+  );
+}
+
+// Appends one page of cards and refreshes the load-more control so it always
+// reflects how many posts are left.
+function appendBlogCards(el, items) {
+  items.forEach(post => {
+    el.appendChild(buildBlogCard(post));
+    _blogItems += 1;
+  });
+  updateBlogMore(el);
+}
+
+// Renders/updates/removes the "加载更多" button in one place, so the click
+// handler can never be left pointing at a stale page number.
+function updateBlogMore(el) {
+  let more = $id('blog-load-more');
+  const hasMore = _blogPage < _blogTotalPages;
+  if (!hasMore) {
+    if (more) more.remove();
+    return;
+  }
+  if (!more) {
+    more = h('div', { id: 'blog-load-more', className: 'load-more' });
+    el.appendChild(more);
+  }
+  more.innerHTML = '';
+  more.appendChild(h('button', {
+    className: 'btn btn-outline',
+    disabled: _blogLoading,
+    onclick: () => loadMoreBlog(),
+  }, _blogLoading
+    ? '加载中…'
+    : `加载更多（已显示 ${_blogItems} / ${_blogTotal} 篇）`));
+}
+
+async function loadMoreBlog() {
+  if (_blogLoading || _blogPage >= _blogTotalPages) return;
+  _blogLoading = true;
+  const el = $id('blog-content');
+  if (!el) { _blogLoading = false; return; }
+  updateBlogMore(el);
+  const filter = state.blogFilter || {};
+  try {
+    const data = await api.getBlogPosts({
+      category: filter.category,
+      tag: filter.tag,
+      page: _blogPage + 1,
+    });
+    // The user may have navigated away while the request was in flight; writing
+    // into a detached container would silently leak cards into nothing.
+    if (!document.body.contains(el)) { _blogLoading = false; return; }
+    _blogPage += 1;
+    _blogTotalPages = data.total_pages || _blogTotalPages;
+    _blogTotal = data.total || _blogTotal;
+    appendBlogCards(el, data.items || []);
+  } catch (e) {
+    // Leave the button in place so the user can retry.
+    console.error('loadMoreBlog failed', e);
+  } finally {
+    _blogLoading = false;
+    const still = $id('blog-content');
+    if (still) updateBlogMore(still);
+  }
+}
+
 async function renderBlogList() {
   const container = $id('page-blog');
   if (!container) return;
   container.innerHTML = '';
 
+  // Reset pagination state on every entry.
+  _blogPage = 1;
+  _blogTotalPages = 1;
+  _blogItems = 0;
+  _blogTotal = 0;
+  _blogLoading = false;
+
   const filter = state.blogFilter || {};
+  // The SSR handler serves /blog?page=N for crawlers; when a human lands on one
+  // of those URLs the SPA walks pages 1..N so the list stays continuous.
+  const targetPage = Math.max(1, parseInt(filter.page, 10) || 1);
+
   const main = h('div', { className: 'main' },
     h('div', { className: 'blog-list' },
       h('h1', {}, '📖 BrickPlan 博客'),
@@ -4209,57 +4331,41 @@ async function renderBlogList() {
   container.appendChild(main);
 
   try {
-    const data = await api.getBlogPosts({ category: filter.category, tag: filter.tag });
-    const el = $id('blog-content');
-    if (!el) return;
-    el.innerHTML = '';
-    el.className = '';
-
-    // Category/tag filter bar
-    if (data.categories && data.categories.length > 0) {
-      const filterBar = h('div', { className: 'blog-filter' });
-      const allBtn = h('button', {
-        className: !filter.category && !filter.tag ? 'active' : '',
-        onclick: () => navigate('blog'),
-      }, '全部');
-      filterBar.appendChild(allBtn);
-      data.categories.forEach(cat => {
-        filterBar.appendChild(h('button', {
-          className: filter.category === cat ? 'active' : '',
-          onclick: () => navigate('blog', { category: cat }),
-        }, cat));
-      });
-      el.appendChild(filterBar);
+    for (let p = 1; p <= targetPage; p++) {
+      const data = await api.getBlogPosts({ category: filter.category, tag: filter.tag, page: p });
+      const el = $id('blog-content');
+      if (!el) return;
+      if (p === 1) {
+        el.innerHTML = '';
+        el.className = '';
+        if (data.categories && data.categories.length > 0) {
+          const filterBar = h('div', { className: 'blog-filter' });
+          filterBar.appendChild(h('button', {
+            className: !filter.category && !filter.tag ? 'active' : '',
+            onclick: () => navigate('blog'),
+          }, '全部'));
+          data.categories.forEach(cat => {
+            filterBar.appendChild(h('button', {
+              className: filter.category === cat ? 'active' : '',
+              onclick: () => navigate('blog', { category: cat }),
+            }, cat));
+          });
+          el.appendChild(filterBar);
+        }
+        if (!data.items || data.items.length === 0) {
+          el.appendChild(h('div', { className: 'empty' },
+            h('div', { className: 'empty-icon' }, '📭'),
+            h('p', {}, '暂无文章'),
+          ));
+          return;
+        }
+      }
+      _blogTotalPages = data.total_pages || 1;
+      _blogTotal = data.total || 0;
+      _blogPage = p;
+      appendBlogCards(el, data.items || []);
+      if (p >= _blogTotalPages) break;
     }
-
-    if (!data.items || data.items.length === 0) {
-      el.appendChild(h('div', { className: 'empty' },
-        h('div', { className: 'empty-icon' }, '📭'),
-        h('p', {}, '暂无文章'),
-      ));
-      return;
-    }
-
-    data.items.forEach(post => {
-      const card = h('div', {
-        className: 'blog-card',
-        onclick: () => navigate('blog-detail', { slug: post.slug }),
-      },
-        h('h2', {}, post.title),
-        h('div', { className: 'blog-meta' },
-          h('span', {}, post.date),
-          post.category ? h('span', { className: 'blog-category' }, post.category) : null,
-          post.author ? h('span', {}, post.author) : null,
-        ),
-        post.description ? h('div', { className: 'blog-desc' }, post.description) : null,
-        ...(post.tags && post.tags.length ? [
-          h('div', { className: 'blog-tags' },
-            ...post.tags.map(t => h('span', { className: 'blog-tag' }, t)),
-          ),
-        ] : []),
-      );
-      el.appendChild(card);
-    });
   } catch (e) {
     const el = $id('blog-content');
     if (el) {

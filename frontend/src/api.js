@@ -457,10 +457,16 @@ export async function adminReorderFeatured(items) {
 }
 
 // ── Blog ──
-export async function getBlogPosts({ category = '', tag = '' } = {}) {
+// Paginated: the blog has 1500+ posts, so the listing fetches one page at a
+// time (page_size defaults to the server's 24). `withTags` is opt-in because the
+// full tag list is ~2500 entries / 46 KB and the list view doesn't use it.
+export async function getBlogPosts({ category = '', tag = '', page = 1, pageSize = 0, withTags = false } = {}) {
   const params = new URLSearchParams();
   if (category) params.set('category', category);
   if (tag) params.set('tag', tag);
+  if (page && page > 1) params.set('page', page);
+  if (pageSize) params.set('page_size', pageSize);
+  if (withTags) params.set('with_tags', '1');
   const qs = params.toString();
   return request(`/api/blog${qs ? '?' + qs : ''}`);
 }
