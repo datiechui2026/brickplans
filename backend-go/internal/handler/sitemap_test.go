@@ -166,6 +166,17 @@ func parseURLSet(t *testing.T, path, body string) xmlURLSet {
 	return set
 }
 
+// headLines returns just the lines containing needle, for readable failures.
+func headLines(body, needle string) string {
+	var out []string
+	for _, l := range strings.Split(body, "\n") {
+		if strings.Contains(l, needle) {
+			out = append(out, strings.TrimSpace(l))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 func getHTML(t *testing.T, r *gin.Engine, path string) (int, string) {
 	t.Helper()
 	req := httptest.NewRequest("GET", path, nil)
@@ -584,8 +595,18 @@ func TestEnglishFallbackServesChineseCanonical(t *testing.T) {
 	if !strings.Contains(body, `<link rel="canonical" href="https://brickplans.test/blog/sm-brand-canonical" />`) {
 		t.Error("fallback must keep the Chinese canonical so the two URLs consolidate")
 	}
-	if strings.Contains(body, `hreflang="en" href="https://brickplans.test/en/blog/sm-brand-canonical"`) {
-		t.Error("fallback must not claim an English version exists")
+	// No hreflang="en" in ANY form. The earlier version of this test only
+	// rejected `hreflang="en" href=".../en/blog/..."`, so it passed while the
+	// page was emitting `hreflang="en" href=".../blog/..."` — a false claim that
+	// the Chinese page is the English version.
+	if strings.Contains(body, `hreflang="en"`) {
+		t.Errorf("fallback declares an English alternate:\n%s", headLines(body, "hreflang"))
+	}
+	if !strings.Contains(body, `hreflang="zh-CN" href="https://brickplans.test/blog/sm-brand-canonical"`) {
+		t.Error("fallback should self-reference as zh-CN (the language it actually renders)")
+	}
+	if !strings.Contains(body, `hreflang="x-default" href="https://brickplans.test/blog/sm-brand-canonical"`) {
+		t.Error("fallback x-default should point at the page that exists")
 	}
 	if !strings.Contains(body, `<html lang="zh-CN">`) {
 		t.Error("fallback page should declare the language it actually renders")

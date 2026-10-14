@@ -337,7 +337,11 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		OGType:      "article",
 		JSONLD:      jsonld,
 		Noscript:    h.blogDetailNoscript(pageLang, post, prev, next, related),
-		Alternates:  h.blogDetailAlternates(lang, slug, canonical),
+		// pageLang, NOT the requested lang: on a fallback render the requested
+		// language has no page to point at, and annotating the Chinese URL as
+		// hreflang="en" is a false annotation (Google may discard the whole
+		// hreflang cluster, and Search Console reports it as a mismatch).
+		Alternates: h.blogDetailAlternates(pageLang, slug, canonical),
 	}
 	if pageLang == blog.LangEN {
 		pd.HTMLLang = "en"
@@ -353,6 +357,10 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 // blogDetailAlternates emits the hreflang pair only when BOTH translations
 // really exist. A one-sided pair (or an alternate that serves the other
 // language's text) makes Google drop the annotation for the whole cluster.
+//
+// lang must be the language the page ACTUALLY renders (post.Lang), not the
+// language that was requested. Passing the requested language here produced
+// hreflang="en" pointing at the Chinese URL on every fallback page.
 func (h *Handler) blogDetailAlternates(lang, slug, canonical string) []AltLink {
 	enURL := h.cfg.PublicURL + blogDetailPath(blog.LangEN, slug)
 	zhURL := h.cfg.PublicURL + blogDetailPath(blog.LangZH, slug)
