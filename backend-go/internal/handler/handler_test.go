@@ -758,16 +758,39 @@ func TestSSRUnpublishedIs404(t *testing.T) {
 	}
 }
 
-func TestSitemapUsesRealURLs(t *testing.T) {
+// TestSitemapIndexAndPagesChild verifies the root sitemap is now an index and
+// that the pages child still carries the site's real (non-hash) URLs.
+func TestSitemapIndexAndPagesChild(t *testing.T) {
 	r, _ := setupTest(t)
 	tok, _ := registerUser(t, r, "smuser", "sm@x.com")
 	createBlueprint(t, r, tok, "站点地图作品", true)
 
+	// Root must be a sitemap index pointing at the children.
 	req := httptest.NewRequest("GET", "/sitemap.xml", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != 200 {
-		t.Fatalf("sitemap: %d", w.Code)
+		t.Fatalf("sitemap index: %d", w.Code)
+	}
+	index := w.Body.String()
+	if !strings.Contains(index, "<sitemapindex") {
+		t.Fatalf("root sitemap is not a sitemap index: %s", index[:200])
+	}
+	if strings.Contains(index, "<urlset") {
+		t.Fatal("root sitemap index must not contain a urlset")
+	}
+	for _, child := range []string{"/sitemap-pages.xml", "/sitemap-blueprints.xml"} {
+		if !strings.Contains(index, child) {
+			t.Fatalf("index missing child %s", child)
+		}
+	}
+
+	// The pages child keeps the old assertions.
+	req = httptest.NewRequest("GET", "/sitemap-pages.xml", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("sitemap pages: %d", w.Code)
 	}
 	body := w.Body.String()
 	if !strings.Contains(body, "<urlset") {
