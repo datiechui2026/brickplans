@@ -15,7 +15,43 @@ SA_EMAIL_FALLBACK = "brickplan-indexing@brickplan-indexing.iam.gserviceaccount.c
 SUMMARY = os.environ.get("INDEXING_SUMMARY", "/tmp/indexing-summary.json")
 
 
+def annotate() -> int:
+    """输出单行 workflow annotation。
+
+    ⚠️ 为什么需要它：Actions 日志下载需要认证（无 token 的复核者拿不到），
+    而 **check-run annotation 对 public repo 可无认证读取**（GET /repos/{o}/{r}/check-runs/{id}/annotations）。
+    于是「运行结论」变成任何人都能独立复核的公开事实，而不是靠自报。
+    """
+    if not os.path.exists(SUMMARY):
+        print("::warning title=Indexing API 未产出 summary::脚本在拿到 token 前即失败，"
+              "请检查 Secret GOOGLE_SA_JSON 是否为完整 service_account JSON")
+        return 0
+    try:
+        d = json.load(open(SUMMARY, encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print("::warning title=Indexing API summary 解析失败::%s" % exc)
+        return 0
+    codes = json.dumps(d.get("http_codes") or {}, ensure_ascii=False)
+    sa = d.get("sa") or SA_EMAIL_FALLBACK
+    if d.get("permission_denied"):
+        print("::error title=GSC 未授权(403 PERMISSION_DENIED)::planned=%s ok=%s fail=%s codes=%s | "
+              "需站点所有者在 Search Console 把 %s 加为「所有者」"
+              % (d.get("planned"), d.get("ok"), d.get("fail"), codes, sa))
+    elif d.get("ok") and not d.get("fail"):
+        print("::notice title=Indexing API 提交成功::planned=%s ok=%s fail=%s codes=%s seconds=%s "
+              "state_total=%s | sitemap 递归展开，逐条状态取自 batch multipart body"
+              % (d.get("planned"), d.get("ok"), d.get("fail"), codes, d.get("seconds"), d.get("state_total")))
+    elif not d.get("planned"):
+        print("::warning title=Indexing API 无待提交 URL::sitemap 采集为空或已全部提交（state 生效）")
+    else:
+        print("::warning title=Indexing API 部分失败::planned=%s ok=%s fail=%s codes=%s"
+              % (d.get("planned"), d.get("ok"), d.get("fail"), codes))
+    return 0
+
+
 def main() -> int:
+    if "--annotate" in sys.argv:
+        return annotate()
     print("## brickplan.cn · Google Indexing API 运行结果\n")
     print("| 项 | 值 |")
     print("|---|---|")

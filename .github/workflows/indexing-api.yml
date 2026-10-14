@@ -99,3 +99,6 @@ jobs:
             tail -40 /tmp/indexing.log 2>/dev/null || echo "(无脚本日志：可能在 guard/selftest 阶段即失败)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # 公开可复核的结论标注：check-run annotation 对 public repo 无需 token 即可读取，
+          # 日志本身却要认证 → 用它把「真 200 还是 403」变成任何人都能独立验证的事实。
+          python scripts/indexing_summary.py --annotate
