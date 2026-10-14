@@ -1201,3 +1201,23 @@ tr:hover td { background: #fafafa; }
 .blog-detail .blog-nav a:hover { text-decoration: underline; }
 .blog-detail .blog-nav .nav-prev, .blog-detail .blog-nav .nav-next { max-width: 45%; }
 .blog-detail .blog-nav .nav-label { font-size: 0.75rem; color: var(--text-sec); margin-bottom: 4px; }
+
+
+/* 首页「最新博客」模块（2026-10-14 P0 内链修复） */
+.home-blog-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.home-blog-card {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--bg-card, #fff);
+}
+.home-blog-card:hover { border-color: var(--primary, #2563eb); }
+.home-blog-title { font-weight: 600; font-size: 0.95rem; line-height: 1.35; }
+.home-blog-meta { margin-top: 4px; font-size: 0.78rem; color: var(--text-sec, #6b7280); }

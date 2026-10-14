@@ -13,6 +13,14 @@ import (
 	"brickplans/internal/blog"
 )
 
+// Internal-link fan-out. relatedLimit is how many sibling articles an article
+// links to; homeBlogLimit is how many the homepage links. Both are named so the
+// crawl-path strength is a number someone can tune, not a magic literal.
+const (
+	relatedLimit  = 5
+	homeBlogLimit = 12
+)
+
 // isoLang maps an internal tree code to the value used in hreflang / inLanguage.
 func isoLang(lang string) string {
 	if lang == blog.LangEN {
@@ -304,7 +312,10 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 	fallback := pageLang != lang
 
 	prev, next := h.blogStore.PrevNextLang(slug, pageLang)
-	related := h.blogStore.RelatedLang(slug, pageLang, 3)
+	// 5 (was 3): article-to-article links are the second-strongest referral
+	// source after the homepage, so the block is widened to cover more of the
+	// long tail. Same scoring (category +3, shared tag +1, recency fallback).
+	related := h.blogStore.RelatedLang(slug, pageLang, relatedLimit)
 
 	suffix := " - BrickPlan 博客"
 	if pageLang == blog.LangEN {

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"strings"
 
+	"brickplans/internal/blog"
 	"brickplans/internal/db"
 )
 
@@ -133,7 +134,7 @@ func listNoscript(bps []db.Blueprint, public string) template.HTML {
 	return template.HTML(b.String())
 }
 
-func homeNoscript(featured, latest []db.Blueprint, public string) template.HTML {
+func homeNoscript(featured, latest []db.Blueprint, posts []blog.Post, public string) template.HTML {
 	var b strings.Builder
 	b.WriteString(`<h1>BrickPlan — 积木图纸分享社区</h1>`)
 	b.WriteString("<p>发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。</p>")
@@ -146,6 +147,17 @@ func homeNoscript(featured, latest []db.Blueprint, public string) template.HTML 
 		b.WriteString(string(listNoscript(latest, public)))
 	}
 	b.WriteString(fmt.Sprintf(`<p><a href="%s/explore">浏览全部作品</a></p>`, public))
+	// 最新博客：首页是本站权重最高的已收录页，这里直接给文章页提供引荐来源。
+	// 之前首页 0 个 /blog/ 链接，是 GSC「已发现-尚未编入索引」的主因之一。
+	if len(posts) > 0 {
+		b.WriteString("<h2>最新博客</h2><ul>")
+		for _, p := range posts {
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/blog/%s">%s</a> <small>%s</small> <span>%s</span></li>`,
+				public, esc(p.Slug), esc(p.Title), p.Date.Format("2006-01-02"), esc(p.Category)))
+		}
+		b.WriteString("</ul>")
+		b.WriteString(fmt.Sprintf(`<p><a href="%s/blog">查看全部博客文章</a></p>`, public))
+	}
 	return template.HTML(b.String())
 }
 

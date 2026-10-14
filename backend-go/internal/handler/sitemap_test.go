@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -595,17 +596,25 @@ func TestEnglishFallbackServesChineseCanonical(t *testing.T) {
 	if !strings.Contains(body, `<link rel="canonical" href="https://brickplans.test/blog/sm-brand-canonical" />`) {
 		t.Error("fallback must keep the Chinese canonical so the two URLs consolidate")
 	}
-	// No hreflang="en" in ANY form. The earlier version of this test only
-	// rejected `hreflang="en" href=".../en/blog/..."`, so it passed while the
-	// page was emitting `hreflang="en" href=".../blog/..."` — a false claim that
-	// the Chinese page is the English version.
-	if strings.Contains(body, `hreflang="en"`) {
-		t.Errorf("fallback declares an English alternate:\n%s", headLines(body, "hreflang"))
+	// No English alternate in the HEAD. Scope to </head>: the site nav legitimately
+	// carries <a href="/en/blog" hreflang="en">, which is a link annotation, not a
+	// page-level hreflang claim.
+	//
+	// The earlier version of this test only rejected
+	// `hreflang="en" href=".../en/blog/..."`, so it passed while the page was
+	// emitting `hreflang="en" href=".../blog/..."` — a false claim that the
+	// Chinese page is the English version.
+	head := body
+	if i := strings.Index(body, "</head>"); i > 0 {
+		head = body[:i]
 	}
-	if !strings.Contains(body, `hreflang="zh-CN" href="https://brickplans.test/blog/sm-brand-canonical"`) {
+	if strings.Contains(head, `hreflang="en"`) {
+		t.Errorf("fallback declares an English alternate in <head>:\n%s", headLines(head, "hreflang"))
+	}
+	if !strings.Contains(head, `hreflang="zh-CN" href="https://brickplans.test/blog/sm-brand-canonical"`) {
 		t.Error("fallback should self-reference as zh-CN (the language it actually renders)")
 	}
-	if !strings.Contains(body, `hreflang="x-default" href="https://brickplans.test/blog/sm-brand-canonical"`) {
+	if !strings.Contains(head, `hreflang="x-default" href="https://brickplans.test/blog/sm-brand-canonical"`) {
 		t.Error("fallback x-default should point at the page that exists")
 	}
 	if !strings.Contains(body, `<html lang="zh-CN">`) {
@@ -717,5 +726,114 @@ func TestBlogAPILangSelector(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "EN sm-parts") {
 		t.Error("api detail lang=en served the Chinese body")
+	}
+}
+
+// articleLinkRE matches a server-rendered article link in the HTML body.
+var articleLinkRE = regexp.MustCompile(`href="https://brickplans.test/(?:en/)?blog/[^"]+"`)
+
+// ── P0: internal link paths (GSC "discovered - currently not indexed") ──
+
+// TestHomepageLinksLatestArticles is the load-bearing check for the P0 fix: the
+// homepage used to expose ZERO /blog/ links, so ~1000 article URLs had no
+// indexed referrer and Search Console filed them as "已发现-尚未编入索引 /
+// 站点地图未检测到引荐来源网页". The fix is worthless if the links are not in
+// the server-rendered HTML (crawlers do not run the SPA).
+func TestHomepageLinksLatestArticles(t *testing.T) {
+	r, _ := setupSitemapTest(t, 20, 0)
+	code, body := getHTML(t, r, "/")
+	if code != 200 {
+		t.Fatalf("/: %d", code)
+	}
+	links := articleLinkRE.FindAllString(body, -1)
+	if len(links) < 10 {
+		t.Errorf("homepage exposes %d article links, want >= 10:\n%s", len(links), strings.Join(links, "\n"))
+	}
+	// Distinct URLs, capped at homeBlogLimit (12) — a repeated link is not a
+	// second referral source.
+	uniq := map[string]bool{}
+	for _, l := range links {
+		uniq[l] = true
+	}
+	if len(uniq) < 10 {
+		t.Errorf("homepage exposes %d distinct article links, want >= 10", len(uniq))
+	}
+	if len(uniq) > 12 {
+		t.Errorf("homepage exposes %d distinct article links, want <= homeBlogLimit(12)", len(uniq))
+	}
+	if !strings.Contains(body, `href="https://brickplans.test/blog"`) {
+		t.Error("homepage does not link the blog index")
+	}
+}
+
+// TestArticlePageLinksRelatedArticles covers fix #2: an article must link to
+// 3-5 sibling articles so the archive is walkable article-to-article, without
+// losing the pre-existing prev/next navigation.
+func TestArticlePageLinksRelatedArticles(t *testing.T) {
+	r, _ := setupSitemapTest(t, 20, 0)
+	code, body := getHTML(t, r, "/blog/sm-parts")
+	if code != 200 {
+		t.Fatalf("/blog/sm-parts: %d", code)
+	}
+	if !strings.Contains(body, "你可能还喜欢") {
+		t.Error("related block heading missing")
+	}
+	// Count links in the related section only.
+	idx := strings.Index(body, "你可能还喜欢")
+	tail := body[idx:]
+	if end := strings.Index(tail, "<div style=\"display:flex"); end > 0 {
+		tail = tail[:end]
+	}
+	related := articleLinkRE.FindAllString(tail, -1)
+	if len(related) < 3 || len(related) > 5 {
+		t.Errorf("related block has %d links, want 3-5: %v", len(related), related)
+	}
+	// Prev/next must survive the change (they were there before the fix).
+	if !strings.Contains(body, "上一篇") && !strings.Contains(body, "下一篇") {
+		t.Error("prev/next navigation was lost while adding the related block")
+	}
+}
+
+// TestBlogPaginationChainIsWalkable covers fix #3: every listing page must link
+// forward, so 1500+ articles are reachable page 1 → 2 → … → N. 100 zh fixtures
+// at SSRPageSize=50 gives 2 pages.
+func TestBlogPaginationChainIsWalkable(t *testing.T) {
+	r, _ := setupSitemapTest(t, 100, 0)
+	code, body := getHTML(t, r, "/blog")
+	if code != 200 {
+		t.Fatalf("/blog: %d", code)
+	}
+	if !strings.Contains(body, "rel=\"next\"") || !strings.Contains(body, "?page=2") {
+		t.Error("page 1 does not link forward to page 2")
+	}
+	if strings.Contains(body, "charset") && strings.Contains(body, `name="robots" content="noindex"`) {
+		t.Error("/blog must not be noindex")
+	}
+	// Last page must be reachable and link back.
+	code, last := getHTML(t, r, "/blog?page=2")
+	if code != 200 {
+		t.Fatalf("/blog?page=2: %d", code)
+	}
+	if !strings.Contains(last, "rel=\"prev\"") {
+		t.Error("last page does not link back to page 1")
+	}
+	// A page past the end must clamp to the last page, not 404.
+	code, clamped := getHTML(t, r, "/blog?page=999")
+	if code != 200 || !strings.Contains(clamped, "rel=\"prev\"") {
+		t.Errorf("/blog?page=999 should clamp to the last page, got HTTP %d", code)
+	}
+}
+
+// TestEnglishTreeIsLinkedFromNav gives the /en/ tree an entry point from every
+// page — otherwise English articles are reachable only via the sitemap, i.e.
+// exactly the orphan problem being fixed here.
+func TestEnglishTreeIsLinkedFromNav(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	code, body := getHTML(t, r, "/")
+	if code != 200 {
+		t.Fatalf("/: %d", code)
+	}
+	if !strings.Contains(body, `href="/en/blog"`) {
+		t.Error("site nav does not link /en/blog")
 	}
 }

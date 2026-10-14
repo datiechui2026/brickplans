@@ -61,6 +61,10 @@ var siteNavHTML = template.HTML(`<nav aria-label="站点导航"><ul>` +
 	`<li><a href="/about">关于我们</a></li>` +
 	`<li><a href="/faq">常见问题</a></li>` +
 	`<li><a href="/privacy">隐私策略</a></li>` +
+	// The English blog is a separate URL tree; without a link from the site nav
+	// every /en/blog/ page would be reachable only via the sitemap (exactly the
+	// orphan problem this task exists to fix).
+	`<li><a href="/en/blog" hreflang="en">English Blog</a></li>` +
 	`</ul></nav>`)
 
 // Renderer parses the template once and resolves vite's hashed asset filenames

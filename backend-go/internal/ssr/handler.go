@@ -77,13 +77,25 @@ func (h *Handler) Home(c *gin.Context) {
 	var latest []db.Blueprint
 	h.gdb.Where("is_published = ?", true).Order("created_at DESC").Limit(10).Find(&latest)
 
+	// Latest blog posts. The homepage is the highest-authority indexed page on
+	// the site; linking articles from here is what gives ~1000 blog URLs a
+	// referrer, which is the "站点地图未检测到引荐来源网页 / discovered - not
+	// indexed" cause in Search Console. The sitemap alone is a weak signal.
+	var latestPosts []blog.Post
+	if h.blogStore != nil {
+		latestPosts = h.blogStore.AllByLang(blog.LangZH)
+		if len(latestPosts) > homeBlogLimit {
+			latestPosts = latestPosts[:homeBlogLimit]
+		}
+	}
+
 	h.r.Render(c, PageData{
 		Title:       "BrickPlan — 积木图纸分享社区",
 		Description: "BrickPlan 是积木/MOC 图纸分享社区，发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。",
 		Canonical:   h.cfg.PublicURL + "/",
 		OGType:      "website",
 		JSONLD:      append(h.siteJSONLD(), itemListJSONLD(latest, h.cfg.PublicURL)),
-		Noscript:    homeNoscript(featured, latest, h.cfg.PublicURL),
+		Noscript:    homeNoscript(featured, latest, latestPosts, h.cfg.PublicURL),
 	})
 }
 

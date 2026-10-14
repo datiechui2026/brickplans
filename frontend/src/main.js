@@ -1045,6 +1045,20 @@ function renderHome() {
     ),
   );
 
+  // ③bis 最新博客 — 首页是权重最高的已收录页，这里给文章页提供入口链接
+  // （SEO 引荐来源）。真正的爬虫入口在 SSR noscript 镜像里，这里服务用户。
+  mainWrap.appendChild(
+    h('div', { className: 'section-header' },
+      h('h2', { className: 'section-title' }, '📝 最新博客'),
+      h('button', { className: 'btn btn-ghost', onclick: () => navigate('blog') }, '查看全部 →'),
+    ),
+  );
+  mainWrap.appendChild(
+    h('div', { id: 'home-blog', className: 'home-blog-list' },
+      h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
+    ),
+  );
+
   // ④ Platform stats — single row, at the very end of the homepage content.
   mainWrap.appendChild(
     h('div', { id: 'home-stats', className: 'stats-bar stats-bar-end' },
@@ -1074,6 +1088,34 @@ function renderHome() {
 
   // One aggregated request renders the slideshow, the latest grid, and the
   // stats bar. Fewer round-trips = faster first meaningful paint.
+  // 最新博客列表（失败时降级为指向 /blog 的静态链接，链接不会因为接口异常而消失）
+  api.getBlogPosts({ page: 1, pageSize: 12 }).then(data => {
+    const el = $id('home-blog');
+    if (!el) return;
+    const items = (data && data.items) || [];
+    if (!items.length) {
+      el.innerHTML = '<p class="loading">暂无文章 <a href="/blog">进入博客</a></p>';
+      return;
+    }
+    el.innerHTML = '';
+    items.forEach(p => {
+      el.appendChild(
+        h('a', {
+          className: 'home-blog-card',
+          href: `/blog/${p.slug}`,
+          onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: p.slug }); },
+        },
+          h('div', { className: 'home-blog-title' }, p.title),
+          h('div', { className: 'home-blog-meta' }, `${p.date} · ${p.category || '博客'}`),
+        ),
+      );
+    });
+  }).catch(() => {
+    const el = $id('home-blog');
+    if (el) el.innerHTML = '<p class="loading">加载失败 <a href="/blog">直接访问博客</a></p>';
+  });
+
+
   api.getHome({ featured: 8, latest: 8 }).then(data => {
     renderHomeSlider(data.featured || []);
 
