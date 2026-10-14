@@ -75,7 +75,9 @@ GET https://brickplan.cn/googlea83021971b8ab084.html
 | `sitemap-blog-knowledge.xml` | 知识科普 | 2 |
 | `sitemap-blog-resources.xml` | 资源推荐 | 17 |
 | `sitemap-blog-other.xml` | 其他（历史未归类的旧分类） | 34 |
-| **合计** | | **3525（拆分前后 URL 零丢失，另新增 30 个博客分页页）** |
+| **合计** | | **3550（2026-10-14 09:30 实测）** |
+
+> 注：数字是快照。图纸详情页由内容生产流水线持续新增（09:13 快照 1922 → 09:30 实测 1975），各子 sitemap 会实时增长。本次拆分前后做了全量比对：**旧 sitemap 的 URL 一条没丢，新增的 83 条全是新增内容 + 30 个博客分页页**。
 
 GSC 提交 `sitemap.xml` 即可，GSC 会自动展开子 sitemap 并分别给出「已提交/已编入索引」的数字。
 
