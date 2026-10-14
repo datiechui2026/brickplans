@@ -98,13 +98,17 @@ func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (*gin.Engine, *gorm.DB) 
 		}
 	}
 	write := func(dir, slug, cat, title string) {
+		img := ""
+		if slug == "sm-parts" {
+			img = "\n![图示](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/sm-parts/sm-parts-1.jpg)\n"
+		}
 		body := "---\n" +
 			"title: \"" + title + "\"\n" +
 			"date: 2026-01-02\n" +
 			"author: \"tester\"\n" +
 			"category: \"" + cat + "\"\n" +
 			"tags: [a, b]\n" +
-			"---\n\nBody of " + slug + "\n"
+			"---\n\nBody of " + slug + "\n" + img
 		if err := os.WriteFile(filepath.Join(dir, slug+".md"), []byte(body), 0o644); err != nil {
 			t.Fatalf("write fixture: %v", err)
 		}
@@ -835,5 +839,35 @@ func TestEnglishTreeIsLinkedFromNav(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/en/blog"`) {
 		t.Error("site nav does not link /en/blog")
+	}
+}
+
+// TestArticleOgImageUsesBodyImage covers the illustration rollout: once a post
+// references a hosted image, og:image and the Article JSON-LD image must point
+// at it instead of the site default (otherwise every share/preview shows the
+// logo and the illustrations are invisible to social crawlers).
+func TestArticleOgImageUsesBodyImage(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	code, body := getHTML(t, r, "/blog/sm-parts")
+	if code != 200 {
+		t.Fatalf("/blog/sm-parts: %d", code)
+	}
+	want := `https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/sm-parts/sm-parts-1.jpg`
+	if !strings.Contains(body, `<meta property="og:image" content="`+want+`" />`) {
+		t.Errorf("og:image is not the body image:\n%s", headLines(body, "og:image"))
+	}
+	if !strings.Contains(body, `"image":["`+want+`"]`) {
+		t.Error("Article JSON-LD does not carry the image")
+	}
+	if strings.Contains(body, `<meta property="og:image" content="/og-default.png"`) {
+		t.Error("og:image still falls back to the default")
+	}
+	// A post without images must keep the default, not emit an empty og:image.
+	code, plain := getHTML(t, r, "/blog/sm-empty")
+	if code != 200 {
+		t.Fatalf("/blog/sm-empty: %d", code)
+	}
+	if strings.Contains(plain, `<meta property="og:image" content="" />`) {
+		t.Error("post without images emitted an empty og:image")
 	}
 }

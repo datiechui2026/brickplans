@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -346,6 +347,7 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		Description: truncate(desc, 160),
 		Canonical:   canonical,
 		OGType:      "article",
+		OGImage:     firstImageURL(post.Body),
 		JSONLD:      jsonld,
 		Noscript:    h.blogDetailNoscript(pageLang, post, prev, next, related),
 		// pageLang, NOT the requested lang: on a fallback render the requested
@@ -477,6 +479,23 @@ func localizeBodyLinks(html, lang, publicURL string) string {
 	return out
 }
 
+// firstImageURL returns the first image referenced by a post body, or "".
+//
+// Why: the article pages were shipping og:image = /og-default.png even after
+// illustrations landed in the markdown, so every social/AI preview showed the
+// site logo instead of the article's hero image. The body itself is the only
+// source of truth — there is no separate cover field on blog posts.
+func firstImageURL(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if m := mdImageRE.FindStringSubmatch(line); m != nil {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+var mdImageRE = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
+
 // ── JSON-LD ──
 
 // withInLanguage injects inLanguage into an already-serialized JSON object.
@@ -530,6 +549,9 @@ func articleJSONLD(post *blog.Post, public string, lang string) template.JS {
 	}
 	if len(post.Tags) > 0 {
 		m["keywords"] = strings.Join(post.Tags, ", ")
+	}
+	if img := firstImageURL(post.Body); img != "" {
+		m["image"] = []string{img}
 	}
 	return mustJSON(m)
 }
