@@ -1,0 +1,101 @@
+name: Indexing API (brickplan.cn)
+
+# 为什么放 GitHub 跑：本机与生产服务器都在境内，直连 oauth2.googleapis.com /
+# indexing.googleapis.com 不通（实测 Network unreachable / curl 000 超时）。
+# GitHub runner 在境外，可直接调用 Google API。
+#
+# ⚠️ repo 是 public：日志严禁打印 SA JSON / 私钥。凭据只经环境变量 GOOGLE_SA_JSON 传入，
+#    guard/summary 脚本只输出 client_email、private_key 长度这类非敏感指纹。
+
+on:
+  schedule:
+    - cron: '0 2 * * *'        # UTC 02:00 = 北京时间 10:00
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '本次最多提交条数'
+        required: false
+        default: '200'
+      lang:
+        description: '只提交某语言树：留空=全部 / zh / en'
+        required: false
+        default: ''
+  # 仅在 workflow 或脚本自身变更时触发一次：用于首次验证，也保证以后改脚本必然跑一遍
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/indexing-api.yml'
+      - 'scripts/brickplan_indexing_api.py'
+      - 'scripts/indexing_secret_guard.py'
+      - 'scripts/indexing_summary.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexing-api
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    name: Submit sitemap URLs to Google Indexing API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyjwt cryptography
+
+      # 断点续传：Indexing API 幂等，重复提交无害，但要能推进（每日 200 条 → 全量约 19 天走完）
+      - name: Restore submit state
+        uses: actions/cache@v4
+        with:
+          path: /tmp/bp-indexing-state.json
+          key: bp-indexing-state-${{ github.run_id }}
+          restore-keys: |
+            bp-indexing-state-
+
+      - name: Guard — Secret present and well-formed (脱敏，绝不打印私钥)
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+        run: python scripts/indexing_secret_guard.py
+
+      - name: Self-test JWT signing (RS256)
+        run: python scripts/brickplan_indexing_api.py --selftest
+
+      - name: Submit URLs (--limit 200)
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          LIMIT: ${{ github.event.inputs.limit || '200' }}
+          LANG: ${{ github.event.inputs.lang || '' }}
+        run: |
+          ARGS="--limit ${LIMIT} --state /tmp/bp-indexing-state.json --json-out /tmp/indexing-summary.json"
+          if [ -n "${LANG}" ]; then ARGS="$ARGS --lang ${LANG}"; fi
+          echo "run: python scripts/brickplan_indexing_api.py $ARGS"
+          # 逐条结果由脚本解析 multipart body 得出（整体 HTTP 恒为 200）。
+          # 403 = GSC 未授权 → 脚本退出码 3 → 本步变红，于是「运行是否变红」本身就是验证结论。
+          python scripts/brickplan_indexing_api.py $ARGS 2>&1 | tee /tmp/indexing.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            python scripts/indexing_summary.py
+            echo ""
+            echo "### 原始日志（末 40 行）"
+            echo '```'
+            tail -40 /tmp/indexing.log 2>/dev/null || echo "(无脚本日志：可能在 guard/selftest 阶段即失败)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
