@@ -367,7 +367,13 @@ def main() -> int:
     if ok and fail == 0:
         print("结论: ✅ 全部 %d 条 Google 真实返回 2xx" % ok)
         return 0
-    print("结论: ⚠️ 部分失败（成功 %d / 失败 %d）" % (ok, fail))
+    # 429 是配额限流（Indexing API 每日/每分钟都有硬配额），不是故障：
+    # 剩余 URL 已留在 state 里下次继续，没必要把整条流水线变红。
+    nonok = [c for c in codes_all if not (200 <= c < 300)]
+    if fail and nonok and all(c == 429 for c in nonok):
+        print("结论: ⏳ 命中配额限流（429）—— 已提交 %d 条，剩余留给下次（state 已保存，非故障）" % ok)
+        return 0
+    print("结论: ⚠️ 部分失败（成功 %d / 失败 %d，状态分布 %s）" % (ok, fail, codes_all))
     return 1
 
 

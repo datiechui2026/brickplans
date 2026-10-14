@@ -43,6 +43,10 @@ def annotate() -> int:
               % (d.get("planned"), d.get("ok"), d.get("fail"), codes, d.get("seconds"), d.get("state_total")))
     elif not d.get("planned"):
         print("::warning title=Indexing API 无待提交 URL::sitemap 采集为空或已全部提交（state 生效）")
+    elif all(c == 429 for c in (d.get("http_codes") or {}) if not str(c).startswith("2")):
+        print("::notice title=Indexing API 配额限流(429)::planned=%s ok=%s fail=%s codes=%s | "
+              "已提交的已记入 state，剩余下次继续（非故障）"
+              % (d.get("planned"), d.get("ok"), d.get("fail"), codes))
     else:
         print("::warning title=Indexing API 部分失败::planned=%s ok=%s fail=%s codes=%s"
               % (d.get("planned"), d.get("ok"), d.get("fail"), codes))

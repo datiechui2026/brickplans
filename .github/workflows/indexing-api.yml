@@ -81,6 +81,9 @@ jobs:
           LIMIT: ${{ github.event.inputs.limit || '200' }}
           LANG: ${{ github.event.inputs.lang || '' }}
         run: |
+          # ⚠️ 必须显式开 pipefail：GitHub 默认 shell 是 `bash -e {0}`（不含 pipefail），
+          # 于是 `| tee` 会把管道退出码替换成 tee 的 0 → 脚本失败也显示绿色（踩过）。
+          set -o pipefail
           ARGS="--limit ${LIMIT} --state /tmp/bp-indexing-state.json --json-out /tmp/indexing-summary.json"
           if [ -n "${LANG}" ]; then ARGS="$ARGS --lang ${LANG}"; fi
           echo "run: python scripts/brickplan_indexing_api.py $ARGS"
