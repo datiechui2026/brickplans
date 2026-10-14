@@ -35,6 +35,18 @@ type PageData struct {
 	JSFile        string
 	CSSFile       string
 	Favicon       template.HTML
+	// HTMLLang sets <html lang>. Empty means zh-CN (every non-blog page).
+	HTMLLang string
+	// Alternates renders the hreflang link tags. Empty means "this page has no
+	// translated counterpart": the template then emits only a self-referencing
+	// zh-CN + x-default pair, which is what every Chinese page had before.
+	Alternates []AltLink
+}
+
+// AltLink is one <link rel="alternate" hreflang=...> entry.
+type AltLink struct {
+	Hreflang string
+	Href     string
 }
 
 // siteNavHTML is the server-rendered site navigation emitted into #app ahead of

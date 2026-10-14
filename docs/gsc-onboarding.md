@@ -81,6 +81,29 @@ GET https://brickplan.cn/googlea83021971b8ab084.html
 
 GSC 提交 `sitemap.xml` 即可，GSC 会自动展开子 sitemap 并分别给出「已提交/已编入索引」的数字。
 
+#### 多语言结构（v1.0.31，2026-10-14 同日上线）
+
+sitemap 现在是 **语言 × 分类** 两个维度，根 index 下 13 个子文件（英文文章为 0 时英文分类文件不进 index）：
+
+| 子 sitemap | 内容 | URL 数（2026-10-14 10:00） |
+|---|---|---|
+| `sitemap-zh.xml` | 中文站资源：静态页 + 6 分类页 + 标签页 + 博客列表及分页 + 图纸详情 | 2039 |
+| `sitemap-zh-blog-<分类>.xml` ×10 | 中文文章，按 9 个规范分类 + 其他分桶 | 144/518/13/64/160/492/89/2/17/34 |
+| `sitemap-en.xml` | 英文站资源：`/en/blog` 列表 + 分页 | 1 |
+| `sitemap-en-blog-<分类>.xml` | 英文文章（按桶，空桶不列出） | 1 |
+| **合计** | | **3574** |
+
+- 每条文章 URL 带 `xhtml:link` hreflang 标注（`zh-CN` / `en` / `x-default`→英文），**且仅当双语版本都存在**才标注（单边标注会让 Google 丢掉整个集群的注解）
+- 中文侧相对拆分前快照 **URL 零丢失**；英文内容上线后 URL 数会随之增长
+- GSC 建议同时提交 `sitemap.xml`（index，含全部）——想要英文单独一份报告时再单独提交 `sitemap-en.xml`（**可以重复提交，不影响收录**）
+
+#### 英文站验证要点（M1 已就绪）
+
+- 英文文章 URL：`https://brickplan.cn/en/blog/<slug>`（与中文同 slug）
+- hreflang 双向：中文页声明 `en`，英文页声明 `zh-CN`，`x-default` 均指向英文页
+- 无英文翻译的 slug 访问 `/en/blog/<slug>` 会回退渲染中文正文（HTTP 200，canonical 指向中文页，且**不声明**英文 hreflang），避免孤儿链接
+- `?lang=en` 可切换 `GET /api/blog` 的语言树
+
 ---
 
 ## 二、站长操作详解

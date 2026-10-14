@@ -33,7 +33,7 @@ var categoryBuckets = []CategoryBucket{
 	{
 		Slug:  "brand",
 		Label: "品牌推荐",
-		raws:  []string{"品牌推荐", "品牌评测", "品牌选购", "国产积木", "积木推荐", "选购指南"},
+		raws:  []string{"品牌推荐", "品牌评测", "品牌选购", "国产积木", "积木推荐", "选购指南", "Brand Guide", "Brand Review", "Buying Guide", "Brand Comparison"},
 	},
 	{
 		Slug:  "beginner",
@@ -41,42 +41,43 @@ var categoryBuckets = []CategoryBucket{
 		raws: []string{
 			"新手教程", "新手入门", "新手指南", "积木教程", "搭建教程", "教程",
 			"拼装教程", "拼装指南", "实用指南", "指南", "亲子玩法",
+			"Beginner Guide", "Getting Started", "Tutorial", "How To",
 		},
 	},
 	{
 		Slug:  "parts",
 		Label: "零件知识",
-		raws:  []string{"零件知识", "零件指南", "积木零件"},
+		raws:  []string{"零件知识", "零件指南", "积木零件", "Parts Guide", "Brick Parts", "Parts Explained"},
 	},
 	{
 		Slug:  "building",
 		Label: "搭建技巧",
-		raws:  []string{"搭建技巧", "拼装技巧", "收纳技巧", "积木搭建", "MOC搭建", "场景MOC", "场景搭建"},
+		raws:  []string{"搭建技巧", "拼装技巧", "收纳技巧", "积木搭建", "MOC搭建", "场景MOC", "场景搭建", "Building Tips", "Techniques", "Storage Tips"},
 	},
 	{
 		Slug:  "set-review",
 		Label: "积木评测",
-		raws:  []string{"积木评测", "套装评测", "积木套装评测", "系列评测", "套装推荐", "评测"},
+		raws:  []string{"积木评测", "套装评测", "积木套装评测", "系列评测", "套装推荐", "评测", "Set Review", "Set Reviews", "Reviews"},
 	},
 	{
 		Slug:  "moc-review",
 		Label: "MOC图纸评测",
-		raws:  []string{"MOC图纸评测", "图纸评测", "MOC图纸", "MOC评测"},
+		raws:  []string{"MOC图纸评测", "图纸评测", "MOC图纸", "MOC评测", "MOC Review", "Blueprint Review", "Instructions Review"},
 	},
 	{
 		Slug:  "moc-tutorial",
 		Label: "MOC教程",
-		raws:  []string{"MOC教程", "MOC 教程", "MOC入门", "MOC指南", "图纸指南", "图纸教程", "设计教程", "MOC场景指南"},
+		raws:  []string{"MOC教程", "MOC 教程", "MOC入门", "MOC指南", "图纸指南", "图纸教程", "设计教程", "MOC场景指南", "MOC Tutorial", "MOC Guide", "Building Guide", "Instructions Guide"},
 	},
 	{
 		Slug:  "knowledge",
 		Label: "知识科普",
-		raws:  []string{"知识科普", "MOC知识"},
+		raws:  []string{"知识科普", "MOC知识", "Knowledge", "Explained"},
 	},
 	{
 		Slug:  "resources",
 		Label: "资源推荐",
-		raws:  []string{"资源推荐", "图纸下载", "MOC分享", "找图指南", "推荐"},
+		raws:  []string{"资源推荐", "图纸下载", "MOC分享", "找图指南", "推荐", "Resources", "Downloads", "Where To Find"},
 	},
 	{
 		Slug:  OtherBucketSlug,
@@ -133,11 +134,19 @@ func BucketFor(raw string) string {
 	return OtherBucketSlug
 }
 
-// PostsInBucket returns the posts in one bucket, preserving the store's
+// PostsInBucket returns the Chinese posts in one bucket, preserving the store's
 // newest-first order.
 func (s *Store) PostsInBucket(slug string) []Post {
+	return s.PostsInBucketLang(LangZH, slug)
+}
+
+// PostsInBucketLang returns the posts of one language in one bucket. The bucket
+// table is shared by both trees: English posts carry English category strings
+// (M2 authors them), and anything not in the table still lands in "other", so
+// the zero-loss invariant holds for the English sitemap too.
+func (s *Store) PostsInBucketLang(lang, slug string) []Post {
 	var out []Post
-	for _, p := range s.posts {
+	for _, p := range s.AllByLang(lang) {
 		if BucketFor(p.Category) == slug {
 			out = append(out, p)
 		}
@@ -155,15 +164,18 @@ type BucketStat struct {
 	LatestDay string // "2006-01-02", "" when the bucket is empty
 }
 
-// Stats summarises every bucket in one pass.
-func (s *Store) Stats() []BucketStat {
+// Stats summarises every Chinese bucket in one pass.
+func (s *Store) Stats() []BucketStat { return s.StatsLang(LangZH) }
+
+// StatsLang summarises every bucket of one language in one pass.
+func (s *Store) StatsLang(lang string) []BucketStat {
 	stats := make([]BucketStat, 0, len(categoryBuckets))
 	index := make(map[string]int, len(categoryBuckets))
 	for _, b := range categoryBuckets {
 		index[b.Slug] = len(stats)
 		stats = append(stats, BucketStat{Slug: b.Slug, Label: b.Label})
 	}
-	for _, p := range s.posts {
+	for _, p := range s.AllByLang(lang) {
 		i, ok := index[BucketFor(p.Category)]
 		if !ok {
 			continue // unreachable: BucketFor is total over known slugs

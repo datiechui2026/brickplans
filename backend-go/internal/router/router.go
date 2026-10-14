@@ -39,9 +39,9 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 	r.MaxMultipartMemory = 32 << 20
 
 	// Load blog content store (non-critical: log warning on failure).
-	blogStore, blogErr := blog.Load(cfg.BlogContentDir)
+	blogStore, blogErr := blog.LoadDirs(cfg.BlogContentDir, cfg.BlogContentDirEN)
 	if blogErr != nil {
-		fmt.Printf("[blog] warning: failed to load blog content from %s: %v\n", cfg.BlogContentDir, blogErr)
+		fmt.Printf("[blog] warning: failed to load blog content from %s (+ %s): %v\n", cfg.BlogContentDir, cfg.BlogContentDirEN, blogErr)
 	}
 
 	// Serve uploaded files when using local storage.

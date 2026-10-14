@@ -153,11 +153,13 @@ func TestPageCountAgreesWithPaginateForOversizedSize(t *testing.T) {
 
 func TestFilter(t *testing.T) {
 	posts := []Post{
-		{Slug: "a", Category: "MOC评测", Tags: []string{"MOC"}},
-		{Slug: "b", Category: "积木教程", Tags: []string{"入门"}},
-		{Slug: "c", Category: "积木教程", Tags: []string{"MOC", "入门"}},
+		// Lang must be set: every filter is scoped to one language tree, and a
+		// post with an empty Lang belongs to no tree at all.
+		{Slug: "a", Lang: LangZH, Category: "MOC评测", Tags: []string{"MOC"}},
+		{Slug: "b", Lang: LangZH, Category: "积木教程", Tags: []string{"入门"}},
+		{Slug: "c", Lang: LangZH, Category: "积木教程", Tags: []string{"MOC", "入门"}},
 	}
-	s := &Store{posts: posts, bySlug: map[string]*Post{}}
+	s := &Store{posts: posts, byKey: map[string]*Post{}}
 
 	if got := len(s.Filter("", "")); got != 3 {
 		t.Fatalf("Filter(all) len = %d, want 3", got)

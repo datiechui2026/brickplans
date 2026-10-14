@@ -39,6 +39,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/faq", h.FAQ)
 	r.GET("/blog", h.BlogList)
 	r.GET("/blog/:slug", h.BlogDetail)
+	// English blog tree. Deliberately a separate path prefix (not a query
+	// param) so every English URL is its own crawlable, hreflang-annotatable
+	// address. The rest of the site stays Chinese-only and keeps its URLs.
+	r.GET("/en/blog", h.BlogListEN)
+	r.GET("/en/blog/:slug", h.BlogDetailEN)
 }
 
 func (h *Handler) Home(c *gin.Context) {

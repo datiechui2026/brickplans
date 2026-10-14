@@ -11,6 +11,16 @@ import (
 	"brickplans/internal/config"
 )
 
+// langOf resolves the ?lang= selector. Only an explicit "en" switches trees:
+// the SPA predates the English blog and never sends the parameter, so anything
+// unrecognised must keep behaving exactly like before.
+func langOf(c *gin.Context) string {
+	if c.Query("lang") == blog.LangEN {
+		return blog.LangEN
+	}
+	return blog.LangZH
+}
+
 // BlogAPIHandler serves blog data as JSON for the SPA frontend.
 type BlogAPIHandler struct {
 	cfg   *config.Config
@@ -67,7 +77,11 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 	page := atoiOr(c.Query("page"), 1, 1)
 	size := blog.NormPageSize(atoiOr(c.Query("page_size"), blog.DefaultPageSize, 1))
 
-	items, total := blog.Paginate(h.store.Filter(cat, tag), page, size)
+	// ?lang=en serves the English tree. Default stays zh so the existing SPA
+	// client (which never sends the param) is unaffected.
+	lang := langOf(c)
+
+	items, total := blog.Paginate(h.store.FilterLang(lang, cat, tag), page, size)
 
 	out := make([]BlogPostOut, 0, len(items))
 	for _, p := range items {
@@ -88,10 +102,11 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 		"page":        page,
 		"page_size":   size,
 		"total_pages": blog.PageCount(total, size),
-		"categories":  h.store.Categories(),
+		"lang":        lang,
+		"categories":  h.store.CategoriesLang(lang),
 	}
 	if c.Query("with_tags") == "1" {
-		resp["tags"] = h.store.Tags()
+		resp["tags"] = h.store.TagsLang(lang)
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -100,14 +115,16 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 // Detail returns a single blog post with body, prev/next info, and related posts.
 func (h *BlogAPIHandler) Detail(c *gin.Context) {
 	slug := c.Param("slug")
-	post := h.store.Get(slug)
+	post := h.store.GetByLang(slug, langOf(c))
 	if post == nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Blog post not found"})
 		return
 	}
 
-	prev, next := h.store.PrevNext(slug)
-	relatedPosts := h.store.Related(slug, 3)
+	// Stay inside the language tree: English readers must not be handed Chinese
+	// prev/next/related links (and vice versa).
+	prev, next := h.store.PrevNextLang(post.Slug, post.Lang)
+	relatedPosts := h.store.RelatedLang(post.Slug, post.Lang, 3)
 
 	out := BlogPostOut{
 		Slug:        post.Slug,

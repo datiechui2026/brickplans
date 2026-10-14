@@ -42,9 +42,10 @@ type Config struct {
 	WeChatAppSecret string
 
 	// SEO/SSR
-	FrontendDist   string // path to frontend/dist (for vite manifest + static assets)
-	PublicURL      string // canonical site URL, e.g. https://brickplan.cn
-	BlogContentDir string // path to blog markdown files
+	FrontendDist     string // path to frontend/dist (for vite manifest + static assets)
+	PublicURL        string // canonical site URL, e.g. https://brickplan.cn
+	BlogContentDir   string // path to blog markdown files (zh)
+	BlogContentDirEN string // path to English blog markdown files; empty = no English content
 }
 
 func Load() *Config {
@@ -77,6 +78,7 @@ func Load() *Config {
 		FrontendDist:            getenv("FRONTEND_DIST", "../frontend/dist"),
 		PublicURL:               getenv("PUBLIC_URL", "https://brickplan.cn"),
 		BlogContentDir:          getenv("BLOG_CONTENT_DIR", "./content/blog"),
+		BlogContentDirEN:        getenv("BLOG_CONTENT_DIR_EN", "./content/en/blog"),
 	}
 	c.validate()
 	return c

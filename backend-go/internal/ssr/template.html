@@ -1,16 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{if .HTMLLang}}{{.HTMLLang}}{{else}}zh-CN{{end}}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{.Title}}</title>
   <meta name="description" content="{{.Description}}" />
   <link rel="canonical" href="{{.Canonical}}" />
-  <link rel="alternate" hreflang="zh-CN" href="{{.Canonical}}" />
-  <link rel="alternate" hreflang="zh-TW" href="{{.Canonical}}" />
-  <link rel="alternate" hreflang="zh-Hans" href="{{.Canonical}}" />
-  <link rel="alternate" hreflang="zh-Hant" href="{{.Canonical}}" />
+  {{if .Alternates}}{{range .Alternates}}<link rel="alternate" hreflang="{{.Hreflang}}" href="{{.Href}}" />
+  {{end}}{{else}}<link rel="alternate" hreflang="zh-CN" href="{{.Canonical}}" />
   <link rel="alternate" hreflang="x-default" href="{{.Canonical}}" />
+  {{end}}
   <meta property="og:title" content="{{.OGTitle}}" />
   <meta property="og:description" content="{{.OGDescription}}" />
   <meta property="og:image" content="{{.OGImage}}" />

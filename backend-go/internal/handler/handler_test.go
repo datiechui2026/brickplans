@@ -779,14 +779,14 @@ func TestSitemapIndexAndPagesChild(t *testing.T) {
 	if strings.Contains(index, "<urlset") {
 		t.Fatal("root sitemap index must not contain a urlset")
 	}
-	for _, child := range []string{"/sitemap-pages.xml", "/sitemap-blueprints.xml"} {
+	for _, child := range []string{"/sitemap-zh.xml", "/sitemap-en.xml"} {
 		if !strings.Contains(index, child) {
 			t.Fatalf("index missing child %s", child)
 		}
 	}
 
 	// The pages child keeps the old assertions.
-	req = httptest.NewRequest("GET", "/sitemap-pages.xml", nil)
+	req = httptest.NewRequest("GET", "/sitemap-zh.xml", nil)
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != 200 {

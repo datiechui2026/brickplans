@@ -24,40 +24,60 @@ func NewSEOHandler(cfg *config.Config, gdb *gorm.DB, blogStore *blog.Store) *SEO
 	return &SEOHandler{cfg: cfg, gdb: gdb, blogStore: blogStore}
 }
 
-// Child sitemap paths. The root /sitemap.xml is a sitemap index that points at
-// these; each child is a plain <urlset>.
+// Sitemap layout (v1.0.31 — language × category):
 //
-// Why split: the single 654 KB sitemap mixed static pages, ~1900 blueprint
-// detail pages and ~1500 blog posts into one file, so Search Console could only
-// report one aggregate coverage number and a single parse error would invalidate
-// every URL at once. Splitting by topic gives a per-topic coverage report and
-// keeps each file small. (Bing/IndexNow consumption is unaffected: the
-// collector follows the index recursively — see
-// /home/ubuntu/.hermes/scripts/brickplan_indexnow_urls.sh.)
+//	/sitemap.xml                     sitemapindex
+//	├── /sitemap-zh.xml              中文站资源：静态页/分类页/标签页/博客列表+分页/图纸详情
+//	├── /sitemap-zh-blog-<bucket>.xml ×10   中文博客文章，按规范分类分桶
+//	├── /sitemap-en.xml              英文站资源：/en/blog 列表 + 分页
+//	└── /sitemap-en-blog-<bucket>.xml ×N    英文博客文章（仅非空桶才进 index）
+//
+// Why two axes and not one flat file: the 2026-10-14 split existed so Search
+// Console could report coverage per topic; the multilingual rollout adds a
+// second axis (language) because English and Chinese pages index at wildly
+// different rates and a merged number hides which tree is the problem. Keeping
+// the axes as *separate files* (rather than one file per language) preserves
+// both reports and keeps every file small.
+//
+// Invariant: a URL appears in exactly one child sitemap. That is why the
+// language hubs hold the non-article resources and the article files hold the
+// posts — merging them would double-submit ~1500 URLs.
+//
+// Every article entry carries xhtml:link hreflang alternates, but only when the
+// counterpart really exists in both trees (see writeURLAlternates).
 const (
-	sitemapPagesPath      = "/sitemap-pages.xml"
-	sitemapBlueprintsPath = "/sitemap-blueprints.xml"
-	sitemapBlogPrefix     = "/sitemap-blog-"
-	sitemapBlogSuffix     = ".xml"
+	sitemapZHPath     = "/sitemap-zh.xml"
+	sitemapENPath     = "/sitemap-en.xml"
+	sitemapBlogPrefix = "/sitemap-"
+	sitemapBlogSuffix = ".xml"
+	xhtmlNS           = `xmlns:xhtml="http://www.w3.org/1999/xhtml"`
 )
+
+// blogBucketPath builds e.g. "/sitemap-zh-blog-moc-review.xml".
+func blogBucketPath(lang, bucket string) string {
+	return sitemapBlogPrefix + lang + "-blog-" + bucket + sitemapBlogSuffix
+}
 
 // RegisterRoutes mounts the sitemaps at the site root (not under /api).
 //
-// The blog child routes are registered statically per bucket instead of as
-// "/sitemap-blog-:bucket.xml": with gin/httprouter a named parameter swallows
-// the rest of its path segment, so ":bucket.xml" would be the parameter *name*
+// The per-bucket routes are registered statically instead of as a path
+// parameter: with gin/httprouter a named parameter swallows the rest of its
+// path segment, so ":bucket.xml" would be the parameter *name*
 // (c.Param("bucket.xml")), not "bucket" + suffix. One handler per known slug
 // removes that class of bug entirely, and adding a bucket is a table edit in
 // internal/blog/categories.go — the index and the routes both iterate that
 // table, so they cannot drift apart.
 func (h *SEOHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/sitemap.xml", h.sitemapIndex)
-	r.GET(sitemapPagesPath, h.sitemapPages)
-	r.GET(sitemapBlueprintsPath, h.sitemapBlueprints)
+	r.GET(sitemapZHPath, func(c *gin.Context) { h.sitemapSite(c, blog.LangZH) })
+	r.GET(sitemapENPath, func(c *gin.Context) { h.sitemapSite(c, blog.LangEN) })
 	for _, slug := range blog.BucketSlugs() {
 		slug := slug
-		r.GET(sitemapBlogPrefix+slug+sitemapBlogSuffix, func(c *gin.Context) {
-			h.sitemapBlogBucket(c, slug)
+		r.GET(blogBucketPath(blog.LangZH, slug), func(c *gin.Context) {
+			h.sitemapBlogBucket(c, blog.LangZH, slug)
+		})
+		r.GET(blogBucketPath(blog.LangEN, slug), func(c *gin.Context) {
+			h.sitemapBlogBucket(c, blog.LangEN, slug)
 		})
 	}
 }
@@ -79,10 +99,18 @@ var xmlEscaper = strings.NewReplacer(
 
 func xmlEscape(s string) string { return xmlEscaper.Replace(s) }
 
-func writeURL(b *strings.Builder, loc, lastmod, prio, freq string) {
+type altLink struct {
+	Hreflang string
+	Href     string
+}
+
+func writeURL(b *strings.Builder, loc, lastmod, prio, freq string, alts ...altLink) {
 	b.WriteString("  <url>\n    <loc>" + xmlEscape(loc) + "</loc>\n")
 	if lastmod != "" {
 		b.WriteString("    <lastmod>" + lastmod + "</lastmod>\n")
+	}
+	for _, a := range alts {
+		b.WriteString("    <xhtml:link rel=\"alternate\" hreflang=\"" + a.Hreflang + "\" href=\"" + xmlEscape(a.Href) + "\"/>\n")
 	}
 	if freq != "" {
 		b.WriteString("    <changefreq>" + freq + "</changefreq>\n")
@@ -98,20 +126,34 @@ func serveXML(c *gin.Context, body string) {
 	c.Data(http.StatusOK, "application/xml", []byte(body))
 }
 
+// openURLSet writes the declaration + <urlset> with the xhtml namespace needed
+// for hreflang annotations.
+func openURLSet(b *strings.Builder) {
+	b.WriteString(xmlDecl)
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ` + xhtmlNS + `>` + "\n")
+}
+
 // ── Root: sitemap index ──
 
 func (h *SEOHandler) sitemapIndex(c *gin.Context) {
 	base := h.cfg.PublicURL
-	contentDay := h.latestContentDay()
 
 	var b strings.Builder
 	b.WriteString(xmlDecl)
 	b.WriteString(`<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
 
-	writeSitemapRef(&b, base+sitemapPagesPath, contentDay)
-	writeSitemapRef(&b, base+sitemapBlueprintsPath, h.latestBlueprintDay())
-	for _, st := range h.bucketStats() {
-		writeSitemapRef(&b, base+sitemapBlogPrefix+st.Slug+sitemapBlogSuffix, st.LatestDay)
+	writeSitemapRef(&b, base+sitemapZHPath, h.latestContentDay(blog.LangZH))
+	for _, st := range h.bucketStats(blog.LangZH) {
+		writeSitemapRef(&b, base+blogBucketPath(blog.LangZH, st.Slug), st.LatestDay)
+	}
+	writeSitemapRef(&b, base+sitemapENPath, h.latestContentDay(blog.LangEN))
+	// English buckets appear only once they hold at least one post: an empty
+	// <urlset> is valid but shows up in Search Console as "0 discovered pages",
+	// which reads like a bug rather than "the translations are not written yet".
+	for _, st := range h.bucketStats(blog.LangEN) {
+		if st.Count > 0 {
+			writeSitemapRef(&b, base+blogBucketPath(blog.LangEN, st.Slug), st.LatestDay)
+		}
 	}
 
 	b.WriteString("</sitemapindex>\n")
@@ -128,45 +170,58 @@ func writeSitemapRef(b *strings.Builder, loc, lastmod string) {
 	b.WriteString("  </sitemap>\n")
 }
 
-// ── Child: static pages, category pages, tag pages, blog listing ──
+// ── Child: per-language site resources (pages + blueprint details) ──
 
-func (h *SEOHandler) sitemapPages(c *gin.Context) {
+func (h *SEOHandler) sitemapSite(c *gin.Context, lang string) {
 	base := h.cfg.PublicURL
-	contentDay := h.latestContentDay()
+	contentDay := h.latestContentDay(lang)
 
 	var b strings.Builder
-	b.WriteString(xmlDecl)
-	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	openURLSet(&b)
 
-	// Static pages. No lastmod: these are stable, and an invented lastmod is
-	// what makes Google start ignoring the field for the whole file.
-	writeURL(&b, base+"/", "", "1.0", "daily")
-	writeURL(&b, base+"/explore", contentDay, "0.9", "daily")
-	writeURL(&b, base+"/faq", "", "0.6", "weekly")
-	writeURL(&b, base+"/about", "", "0.6", "monthly")
-	writeURL(&b, base+"/privacy", "", "0.3", "yearly")
+	if lang == blog.LangZH {
+		// Static pages. No lastmod: these are stable, and an invented lastmod is
+		// what makes Google start ignoring the field for the whole file.
+		writeURL(&b, base+"/", "", "1.0", "daily")
+		writeURL(&b, base+"/explore", contentDay, "0.9", "daily")
+		writeURL(&b, base+"/faq", "", "0.6", "weekly")
+		writeURL(&b, base+"/about", "", "0.6", "monthly")
+		writeURL(&b, base+"/privacy", "", "0.3", "yearly")
 
-	// Category pages
-	for _, cat := range []string{"建筑", "车辆", "机甲", "奇幻", "科幻", "场景"} {
-		writeURL(&b, base+"/explore?category="+url.QueryEscape(cat), contentDay, "0.7", "weekly")
+		// Category pages
+		for _, cat := range []string{"建筑", "车辆", "机甲", "奇幻", "科幻", "场景"} {
+			writeURL(&b, base+"/explore?category="+url.QueryEscape(cat), contentDay, "0.7", "weekly")
+		}
+
+		// Tag pages
+		var tags []db.Tag
+		h.gdb.Order("name ASC").Find(&tags)
+		for _, t := range tags {
+			writeURL(&b, base+"/tags/"+url.PathEscape(t.Name), contentDay, "0.6", "weekly")
+		}
+
+		// Blueprint detail pages live in the Chinese hub: blueprints have no
+		// English tree, so they are not a per-language resource.
+		var bps []db.Blueprint
+		h.gdb.Where("is_published = ?", true).Order("updated_at DESC").Find(&bps)
+		for _, bp := range bps {
+			writeURL(&b, base+"/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.8", "weekly")
+		}
 	}
 
-	// Tag pages
-	var tags []db.Tag
-	h.gdb.Order("name ASC").Find(&tags)
-	for _, t := range tags {
-		writeURL(&b, base+"/tags/"+url.PathEscape(t.Name), contentDay, "0.6", "weekly")
-	}
-
-	// Blog listing + every pagination page. These are real crawl targets: each
-	// pagination page is self-canonical and links to the next one, so listing
-	// them here is what lets a crawler walk the whole archive.
-	writeURL(&b, base+"/blog", contentDay, "0.9", "daily")
+	// Blog listing + every pagination page of THIS language. These are real
+	// crawl targets: each pagination page is self-canonical and links to the
+	// next one, so listing them here is what lets a crawler walk the archive.
 	if h.blogStore != nil {
-		total := len(h.blogStore.All())
+		listPath := "/blog"
+		if lang == blog.LangEN {
+			listPath = "/en/blog"
+		}
+		writeURL(&b, base+listPath, contentDay, "0.9", "daily")
+		total := h.blogStore.CountByLang(lang)
 		if pages := blog.PageCount(total, blog.SSRPageSize); pages > 1 {
 			for p := 2; p <= pages; p++ {
-				writeURL(&b, base+"/blog?page="+strconv.Itoa(p), contentDay, "0.5", "weekly")
+				writeURL(&b, base+listPath+"?page="+strconv.Itoa(p), contentDay, "0.5", "weekly")
 			}
 		}
 	}
@@ -175,45 +230,59 @@ func (h *SEOHandler) sitemapPages(c *gin.Context) {
 	serveXML(c, b.String())
 }
 
-// ── Child: blueprint detail pages ──
+// ── Child: blog posts of one (language, bucket) ──
 
-func (h *SEOHandler) sitemapBlueprints(c *gin.Context) {
-	base := h.cfg.PublicURL
-
-	var bps []db.Blueprint
-	h.gdb.Where("is_published = ?", true).Order("updated_at DESC").Find(&bps)
-
-	var b strings.Builder
-	b.WriteString(xmlDecl)
-	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
-	for _, bp := range bps {
-		writeURL(&b, base+"/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.8", "weekly")
-	}
-	b.WriteString("</urlset>\n")
-	serveXML(c, b.String())
-}
-
-// ── Child: blog posts of one category bucket ──
-
-func (h *SEOHandler) sitemapBlogBucket(c *gin.Context, slug string) {
+func (h *SEOHandler) sitemapBlogBucket(c *gin.Context, lang, slug string) {
 	// Slug comes from the route table, so it is always a known bucket; the
 	// check is here to fail loudly if a route and the bucket table ever drift.
-	if blog.BucketLabel(slug) == "" {
+	if blog.BucketLabel(slug) == "" || (lang != blog.LangZH && lang != blog.LangEN) {
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	base := h.cfg.PublicURL
 	var b strings.Builder
-	b.WriteString(xmlDecl)
-	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	openURLSet(&b)
 	if h.blogStore != nil {
-		for _, post := range h.blogStore.PostsInBucket(slug) {
-			writeURL(&b, base+"/blog/"+post.Slug, post.Date.Format("2006-01-02"), "0.8", "weekly")
+		for _, post := range h.blogStore.PostsInBucketLang(lang, slug) {
+			writeURL(&b, base+blogDetailPath(lang, post.Slug), post.Date.Format("2006-01-02"), "0.8", "weekly",
+				h.postAlternates(lang, post.Slug)...)
 		}
 	}
 	b.WriteString("</urlset>\n")
 	serveXML(c, b.String())
+}
+
+// blogDetailPath mirrors the SSR layer's URL shape. It is duplicated here
+// deliberately: handler must not import ssr (ssr imports handler's siblings and
+// the dependency would be circular), and the test suite asserts both trees
+// produce the same URL for the same (lang, slug).
+func blogDetailPath(lang, slug string) string {
+	if lang == blog.LangEN {
+		return "/en/blog/" + slug
+	}
+	return "/blog/" + slug
+}
+
+// postAlternates returns the hreflang annotations for one article — and nothing
+// at all when only one language version exists. An hreflang pointing at a page
+// that serves the *other* language's text makes Google discard the annotation
+// for the whole cluster, so a missing translation must stay silent.
+func (h *SEOHandler) postAlternates(lang, slug string) []altLink {
+	if h.blogStore == nil {
+		return nil
+	}
+	hasZH := h.blogStore.HasLang(slug, blog.LangZH)
+	hasEN := h.blogStore.HasLang(slug, blog.LangEN)
+	if !hasZH || !hasEN {
+		return nil
+	}
+	base := h.cfg.PublicURL
+	return []altLink{
+		{"zh-CN", base + blogDetailPath(blog.LangZH, slug)},
+		{"en", base + blogDetailPath(blog.LangEN, slug)},
+		{"x-default", base + blogDetailPath(blog.LangEN, slug)},
+	}
 }
 
 // ── lastmod derivation ──
@@ -227,13 +296,16 @@ func (h *SEOHandler) latestBlueprintDay() string {
 	return bp.UpdatedAt.Format("2006-01-02")
 }
 
-// latestContentDay is the newest change across blueprints and blog posts — the
-// honest lastmod for listing pages (/explore, /blog, tag pages), which change
-// whenever any content changes.
-func (h *SEOHandler) latestContentDay() string {
-	day := h.latestBlueprintDay()
+// latestContentDay is the newest change across blueprints and the blog posts of
+// one language — the honest lastmod for listing pages (/explore, /blog,
+// /en/blog, tag pages), which change whenever any of their content changes.
+func (h *SEOHandler) latestContentDay(lang string) string {
+	day := ""
+	if lang == blog.LangZH {
+		day = h.latestBlueprintDay()
+	}
 	if h.blogStore != nil {
-		for _, p := range h.blogStore.All() {
+		for _, p := range h.blogStore.AllByLang(lang) {
 			if d := p.Date.Format("2006-01-02"); d > day {
 				day = d
 			}
@@ -242,9 +314,9 @@ func (h *SEOHandler) latestContentDay() string {
 	return day
 }
 
-// bucketStats returns per-bucket post counts/newest dates, or the table defaults
-// when no blog store is loaded.
-func (h *SEOHandler) bucketStats() []blog.BucketStat {
+// bucketStats returns per-bucket post counts/newest dates for one language, or
+// the table defaults when no blog store is loaded.
+func (h *SEOHandler) bucketStats(lang string) []blog.BucketStat {
 	if h.blogStore == nil {
 		stats := make([]blog.BucketStat, 0, len(blog.BucketSlugs()))
 		for _, slug := range blog.BucketSlugs() {
@@ -252,5 +324,5 @@ func (h *SEOHandler) bucketStats() []blog.BucketStat {
 		}
 		return stats
 	}
-	return h.blogStore.Stats()
+	return h.blogStore.StatsLang(lang)
 }
