@@ -44,6 +44,16 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	// address. The rest of the site stays Chinese-only and keeps its URLs.
 	r.GET("/en/blog", h.BlogListEN)
 	r.GET("/en/blog/:slug", h.BlogDetailEN)
+	// English site shell. /en/ is the English home; the rest mirror the Chinese
+	// static pages. Registered explicitly (both "/en" and "/en/") because gin's
+	// automatic trailing-slash redirect would otherwise send /en/ → /en and lose
+	// the canonical form we advertise in the sitemap.
+	r.GET("/en", h.HomeEN)
+	r.GET("/en/", h.HomeEN)
+	r.GET("/en/explore", h.ExploreEN)
+	r.GET("/en/about", h.AboutEN)
+	r.GET("/en/faq", h.FAQEN)
+	r.GET("/en/privacy", h.PrivacyEN)
 }
 
 func (h *Handler) Home(c *gin.Context) {
@@ -252,6 +262,15 @@ func truncate(s string, n int) string {
 }
 
 func faqData() []QA {
+	return faqDataFor("zh")
+}
+
+// faqDataFor returns the FAQ pairs for a language, falling back to Chinese for an
+// unknown language code so the page is never empty.
+func faqDataFor(lang string) []QA {
+	if lang == "en" {
+		return faqDataEN()
+	}
 	return []QA{
 		{"什么是 MOC？", "MOC（My Own Creation）是乐高玩家自己设计的原创作品，区别于官方套装。BrickPlan 是分享 MOC 图纸的社区。"},
 		{"如何上传我的作品？", "注册登录后，点击右上角「上传」按钮，填写标题、分类、难度、零件数等信息，并上传图片或 PDF 图纸。"},

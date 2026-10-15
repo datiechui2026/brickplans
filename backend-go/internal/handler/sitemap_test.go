@@ -843,14 +843,36 @@ func TestBlogPaginationChainIsWalkable(t *testing.T) {
 // TestEnglishTreeIsLinkedFromNav gives the /en/ tree an entry point from every
 // page — otherwise English articles are reachable only via the sitemap, i.e.
 // exactly the orphan problem being fixed here.
+//
+// The entry point is now the language switcher (a normal language picker), not
+// the old one-off "English Blog" link. Two cases are pinned because they are the
+// product rule: a page that HAS an English version links to it, and a page with
+// no English version falls back to the English blog list.
 func TestEnglishTreeIsLinkedFromNav(t *testing.T) {
 	r, _ := setupSitemapTest(t, 0, 0)
 	code, body := getHTML(t, r, "/")
 	if code != 200 {
 		t.Fatalf("/: %d", code)
 	}
+	if !strings.Contains(body, `class="lang-switch"`) {
+		t.Error("site nav has no language switcher")
+	}
+	if !strings.Contains(body, `href="/en/"`) || !strings.Contains(body, `hreflang="en"`) {
+		t.Error("language switcher on / does not offer the English home (/en/)")
+	}
+	// The current language must be marked, not offered as a link to itself.
+	if !strings.Contains(body, `class="lang-opt is-current"`) {
+		t.Error("current language is not highlighted in the switcher")
+	}
+
+	// No English counterpart exists for /upload → the switcher must land on the
+	// English blog list rather than a 404 or a Chinese page under /en/.
+	code, body = getHTML(t, r, "/upload")
+	if code != 200 {
+		t.Fatalf("/upload: %d", code)
+	}
 	if !strings.Contains(body, `href="/en/blog"`) {
-		t.Error("site nav does not link /en/blog")
+		t.Error("switcher on a page without an English version does not fall back to /en/blog")
 	}
 }
 
@@ -883,3 +905,52 @@ func TestArticleOgImageUsesBodyImage(t *testing.T) {
 		t.Error("post without images emitted an empty og:image")
 	}
 }
+// TestEnglishStaticPages checks the English shell: every /en/ page must answer
+// 200, declare <html lang="en">, carry an English <title>, and expose at least
+// one JSON-LD node whose inLanguage is "en" (an English page annotated zh-CN is
+// the exact defect that shipped once before on the blog HowTo block).
+func TestEnglishStaticPages(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	pages := map[string]string{
+		"/en/":        "BrickPlan — MOC Blueprints",
+		"/en/about":   "About BrickPlan",
+		"/en/faq":     "FAQ — BrickPlan",
+		"/en/privacy": "Privacy Policy — BrickPlan",
+		"/en/explore": "Explore MOC blueprints",
+	}
+	for path, wantTitle := range pages {
+		code, body := getHTML(t, r, path)
+		if code != 200 {
+			t.Errorf("%s: %d", path, code)
+			continue
+		}
+		if !strings.Contains(body, `<html lang="en">`) {
+			t.Errorf("%s: missing <html lang=\"en\">", path)
+		}
+		if !strings.Contains(body, "<title>"+wantTitle) {
+			t.Errorf("%s: title does not start with %q", path, wantTitle)
+		}
+		if !strings.Contains(body, `"inLanguage":"en"`) {
+			t.Errorf("%s: no JSON-LD node with inLanguage=en", path)
+		}
+		if !strings.Contains(body, `hreflang="zh-CN"`) || !strings.Contains(body, `hreflang="en"`) {
+			t.Errorf("%s: hreflang cluster is not bidirectional", path)
+		}
+	}
+}
+
+// TestEnglishHubSitemapListsStaticPages pins criterion "sitemap-en 包含英文静态页".
+func TestEnglishHubSitemapListsStaticPages(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	code, body := getHTML(t, r, "/sitemap-en.xml")
+	if code != 200 {
+		t.Fatalf("/sitemap-en.xml: %d", code)
+	}
+	for _, want := range []string{"/en/", "/en/explore", "/en/about", "/en/faq", "/en/privacy", "/en/blog"} {
+		if !strings.Contains(body, "<loc>https://brickplans.test"+want+"</loc>") {
+			t.Errorf("sitemap-en.xml is missing %s", want)
+		}
+	}
+}
+
+// TestArticleOgImageUsesBodyImage covers the illustration rollout: once a post

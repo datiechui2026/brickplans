@@ -212,6 +212,15 @@ func (h *SEOHandler) sitemapSite(c *gin.Context, lang string) {
 	// Blog listing + every pagination page of THIS language. These are real
 	// crawl targets: each pagination page is self-canonical and links to the
 	// next one, so listing them here is what lets a crawler walk the archive.
+	if lang == blog.LangEN {
+		// English static pages (the /en/ home and its mirrors). Without these the
+		// English tree would only advertise its blog, leaving the shell pages
+		// discoverable solely through the nav.
+		for _, sp := range staticLangPaths {
+			writeURL(&b, base+"/en"+sp.Path, contentDay, sp.Prio, sp.Freq, staticAlts(sp.Path, base)...)
+		}
+	}
+
 	if h.blogStore != nil {
 		listPath := "/blog"
 		if lang == blog.LangEN {
@@ -262,6 +271,34 @@ func blogDetailPath(lang, slug string) string {
 		return "/en/blog/" + slug
 	}
 	return "/blog/" + slug
+}
+
+// staticLangPaths are the language-neutral paths that exist in BOTH trees, and
+// the priority/changefreq each carries in a language hub sitemap.
+//
+// Duplicated from internal/ssr's lang table on purpose: handler must not import
+// ssr (circular — see blogDetailPath above). Keep the two lists in sync when a
+// language is added; sitemap_test asserts the English hub contains all of them.
+var staticLangPaths = []struct {
+	Path string
+	Prio string
+	Freq string
+}{
+	{"/", "1.0", "daily"},
+	{"/explore", "0.9", "daily"},
+	{"/about", "0.6", "monthly"},
+	{"/faq", "0.6", "weekly"},
+	{"/privacy", "0.3", "yearly"},
+}
+
+// staticAlts is the hreflang cluster for a language-neutral static path. The
+// x-default follows the blog tree's existing choice (English).
+func staticAlts(neutral, base string) []altLink {
+	return []altLink{
+		{"zh-CN", base + neutral},
+		{"en", base + "/en" + neutral},
+		{"x-default", base + "/en" + neutral},
+	}
 }
 
 // postAlternates returns the hreflang annotations for one article — and nothing

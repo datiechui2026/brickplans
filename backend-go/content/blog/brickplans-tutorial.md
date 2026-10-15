@@ -9,13 +9,17 @@ tags: [BrickPlan, 教程, 新手, 入门, 注册, 图纸]
 
 # BrickPlan 新手教程：注册、找图纸、下载、搭建全流程指南
 
-欢迎来到 BrickPlan——中文积木 MOC 图纸分享社区！
+![brickplan社区积木成品图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/brickplans-tutorial/brickplans-tutorial-1.jpg)
 
-无论你是刚接触积木的新手，还是经验丰富的 MOC 玩家，这篇教程都会带你快速上手 BrickPlan 的所有功能。
+第一次打开 BrickPlan 别急着乱点，从上到下走一遍，五分钟就熟了。
+
+新手照着做就行，老玩家可以直接跳到「寻找图纸」那一段。下面按注册、找图、下载、搭建、上传的顺序讲一遍。
 
 ---
 
 ## 一、什么是 BrickPlan？
+
+![brickplan社区搭建步骤图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/brickplans-tutorial/brickplans-tutorial-2.jpg)
 
 **BrickPlan**（积木图纸分享社区）是一个专注积木 MOC 图纸的中文平台。你可以在这里：
 
@@ -131,6 +135,8 @@ tags: [BrickPlan, 教程, 新手, 入门, 注册, 图纸]
 
 ## 六、开始搭建
 
+![积木颗粒细节图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/brickplans-tutorial/brickplans-tutorial-3.jpg)
+
 ### 准备工作
 
 1. **清点零件**：根据零件清单核对是否有缺少
@@ -218,4 +224,4 @@ A：在评论区留言告知作者，作者会尽快修正并重新上传。
 
 ---
 
-> 有疑问？在社区里问，积木玩家都很热心。祝你在 BrickPlan 玩得开心，搭出精彩！
+> 有疑问就在社区里问，积木玩家都挺热心。剩下的，动手搭一个自然就懂了。

@@ -133,6 +133,7 @@ func (h *Handler) blogList(c *gin.Context, lang string) {
 		Noscript:    h.blogListNoscript(lang, items, filterLabel, cat, tag, page, totalPages, total),
 	}
 	if !isZH {
+		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
 	}
 	// The two listings always exist, so they are always a valid hreflang pair.
@@ -357,6 +358,7 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		Alternates: h.blogDetailAlternates(pageLang, slug, canonical),
 	}
 	if pageLang == blog.LangEN {
+		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
 	}
 	if fallback {

@@ -10,8 +10,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"brickplans/internal/blog"
 )
 
 //go:embed template.html
@@ -35,6 +38,10 @@ type PageData struct {
 	JSFile        string
 	CSSFile       string
 	Favicon       template.HTML
+	// Lang is the page language code ("zh" | "en"). Empty means the default
+	// language (Chinese) — most pages are Chinese-only and stay that way.
+	// It drives <html lang>, the SSR nav labels and the language switcher.
+	Lang string
 	// HTMLLang sets <html lang>. Empty means zh-CN (every non-blog page).
 	HTMLLang string
 	// Alternates renders the hreflang link tags. Empty means "this page has no
@@ -50,22 +57,11 @@ type AltLink struct {
 }
 
 // siteNavHTML is the server-rendered site navigation emitted into #app ahead of
-// the page body. Without it, crawlers that do not execute JS see no navigation
-// links at all (the SPA builds the navbar client-side), so crawl paths to
-// /explore, /blog and /about would be missing from the raw HTML. The SPA
-// replaces #app on boot, so JS users never see this duplicated.
-var siteNavHTML = template.HTML(`<nav aria-label="站点导航"><ul>` +
-	`<li><a href="/">首页</a></li>` +
-	`<li><a href="/explore">发现图纸</a></li>` +
-	`<li><a href="/blog">博客</a></li>` +
-	`<li><a href="/about">关于我们</a></li>` +
-	`<li><a href="/faq">常见问题</a></li>` +
-	`<li><a href="/privacy">隐私策略</a></li>` +
-	// The English blog is a separate URL tree; without a link from the site nav
-	// every /en/blog/ page would be reachable only via the sitemap (exactly the
-	// orphan problem this task exists to fix).
-	`<li><a href="/en/blog" hreflang="en">English Blog</a></li>` +
-	`</ul></nav>`)
+// The SSR navigation is now built per request by navHTML() (see i18n.go): it is
+// language-aware (labels + hrefs follow the page language) and carries the
+// language switcher. It is emitted into #app ahead of the page body so crawlers
+// and users without JS see a complete menu; the SPA replaces #app on boot and
+// renders its own equivalent.
 
 // Renderer parses the template once and resolves vite's hashed asset filenames
 // from the build manifest (so SSR HTML references /assets/main-<hash>.js).
@@ -74,6 +70,7 @@ type Renderer struct {
 	jsFile    string
 	cssFile   string
 	publicURL string
+	store     *blog.Store
 }
 
 func NewRenderer(distDir, publicURL string) *Renderer {
@@ -87,6 +84,13 @@ func NewRenderer(distDir, publicURL string) *Renderer {
 	}
 	return &Renderer{tmpl: t, jsFile: js, cssFile: css, publicURL: publicURL}
 }
+
+// SetBlogStore wires the blog store in after construction (the router loads it,
+// the renderer is built earlier in cmd/server). It is only used to decide whether
+// a blog article has a counterpart in the other language when building the
+// language switcher's target — a nil store degrades to "switch to the blog list",
+// which is still a valid page in every language.
+func (r *Renderer) SetBlogStore(s *blog.Store) { r.store = s }
 
 type manifestEntry struct {
 	File string   `json:"file"`
@@ -117,7 +121,22 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 	data.JSFile = r.jsFile
 	data.CSSFile = r.cssFile
 	data.Favicon = favicon
-	data.SiteNav = siteNavHTML
+	lang := langFor(data.Lang)
+	data.Lang = lang.Code
+	if data.HTMLLang == "" {
+		data.HTMLLang = lang.HTMLLang
+	}
+	data.SiteNav = navHTML(lang, r.switchTargets(c, lang))
+	// Static pages (home, /explore, /blog, /about, /faq, /privacy) exist in every
+	// language, so they get the full hreflang cluster without every handler
+	// having to ask for it. Blog articles set Alternates themselves (and must not
+	// be overridden: an article only gets alternates when a real counterpart
+	// exists).
+	if data.Alternates == nil {
+		if neutral, ok := neutralStaticPath(c.Request.URL.Path); ok {
+			data.Alternates = staticAlternates(neutral, r.publicURL)
+		}
+	}
 	if data.OGImage == "" {
 		data.OGImage = r.publicURL + "/og-default.png"
 	}
@@ -135,4 +154,81 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 	if err := r.tmpl.Execute(c.Writer, data); err != nil {
 		log.Printf("[ssr] template execute: %v", err)
 	}
+}
+
+// neutralStaticPath maps a request path to its language-neutral form when — and
+// only when — that path is one of the static pages shared by all languages.
+// "/en/about" → ("/about", true); "/en/blog/some-post" → ("", false).
+func neutralStaticPath(p string) (string, bool) {
+	trimmed := strings.TrimSuffix(p, "/")
+	if trimmed == "" {
+		trimmed = "/"
+	}
+	for _, l := range siteLangs {
+		if l.Prefix == "" {
+			continue
+		}
+		if trimmed == l.Prefix {
+			trimmed = "/"
+			break
+		}
+		if strings.HasPrefix(trimmed, l.Prefix+"/") {
+			trimmed = strings.TrimPrefix(trimmed, l.Prefix)
+			break
+		}
+	}
+	for _, sp := range staticPaths {
+		if trimmed == sp {
+			return sp, true
+		}
+	}
+	return "", false
+}
+
+// switchTargets computes, for each other language, the URL the switcher should
+// link to from the CURRENT page. Rule (per the product spec):
+//   - the current page has a version in that language → link to it
+//   - it does not → link to that language's blog list, which always has content
+func (r *Renderer) switchTargets(c *gin.Context, current Lang) map[string]string {
+	raw := strings.TrimSuffix(c.Request.URL.Path, "/")
+	if raw == "" {
+		raw = "/"
+	}
+	// Strip the current language's prefix to get the neutral path.
+	neutral := raw
+	if current.Prefix != "" {
+		if raw == current.Prefix {
+			neutral = "/"
+		} else if strings.HasPrefix(raw, current.Prefix+"/") {
+			neutral = strings.TrimPrefix(raw, current.Prefix)
+		}
+	}
+
+	targets := make(map[string]string, len(siteLangs))
+	for _, l := range otherLangs(current.Code) {
+		switch {
+		case neutral == "/" || isStaticPath(neutral):
+			targets[l.Code] = l.URL(neutral)
+		case strings.HasPrefix(neutral, "/blog/"):
+			slug := strings.TrimPrefix(neutral, "/blog/")
+			if r.store != nil && r.store.HasLang(slug, l.Code) {
+				targets[l.Code] = l.URL("/blog/" + slug)
+			} else {
+				targets[l.Code] = l.URL("/blog")
+			}
+		default:
+			// /detail/<id>, /tags/…, /user/… — no counterpart tree exists.
+			targets[l.Code] = l.URL("/blog")
+		}
+	}
+	return targets
+}
+
+func isStaticPath(p string) bool {
+	for _, sp := range staticPaths {
+		if p == sp {
+			return true
+		}
+	}
+	return false
 }

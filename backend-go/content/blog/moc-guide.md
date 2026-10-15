@@ -9,9 +9,15 @@ tags: [MOC, 入门, 积木, 图纸, 教程]
 
 # 积木 MOC 图纸入门指南：从零开始打造你的第一个 MOC 作品
 
+![积木MOC图纸成品模型图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/moc-guide/moc-guide-1.jpg)
+
+
 ## 什么是 MOC？
 
-MOC 是 **My Own Creation** 的缩写，意为"我的原创作品"。简单来说，就是不按官方套装说明书，用自己的创意搭建积木作品。MOC 是积木玩家从"消费者"蜕变为"创作者"的标志性一步。
+![积木MOC图纸搭建步骤图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/moc-guide/moc-guide-2.jpg)
+
+
+MOC 就是 **My Own Creation**——不照官方说明书，自己搭自己的。从"买套装的人"变成"做作品的人"，这一步跨过去，积木才算真正玩开。
 
 在国内积木圈，MOC 作品通常搭配 **图纸**（Building Instructions）发布，其他玩家可以按照图纸复刻你的创作。这就是 BrickPlan 存在的意义——让每一份创意都有图纸可循。
 
@@ -69,6 +75,9 @@ MOC 是 **My Own Creation** 的缩写，意为"我的原创作品"。简单来�
 
 ## 第四步：修改已有图纸（进阶）
 
+![积木MOC图纸颗粒细节图](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/moc-guide/moc-guide-3.jpg)
+
+
 当你成功搭建了 3-5 个图纸后，可以尝试修改：
 
 1. **换颜色**：把图纸中的红色换成蓝色，看看效果如何
@@ -108,10 +117,10 @@ A：建议 300-800 零件。太少了没成就感，太多了容易半途而废�
 
 ---
 
-## 写在最后
+## 最后几句
 
 MOC 不是高不可攀的艺术，而是每个积木玩家都可以尝试的创作方式。**你不需要成为设计师才能做 MOC，你只需要成为玩家。**
 
 BrickPlan 上有从入门到专家级的各种图纸，也有友好的社区环境。从今天开始，下载一份新手图纸，迈出你的 MOC 第一步吧。
 
-> 记住：每一个 MOC 大神，都是从搭第一块砖开始的。
+> 所有 MOC 大神，都是从第一块砖开始搭的。

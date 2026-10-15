@@ -176,6 +176,98 @@ function buildPath(page, params = {}) {
   return '/' + page;
 }
 
+// ═══════════════════════════════════════════
+// i18n — 站点语言
+// ═══════════════════════════════════════════
+// 加一门语言 = 往 LANGS 加一项 + 补 NAV_LABELS 的标签。不要写成 if/else 两分支。
+// 服务端同构实现: backend-go/internal/ssr/i18n.go —— 两处必须一起改。
+const LANGS = [
+  { code: 'zh', label: '中文', prefix: '', hreflang: 'zh-CN' },
+  { code: 'en', label: 'English', prefix: '/en', hreflang: 'en' },
+];
+const DEFAULT_LANG = 'zh';
+const NAV_PATHS = ['/', '/explore', '/blog', '/about', '/faq', '/privacy'];
+const NAV_LABELS = {
+  zh: { '/': '首页', '/explore': '发现', '/blog': '博客', '/about': '关于' },
+  en: { '/': 'Home', '/explore': 'Explore', '/blog': 'Blog', '/about': 'About' },
+};
+
+function langByCode(code) {
+  return LANGS.find((l) => l.code === code) || LANGS.find((l) => l.code === DEFAULT_LANG);
+}
+
+// currentLang() reads the real path (not SPA state) — the SSR pass already
+// decided the language from the same path, so both stay in agreement.
+function currentLang() {
+  const p = location.pathname;
+  for (const l of LANGS) {
+    if (!l.prefix) continue;
+    if (p === l.prefix || p.startsWith(l.prefix + '/')) return l;
+  }
+  return langByCode(DEFAULT_LANG);
+}
+
+function langURL(lang, path) {
+  if (!lang.prefix) return path;
+  return path === '/' ? lang.prefix + '/' : lang.prefix + path;
+}
+
+function navLabel(lang, path) {
+  return (NAV_LABELS[lang.code] || {})[path] || path;
+}
+
+// SSR_ONLY_PATHS: the English shell and the English blog are fully rendered by
+// the server. The SPA must NOT hydrate them — its UI strings are Chinese, so
+// hydrating would overwrite an English page with a Chinese one. The Chinese
+// site (/, /about, …) is unaffected and keeps hydrating exactly as before.
+function isSsrOnlyPath(p) {
+  return p === '/en' || p.startsWith('/en/');
+}
+
+// The SSR nav already resolved the switcher target per language — including the
+// blog case, which needs the content store to know whether a translation exists.
+// Capture it before #app is replaced, and use it while we are still on the page
+// the server rendered.
+const SSR_LANG_TARGETS = (() => {
+  const out = {};
+  const sw = document.querySelector('.lang-switch');
+  if (sw) sw.querySelectorAll('a[hreflang]').forEach((a) => { out[a.getAttribute('hreflang')] = a.getAttribute('href'); });
+  return out;
+})();
+const SSR_PATH = location.pathname;
+
+// switchTarget mirrors the server rule: a counterpart exists → link to it;
+// otherwise fall back to that language's blog list (always non-empty).
+function switchTarget(lang) {
+  if (location.pathname === SSR_PATH && SSR_LANG_TARGETS[lang.hreflang]) {
+    return SSR_LANG_TARGETS[lang.hreflang];
+  }
+  const cur = currentLang();
+  let neutral = location.pathname;
+  if (cur.prefix && (neutral === cur.prefix || neutral.startsWith(cur.prefix + '/'))) {
+    neutral = neutral.slice(cur.prefix.length) || '/';
+  }
+  if (NAV_PATHS.includes(neutral)) return langURL(lang, neutral);
+  return langURL(lang, '/blog');
+}
+
+function renderLangSwitch() {
+  const cur = currentLang();
+  return h('span', { className: 'lang-switch', role: 'group', 'aria-label': '语言 / Language' },
+    ...LANGS.map((l) => (
+      l.code === cur.code
+        ? h('span', { className: 'lang-opt is-current', lang: l.hreflang, 'aria-current': 'true' }, l.label)
+        : h('a', {
+            className: 'lang-opt',
+            href: switchTarget(l),
+            hreflang: l.hreflang,
+            lang: l.hreflang,
+            rel: 'alternate',
+          }, l.label)
+    )),
+  );
+}
+
 function parsePath() {
   const path = location.pathname;
   const params = {};
@@ -406,8 +498,8 @@ async function refreshNotificationBadge() {
 function renderNavbar() {
   const brandEl = h('a', {
     className: 'nav-brand',
-    href: '/',
-    onclick: (e) => { e.preventDefault(); navigate('home'); },
+    href: langURL(currentLang(), '/'),
+    ...(currentLang().prefix ? {} : { onclick: (e) => { e.preventDefault(); navigate('home'); } }),
   }, '🧱 BrickPlan');
 
   const actions = [];
@@ -438,14 +530,24 @@ function renderNavbar() {
     actions.push(h('button', { className: 'btn btn-ghost btn-sm', onclick: () => showModal('register') }, '注册'));
   }
 
+  const lang = currentLang();
+  // Labels AND hrefs follow the language list, so adding a language needs no
+  // change here. On a prefixed language the link is a plain <a> (full page load)
+  // because the SPA only implements the default-language pages.
+  const navLink = (path, page) => h('a', {
+    href: langURL(lang, path),
+    ...(lang.prefix ? {} : { onclick: (e) => { e.preventDefault(); navigate(page); } }),
+    className: 'nav-link',
+  }, navLabel(lang, path));
+
   return h('nav', { className: 'navbar' },
     brandEl,
     h('div', { className: 'nav-links' },
-      h('a', { href: '/explore', onclick: (e) => { e.preventDefault(); navigate('explore'); }, className: 'nav-link' }, '发现'),
-      h('a', { href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); }, className: 'nav-link' }, '博客'),
-      h('a', { href: '/about', onclick: (e) => { e.preventDefault(); navigate('about'); }, className: 'nav-link' }, '关于'),
+      navLink('/explore', 'explore'),
+      navLink('/blog', 'blog'),
+      navLink('/about', 'about'),
     ),
-    h('div', { className: 'nav-actions' }, ...actions),
+    h('div', { className: 'nav-actions' }, ...actions, renderLangSwitch()),
   );
 }
 
@@ -4242,6 +4344,9 @@ async function renderAdminPage() {
   buildUI();
 }
 function renderNavbarIntoDOM() {
+  // English pages are SSR-only (see isSsrOnlyPath) — leave the server's navbar
+  // (and the rest of #app) alone so the English shell is never replaced.
+  if (isSsrOnlyPath(location.pathname)) return;
   const existing = document.querySelector('.navbar');
   if (existing) existing.replaceWith(renderNavbar());
   else document.getElementById('app').prepend(renderNavbar());
@@ -4906,6 +5011,9 @@ function renderAboutPage() {
 }
 
 function render() {
+  // The English shell and the English blog are rendered by the server in
+  // English; hydrating them here would swap in Chinese UI (see isSsrOnlyPath).
+  if (isSsrOnlyPath(location.pathname)) return;
   const app = document.getElementById('app');
 
   // Ensure page containers exist

@@ -43,6 +43,11 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 	if blogErr != nil {
 		fmt.Printf("[blog] warning: failed to load blog content from %s (+ %s): %v\n", cfg.BlogContentDir, cfg.BlogContentDirEN, blogErr)
 	}
+	// The renderer needs the store to resolve a blog article's counterpart when
+	// building the language switcher target (see ssr.Renderer.switchTargets).
+	if ssrRenderer != nil {
+		ssrRenderer.SetBlogStore(blogStore)
+	}
 
 	// Serve uploaded files when using local storage.
 	if cfg.StorageBackend != "tencent_cos" {

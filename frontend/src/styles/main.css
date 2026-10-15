@@ -1148,6 +1148,31 @@ tr:hover td { background: #fafafa; }
 .nav-link { padding: 6px 14px; font-size: 0.9rem; color: var(--text-sec); text-decoration: none; border-radius: 8px; transition: background .2s, color .2s; }
 .nav-link:hover { background: var(--bg-alt); color: var(--text); }
 
+/* ── 语言切换器 / 站内导航（SSR 与 SPA 共用同一套类名）───────────────────
+   样式按"常规语言切换器"（分段控件）做：当前语言高亮且不可点击，其他语言是链接。
+   .site-nav 的样式是 SSR 输出的兜底 —— SPA 启动前它就是用户看到的导航。 */
+.site-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 0 24px; height: 60px;
+}
+.site-nav .nav-links { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0; }
+.site-nav .nav-links a {
+  padding: 6px 14px; font-size: 0.9rem; color: var(--text-sec);
+  text-decoration: none; border-radius: 8px; transition: background .2s, color .2s;
+}
+.site-nav .nav-links a:hover { background: var(--bg-alt); color: var(--text); }
+
+.lang-switch {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid rgba(0, 0, 0, .08); border-radius: 999px; background: var(--card-bg);
+}
+.lang-switch .lang-opt {
+  padding: 4px 12px; font-size: 0.82rem; line-height: 1.2; border-radius: 999px;
+  text-decoration: none; color: var(--text-sec); white-space: nowrap;
+}
+.lang-switch a.lang-opt:hover { background: var(--bg-alt); color: var(--text); }
+.lang-switch .lang-opt.is-current { background: var(--accent); color: #fff; font-weight: 600; }
+
 /* ═══ Markdown rendering (blueprint descriptions + blog posts) ═══ */
 .markdown-body { font-size: 0.92rem; line-height: 1.7; color: var(--text); }
 .markdown-body h2 { font-size: 1.05rem; font-weight: 700; margin: 18px 0 8px; color: var(--text); }
