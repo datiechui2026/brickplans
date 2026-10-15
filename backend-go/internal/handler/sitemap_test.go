@@ -224,6 +224,18 @@ func TestBucketForMapsLegacyCategories(t *testing.T) {
 		"":               blog.OtherBucketSlug,
 		"没有这个分类":         blog.OtherBucketSlug,
 		" 品牌推荐":          blog.OtherBucketSlug, // whitespace is NOT trimmed: be explicit, not clever
+
+		// M2 reality check (2026-10-15): the English tree is authored per-article
+		// by an AI, and 2 of the first 6 posts carried variants the table did not
+		// list — they silently pooled into `other` (still in the sitemap, but in
+		// the wrong topic report). Casing drift is now normalized; the variants
+		// actually observed are pinned here so they cannot regress.
+		"Brand":               "brand",
+		"Brands":              "brand",
+		"Building Techniques": "building",
+		"brand guide":         "brand", // case-insensitive fallback
+		"MOC tutorial":        "moc-tutorial",
+		" Brand Guide":        blog.OtherBucketSlug, // still no whitespace trimming
 	}
 	for raw, want := range cases {
 		if got := blog.BucketFor(raw); got != want {

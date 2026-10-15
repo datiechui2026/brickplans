@@ -1,6 +1,9 @@
 package blog
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Category buckets
 //
@@ -33,7 +36,9 @@ var categoryBuckets = []CategoryBucket{
 	{
 		Slug:  "brand",
 		Label: "品牌推荐",
-		raws:  []string{"品牌推荐", "品牌评测", "品牌选购", "国产积木", "积木推荐", "选购指南", "Brand Guide", "Brand Review", "Buying Guide", "Brand Comparison"},
+		raws:  []string{"品牌推荐", "品牌评测", "品牌选购", "国产积木", "积木推荐", "选购指南", "Brand Guide", "Brand Review", "Buying Guide", "Brand Comparison",
+			// M2 英文作者实际会写出的简写/变体（实测已有 "Brand" 落到 other）
+			"Brand", "Brands", "Brand Ranking", "Brand Overview"},
 	},
 	{
 		Slug:  "beginner",
@@ -52,7 +57,9 @@ var categoryBuckets = []CategoryBucket{
 	{
 		Slug:  "building",
 		Label: "搭建技巧",
-		raws:  []string{"搭建技巧", "拼装技巧", "收纳技巧", "积木搭建", "MOC搭建", "场景MOC", "场景搭建", "Building Tips", "Techniques", "Storage Tips"},
+		raws:  []string{"搭建技巧", "拼装技巧", "收纳技巧", "积木搭建", "MOC搭建", "场景MOC", "场景搭建", "Building Tips", "Techniques", "Storage Tips",
+			// 实测 M2 英文稿写的是 "Building Techniques"（表里原来只有 "Techniques"/"Building Tips"）→ 落到 other
+			"Building Techniques", "Building Technique", "Building Skills"},
 	},
 	{
 		Slug:  "set-review",
@@ -91,6 +98,32 @@ var categoryBuckets = []CategoryBucket{
 // registration panics on a duplicate instead of shipping a wrong sitemap.
 var rawToBucket = buildRawToBucket()
 
+// normToBucket is rawToBucket keyed by lowercased category, so author-side
+// casing drift ("brand guide", "SET REVIEW") does not silently fall through to
+// `other`. The M2 English batch is authored per-article by an AI, so
+// exact-string matching is not a safe assumption: of 6 hand-checked sample
+// posts, 2 carried variants the table did not list and landed in `other`.
+//
+// Deliberately NO whitespace trimming: `" 品牌推荐"` staying unmapped is an
+// existing, tested decision (see TestBucketForMapsLegacyCategories) — a stray
+// space is a content bug to fix at the source, not to paper over here.
+//
+// Same invariant as rawToBucket: a normalized key that maps to two different
+// buckets panics at startup rather than shipping an ambiguous sitemap.
+var normToBucket = buildNormToBucket()
+
+func buildNormToBucket() map[string]string {
+	m := make(map[string]string, 64)
+	for raw, slug := range rawToBucket {
+		k := strings.ToLower(raw)
+		if prev, dup := m[k]; dup && prev != slug {
+			panic("blog: normalized category " + k + " mapped to both " + prev + " and " + slug)
+		}
+		m[k] = slug
+	}
+	return m
+}
+
 func buildRawToBucket() map[string]string {
 	m := make(map[string]string, 64)
 	for _, b := range categoryBuckets {
@@ -127,8 +160,16 @@ func BucketLabel(slug string) string {
 
 // BucketFor maps a raw frontmatter category to its bucket slug. Total: an empty
 // or unknown category returns OtherBucketSlug, never "".
+//
+// Exact match first, then a lowercased match — the English tree is authored
+// per-article by an AI, so "Brand Guide" vs "brand guide" must not decide
+// whether a post is discoverable in its topic sitemap. Whitespace is not
+// normalized (see normToBucket).
 func BucketFor(raw string) string {
 	if slug, ok := rawToBucket[raw]; ok {
+		return slug
+	}
+	if slug, ok := normToBucket[strings.ToLower(raw)]; ok {
 		return slug
 	}
 	return OtherBucketSlug
