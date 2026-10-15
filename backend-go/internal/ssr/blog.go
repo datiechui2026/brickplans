@@ -135,6 +135,9 @@ func (h *Handler) blogList(c *gin.Context, lang string) {
 	if !isZH {
 		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
+		// The SPA does not hydrate /en/* (frontend isSsrOnlyPath), so this SSR
+		// body is the final page and must carry the container skeleton itself.
+		pd.BodyClass = "blog-list"
 	}
 	// The two listings always exist, so they are always a valid hreflang pair.
 	enURL := h.cfg.PublicURL + blogListPathLang(blog.LangEN, cat, tag, page)
@@ -184,42 +187,72 @@ func (h *Handler) blogListNoscript(lang string, items []blog.Post, filterLabel, 
 	isZH := lang == blog.LangZH
 	var b strings.Builder
 	if isZH {
-		b.WriteString("<h1>BrickPlan 博客</h1>")
-		b.WriteString("<p>积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容。</p>")
+		b.WriteString("<h1>📖 BrickPlan 博客</h1>")
+		b.WriteString(`<p class="blog-subtitle">积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容。</p>`)
 	} else {
-		b.WriteString("<h1>BrickPlan Blog</h1>")
-		b.WriteString("<p>Building guides, brick part knowledge, brand comparisons and MOC blueprint reviews.</p>")
+		b.WriteString("<h1>📖 BrickPlan Blog</h1>")
+		b.WriteString(`<p class="blog-subtitle">Building guides, brick part knowledge, brand comparisons and MOC blueprint reviews.</p>`)
 	}
 	if filterLabel != "" {
 		if isZH {
-			b.WriteString(fmt.Sprintf("<p>筛选：%s（共 %d 篇）</p>", esc(filterLabel), total))
+			b.WriteString(fmt.Sprintf(`<p class="blog-subtitle">筛选：%s（共 %d 篇）</p>`, esc(filterLabel), total))
 		} else {
-			b.WriteString(fmt.Sprintf("<p>Filter: %s (%d articles)</p>", esc(filterLabel), total))
+			b.WriteString(fmt.Sprintf(`<p class="blog-subtitle">Filter: %s (%d articles)</p>`, esc(filterLabel), total))
 		}
 	}
 	if totalPages > 1 {
 		if isZH {
-			b.WriteString(fmt.Sprintf("<p>第 %d / %d 页</p>", page, totalPages))
+			b.WriteString(fmt.Sprintf(`<p class="blog-subtitle">第 %d / %d 页</p>`, page, totalPages))
 		} else {
-			b.WriteString(fmt.Sprintf("<p>Page %d of %d</p>", page, totalPages))
+			b.WriteString(fmt.Sprintf(`<p class="blog-subtitle">Page %d of %d</p>`, page, totalPages))
 		}
 	}
 	if len(items) == 0 {
 		if isZH {
 			b.WriteString("<p>暂无文章。</p>")
 		} else {
-			b.WriteString("<p>No articles yet. <a href=\"/blog\">Read the Chinese blog</a>.</p>")
+			b.WriteString(`<p>No articles yet. <a href="/blog">Read the Chinese blog</a>.</p>`)
 		}
 		return template.HTML(b.String())
 	}
-	b.WriteString("<ul>")
-	for _, p := range items {
-		dateStr := p.Date.Format("2006-01-02")
-		b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a> (%s) <span>%s</span></li>`,
-			esc(h.cfg.PublicURL+blogDetailPath(lang, p.Slug)), esc(p.Title), dateStr, esc(p.Category)))
-	}
-	b.WriteString("</ul>")
+	b.WriteString(string(blogCardsHTML(items, lang, h.cfg.PublicURL)))
 	b.WriteString(h.blogPager(lang, cat, tag, page, totalPages))
+	return template.HTML(b.String())
+}
+
+// blogCardsHTML renders posts as the same .blog-card anchors the SPA builds
+// (frontend buildBlogCard), so the SSR blog index and the English home page
+// inherit the card styling from main.css with no JavaScript at all.
+//
+// It replaces the previous bare <ul><li> list: that markup carried no class the
+// stylesheet knew, which is why the English pages looked like unstyled text.
+func blogCardsHTML(items []blog.Post, lang, public string) template.HTML {
+	var b strings.Builder
+	for _, p := range items {
+		b.WriteString(fmt.Sprintf(`<a class="blog-card" href="%s">`,
+			esc(public+blogDetailPath(lang, p.Slug))))
+		b.WriteString(fmt.Sprintf("<h2>%s</h2>", esc(p.Title)))
+		b.WriteString(`<div class="blog-meta">`)
+		b.WriteString(fmt.Sprintf("<span>%s</span>", p.Date.Format("2006-01-02")))
+		if p.Category != "" {
+			b.WriteString(fmt.Sprintf(`<span class="blog-category">%s</span>`, esc(p.Category)))
+		}
+		if p.Author != "" {
+			b.WriteString(fmt.Sprintf("<span>%s</span>", esc(p.Author)))
+		}
+		b.WriteString(`</div>`)
+		if p.Description != "" {
+			b.WriteString(fmt.Sprintf(`<div class="blog-desc">%s</div>`, esc(p.Description)))
+		}
+		if len(p.Tags) > 0 {
+			b.WriteString(`<div class="blog-tags">`)
+			for _, t := range p.Tags {
+				b.WriteString(fmt.Sprintf(`<span class="blog-tag">%s</span>`, esc(t)))
+			}
+			b.WriteString(`</div>`)
+		}
+		b.WriteString(`</a>`)
+	}
 	return template.HTML(b.String())
 }
 
@@ -361,6 +394,13 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
 	}
+	// Keyed on the REQUESTED language, not pageLang: what decides whether the SPA
+	// hydrates is the URL (/en/* never does), not the text language. A Chinese
+	// post served at an /en/ URL as a fallback therefore needs the skeleton too,
+	// otherwise that page renders unstyled while its neighbour does not.
+	if lang == blog.LangEN {
+		pd.BodyClass = "blog-detail"
+	}
 	if fallback {
 		// Debug aid for the M2 content rollout: this page is a Chinese fallback,
 		// not a translation. Search Console will attribute it to the zh canonical.
@@ -396,40 +436,49 @@ func (h *Handler) blogDetailAlternates(lang, slug, canonical string) []AltLink {
 
 func (h *Handler) blogDetailNoscript(lang string, post *blog.Post, prev, next *blog.Post, related []blog.Post) template.HTML {
 	isZH := lang == blog.LangZH
+	backLabel, relatedHeading := "← 返回博客", "你可能还喜欢"
+	prevLabel, nextLabel := "上一篇", "下一篇"
+	if !isZH {
+		backLabel, relatedHeading = "← Back to the blog", "You may also like"
+		prevLabel, nextLabel = "Previous article", "Next article"
+	}
 	var b strings.Builder
-	b.WriteString(`<article>`)
-	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(post.Title)))
-	b.WriteString(fmt.Sprintf(`<p><span>%s</span> · <span>%s</span> · <span>%s</span></p>`,
-		post.Date.Format("2006-01-02"), esc(post.Author), esc(post.Category)))
+	// Same class vocabulary the SPA builds (main.js renderBlogDetail): the SSR
+	// body of an English article IS the page, so .blog-detail/.blog-header/
+	// .blog-content/.blog-nav are what give it its layout and typography.
+	b.WriteString(fmt.Sprintf(`<a class="back-link" href="%s">%s</a>`,
+		esc(h.cfg.PublicURL+blogListPathLang(lang, "", "", 1)), esc(backLabel)))
+	b.WriteString(fmt.Sprintf(`<header class="blog-header"><h1>%s</h1><div class="blog-meta"><span>%s</span>`,
+		esc(post.Title), post.Date.Format("2006-01-02")))
+	if post.Author != "" {
+		b.WriteString(fmt.Sprintf("<span>%s</span>", esc(post.Author)))
+	}
+	if post.Category != "" {
+		b.WriteString(fmt.Sprintf(`<span class="blog-category">%s</span>`, esc(post.Category)))
+	}
+	b.WriteString(`</div></header>`)
+
+	// .blog-content is what constrains article images (max-width:100%,
+	// border-radius) — the reviewer-visible "配图" fell out of this class.
+	b.WriteString(`<div class="blog-content">`)
 	// Render markdown body to HTML. On an English page every internal link is
 	// rewritten to the /en/ tree so crawlers stay inside the English cluster
 	// instead of being pushed back into the Chinese one.
 	b.WriteString(localizeBodyLinks(string(mdToHTML(post.Body)), lang, h.cfg.PublicURL))
+	b.WriteString(`</div>`)
+
 	if len(post.Tags) > 0 {
-		sep := "、"
-		label := "标签："
-		if !isZH {
-			sep, label = ", ", "Tags: "
-		}
-		b.WriteString("<p>" + label)
-		for i, t := range post.Tags {
-			if i > 0 {
-				b.WriteString(sep)
-			}
-			b.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`,
+		b.WriteString(`<div class="blog-tags">`)
+		for _, t := range post.Tags {
+			b.WriteString(fmt.Sprintf(`<a class="blog-tag" href="%s">%s</a>`,
 				esc(h.cfg.PublicURL+blogListPathLang(lang, "", t, 1)), esc(t)))
 		}
-		b.WriteString("</p>")
+		b.WriteString(`</div>`)
 	}
-	b.WriteString("</article>")
 
 	// Related posts section (SEO internal links)
 	if len(related) > 0 {
-		heading := "你可能还喜欢"
-		if !isZH {
-			heading = "You may also like"
-		}
-		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>` + heading + `</h2><ul>`)
+		b.WriteString(`<section class="related-posts"><h2>` + esc(relatedHeading) + `</h2><ul>`)
 		for _, r := range related {
 			b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
 				esc(h.cfg.PublicURL+blogDetailPath(lang, r.Slug)), esc(r.Title)))
@@ -443,22 +492,18 @@ func (h *Handler) blogDetailNoscript(lang string, post *blog.Post, prev, next *b
 
 	// Prev/Next navigation
 	if prev != nil || next != nil {
-		prevLabel, nextLabel := "上一篇", "下一篇"
-		if !isZH {
-			prevLabel, nextLabel = "Previous article", "Next article"
-		}
-		b.WriteString(`<div style="display:flex;justify-content:space-between;margin-top:40px;padding-top:20px;border-top:1px solid #ddd">`)
+		b.WriteString(`<nav class="blog-nav">`)
 		if prev != nil {
-			b.WriteString(fmt.Sprintf(`<div><small>%s</small><br><a href="%s">%s</a></div>`,
+			b.WriteString(fmt.Sprintf(`<div class="nav-prev"><div class="nav-label">%s</div><a href="%s">%s</a></div>`,
 				prevLabel, esc(h.cfg.PublicURL+blogDetailPath(lang, prev.Slug)), esc(prev.Title)))
 		} else {
 			b.WriteString("<div></div>")
 		}
 		if next != nil {
-			b.WriteString(fmt.Sprintf(`<div style="text-align:right"><small>%s</small><br><a href="%s">%s</a></div>`,
+			b.WriteString(fmt.Sprintf(`<div class="nav-next" style="text-align:right"><div class="nav-label">%s</div><a href="%s">%s</a></div>`,
 				nextLabel, esc(h.cfg.PublicURL+blogDetailPath(lang, next.Slug)), esc(next.Title)))
 		}
-		b.WriteString("</div>")
+		b.WriteString(`</nav>`)
 	}
 
 	return template.HTML(b.String())

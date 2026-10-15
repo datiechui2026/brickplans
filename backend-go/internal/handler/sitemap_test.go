@@ -653,7 +653,12 @@ func TestEnglishBlogListIsCrawlable(t *testing.T) {
 		t.Fatalf("/en/blog: %d", code)
 	}
 	for _, want := range []string{
-		"<h1>BrickPlan Blog</h1>",
+		"<h1>📖 BrickPlan Blog</h1>",
+		// P0 2026-10-15: the SPA never hydrates /en/* (frontend isSsrOnlyPath),
+		// so the SSR body IS the page and must carry the SPA's container
+		// classes itself.
+		`<div class="page active"><div class="main"><div class="blog-list">`,
+		`<a class="blog-card" href="https://brickplans.test/en/blog/`,
 		`href="https://brickplans.test/en/blog/sm-bulk-en-000"`,
 		`<link rel="canonical" href="https://brickplans.test/en/blog" />`,
 		`hreflang="zh-CN" href="https://brickplans.test/blog"`,
@@ -797,7 +802,7 @@ func TestArticlePageLinksRelatedArticles(t *testing.T) {
 	// Count links in the related section only.
 	idx := strings.Index(body, "你可能还喜欢")
 	tail := body[idx:]
-	if end := strings.Index(tail, "<div style=\"display:flex"); end > 0 {
+	if end := strings.Index(tail, "<nav class=\"blog-nav\">"); end > 0 {
 		tail = tail[:end]
 	}
 	related := articleLinkRE.FindAllString(tail, -1)
@@ -905,6 +910,7 @@ func TestArticleOgImageUsesBodyImage(t *testing.T) {
 		t.Error("post without images emitted an empty og:image")
 	}
 }
+
 // TestEnglishStaticPages checks the English shell: every /en/ page must answer
 // 200, declare <html lang="en">, carry an English <title>, and expose at least
 // one JSON-LD node whose inLanguage is "en" (an English page annotated zh-CN is
@@ -954,3 +960,44 @@ func TestEnglishHubSitemapListsStaticPages(t *testing.T) {
 }
 
 // TestArticleOgImageUsesBodyImage covers the illustration rollout: once a post
+
+// TestEnglishPagesCarrySsrShell is the regression test for the 2026-10-15 P0:
+// the SPA skips hydration for every /en/* path (frontend isSsrOnlyPath), so
+// those SSR bodies are the final rendered pages. Before the fix they carried no
+// class main.css could match (no .page/.main/.blog-list), so the English pages
+// rendered as unstyled text pinned to the top-left corner of the viewport.
+func TestEnglishPagesCarrySsrShell(t *testing.T) {
+	r, _ := setupSitemapTest(t, 20, 5)
+	shell := map[string]string{
+		"/en/":              `<div class="page active"><div class="main"><div class="blog-list">`,
+		"/en/blog":          `<div class="page active"><div class="main"><div class="blog-list">`,
+		"/en/blog/sm-parts": `<div class="page active"><div class="main"><div class="blog-detail">`,
+		"/en/about":         `<div class="page active"><div class="main"><div class="blog-detail">`,
+		"/en/faq":           `<div class="page active"><div class="main"><div class="blog-detail">`,
+		"/en/privacy":       `<div class="page active"><div class="main"><div class="blog-detail">`,
+		"/en/explore":       `<div class="page active"><div class="main"><div class="blog-detail">`,
+	}
+	for path, want := range shell {
+		code, body := getHTML(t, r, path)
+		if code != 200 {
+			t.Errorf("%s: %d", path, code)
+			continue
+		}
+		if !strings.Contains(body, want) {
+			t.Errorf("%s missing SSR layout shell %s", path, want)
+		}
+	}
+
+	// An English article must also style its prose and its images: .blog-content
+	// is what gives <img> max-width and the rounded corners.
+	_, art := getHTML(t, r, "/en/blog/sm-parts")
+	if !strings.Contains(art, `<div class="blog-content">`) || !strings.Contains(art, "<img ") {
+		t.Error("English article must render <img> inside .blog-content")
+	}
+
+	// Chinese pages must NOT get the shell: the SPA hydrates them, and their
+	// markup is already indexed — changing it buys nothing and risks the zh site.
+	if _, zh := getHTML(t, r, "/blog"); strings.Contains(zh, `class="page active"`) {
+		t.Error("/blog must not carry the SSR shell (the SPA hydrates it)")
+	}
+}

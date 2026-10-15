@@ -1,7 +1,6 @@
 package ssr
 
 import (
-	"fmt"
 	"html/template"
 	"strings"
 
@@ -83,6 +82,7 @@ func (h *Handler) HomeEN(c *gin.Context) {
 		Canonical:   h.cfg.PublicURL + "/en/",
 		OGType:      "website",
 		JSONLD:      jsonld,
+		BodyClass:   "blog-list",
 		Noscript:    enHomeNoscript(posts, h.cfg.PublicURL),
 	})
 }
@@ -91,19 +91,15 @@ func (h *Handler) HomeEN(c *gin.Context) {
 // English articles, so /en/ is not an orphan hub.
 func enHomeNoscript(posts []blog.Post, public string) template.HTML {
 	var b strings.Builder
-	b.WriteString("<article>")
 	b.WriteString("<h1>BrickPlan — MOC Blueprints, Building Guides and Brick Reviews</h1>")
-	b.WriteString("<p>BrickPlan is a blueprint-sharing community for brick and MOC builders. The English section covers buying guides, part knowledge, brand comparisons, building techniques and set reviews.</p>")
+	b.WriteString(`<p class="blog-subtitle">BrickPlan is a blueprint-sharing community for brick and MOC builders. The English section covers buying guides, part knowledge, brand comparisons, building techniques and set reviews.</p>`)
 	if len(posts) > 0 {
-		b.WriteString("<h2>Latest English articles</h2><ul>")
-		for _, p := range posts {
-			b.WriteString(fmt.Sprintf(`<li><a href="%s/en/blog/%s">%s</a> <span>(%s)</span></li>`,
-				public, esc(p.Slug), esc(p.Title), esc(p.Date.Format("2006-01-02"))))
-		}
-		b.WriteString("</ul>")
+		b.WriteString("<h2>Latest English articles</h2>")
+		// Same .blog-card markup as the English blog index (blogCardsHTML), so the
+		// home page inherits the card styling without any JavaScript.
+		b.WriteString(string(blogCardsHTML(posts, blog.LangEN, public)))
 	}
 	b.WriteString(`<p><a href="/en/blog">All English articles</a> · <a href="/en/about">About</a> · <a href="/en/faq">FAQ</a> · <a href="/explore">Browse blueprints</a></p>`)
-	b.WriteString("</article>")
 	b.WriteString(string(homeFooterEN(public)))
 	return template.HTML(b.String())
 }
@@ -120,7 +116,8 @@ func (h *Handler) AboutEN(c *gin.Context) {
 		Canonical:   public + "/en/about",
 		OGType:      "website",
 		JSONLD:      jsonld,
-		Noscript:    aboutNoscriptFor("en"),
+		BodyClass:   "blog-detail",
+		Noscript:    markdownBody(aboutNoscriptFor("en")),
 	})
 }
 
@@ -138,7 +135,8 @@ func (h *Handler) FAQEN(c *gin.Context) {
 		Canonical:   h.cfg.PublicURL + "/en/faq",
 		OGType:      "website",
 		JSONLD:      jsonld,
-		Noscript:    faqNoscript(qa),
+		BodyClass:   "blog-detail",
+		Noscript:    markdownBody(faqNoscript(qa)),
 	})
 }
 
@@ -154,7 +152,8 @@ func (h *Handler) PrivacyEN(c *gin.Context) {
 		Canonical:   h.cfg.PublicURL + "/en/privacy",
 		OGType:      "website",
 		JSONLD:      jsonld,
-		Noscript:    privacyBodyEN(),
+		BodyClass:   "blog-detail",
+		Noscript:    markdownBody(privacyBodyEN()),
 	})
 }
 
@@ -170,6 +169,7 @@ func (h *Handler) ExploreEN(c *gin.Context) {
 		Canonical:   h.cfg.PublicURL + "/en/explore",
 		OGType:      "website",
 		JSONLD:      jsonld,
-		Noscript:    exploreBodyEN(),
+		BodyClass:   "blog-detail",
+		Noscript:    markdownBody(exploreBodyEN()),
 	})
 }

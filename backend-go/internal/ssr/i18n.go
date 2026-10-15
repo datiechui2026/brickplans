@@ -107,7 +107,12 @@ func navLabel(lang, path string) string {
 // only subtree guaranteed to have content in every language today.
 func navHTML(lang Lang, targets map[string]string) template.HTML {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`<nav class="site-nav" aria-label="%s"><ul class="nav-links">`, esc(navAriaLabel(lang.Code))))
+	// "navbar" is added on top of "site-nav" so the server-rendered bar gets the
+	// same sticky glass treatment as the SPA's navbar (.navbar in main.css).
+	// It matters on pages the SPA never hydrates: there the SSR nav is final.
+	b.WriteString(fmt.Sprintf(`<nav class="site-nav navbar" aria-label="%s">`, esc(navAriaLabel(lang.Code))))
+	b.WriteString(fmt.Sprintf(`<a class="nav-brand" href="%s"><span class="logo">🧱</span> BrickPlan</a>`, esc(lang.URL("/"))))
+	b.WriteString(`<ul class="nav-links">`)
 	for _, p := range navPaths {
 		b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a></li>`, esc(lang.URL(p)), esc(navLabel(lang.Code, p))))
 	}
@@ -323,7 +328,7 @@ func exploreBodyEN() template.HTML {
 // internal links.
 func homeFooterEN(public string) template.HTML {
 	var b strings.Builder
-	b.WriteString(`<footer>`)
+	b.WriteString(`<footer class="footer">`)
 	b.WriteString(`<p>BrickPlan — MOC blueprints, building guides and brick reviews.</p>`)
 	b.WriteString(`<p>`)
 	for i, p := range navPaths {

@@ -35,9 +35,19 @@ type PageData struct {
 	JSONLD        []template.JS
 	SiteNav       template.HTML
 	Noscript      template.HTML
-	JSFile        string
-	CSSFile       string
-	Favicon       template.HTML
+	// BodyClass, when non-empty, wraps Noscript in the same container skeleton
+	// the SPA builds for the equivalent page:
+	//   <div class="page active"><div class="main"><div class="BodyClass">…</div></div></div>
+	// Only pages the SPA will NOT hydrate need it (today: every /en/* page — see
+	// frontend isSsrOnlyPath). For those pages the SSR body IS the visible page,
+	// and without these classes main.css has nothing to attach .main/.blog-list/
+	// .blog-detail to, so the content renders as unstyled text at the top-left of
+	// the viewport (P0, 2026-10-15). Chinese pages leave it empty: their markup
+	// stays byte-identical because the SPA replaces #app on boot anyway.
+	BodyClass string
+	JSFile    string
+	CSSFile   string
+	Favicon   template.HTML
 	// Lang is the page language code ("zh" | "en"). Empty means the default
 	// language (Chinese) — most pages are Chinese-only and stay that way.
 	// It drives <html lang>, the SSR nav labels and the language switcher.
@@ -127,6 +137,10 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 		data.HTMLLang = lang.HTMLLang
 	}
 	data.SiteNav = navHTML(lang, r.switchTargets(c, lang))
+	// Opt-in container skeleton for pages the SPA never hydrates (see BodyClass).
+	if data.BodyClass != "" {
+		data.Noscript = wrapBody(data.BodyClass, data.Noscript)
+	}
 	// Static pages (home, /explore, /blog, /about, /faq, /privacy) exist in every
 	// language, so they get the full hreflang cluster without every handler
 	// having to ask for it. Blog articles set Alternates themselves (and must not

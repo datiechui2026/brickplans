@@ -12,6 +12,38 @@ import (
 
 func esc(s string) string { return html.EscapeString(s) }
 
+// wrapBody gives an SSR body the same container skeleton the SPA builds for the
+// equivalent page — <div class="page active"><div class="main"><div class="class">…
+//
+// Why it exists: template.html drops the SSR body straight into <div id="app">,
+// so for any page the SPA does NOT hydrate that body IS the visible page (today
+// every /en/* page, see frontend/main.js isSsrOnlyPath). The class names are the
+// only contract the stylesheet has — without .page/.main/.blog-list the rules in
+// main.css/styles/main.css never match and the content renders unstyled and
+// un-centred at the top-left of the viewport (P0, 2026-10-15).
+//
+// class is always one of our own literals ("blog-list", "blog-detail"), never
+// request data.
+func wrapBody(class string, inner template.HTML) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<div class="page active"><div class="main">`)
+	if class != "" {
+		b.WriteString(`<div class="` + class + `">`)
+	}
+	b.WriteString(string(inner))
+	if class != "" {
+		b.WriteString(`</div>`)
+	}
+	b.WriteString(`</div></div>`)
+	return template.HTML(b.String())
+}
+
+// markdownBody wraps prose in .markdown-body so headings, lists and links pick
+// up the typography rules instead of browser defaults.
+func markdownBody(inner template.HTML) template.HTML {
+	return template.HTML(`<div class="markdown-body">` + string(inner) + `</div>`)
+}
+
 func absURL(u, public string) string {
 	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
 		return u
