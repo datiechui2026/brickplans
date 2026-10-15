@@ -80,7 +80,13 @@ def collect_urls(sitemap: str = SITEMAP, lang: str = "", depth: int = 0) -> list
         return [u for u in urls if "/en/blog" in u]
     if lang == "zh":
         return [u for u in urls if "/en/blog" not in u]
-    return urls
+    # lang == "": 英文优先。
+    # Indexing API 每日配额（默认 200 条）是按本列表顺序消耗的，而 sitemap index
+    # 的子图顺序把英文放在最末（实测 /en/blog 类 URL 位于 3710/3711）。原顺序下
+    # 英文 URL 要等中文 3700 余条排完（≈19 天）才轮得到 —— 对「英文收录是 KPI」
+    # 而言等于永不提交。置顶后每日配额先喂英文树，中文树顺延（幂等，不会漏）。
+    return ([u for u in urls if "/en/blog" in u]
+            + [u for u in urls if "/en/blog" not in u])
 
 
 def dedupe(urls: list) -> list:

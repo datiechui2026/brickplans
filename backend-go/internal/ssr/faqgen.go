@@ -253,8 +253,13 @@ func howToJSONLD(post *blog.Post, public string) (js string, ok bool) {
 		"name":          post.Title,
 		"description":   post.Description,
 		"datePublished": post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		"inLanguage":    "zh-CN",
 		"step":          steps,
 	}
+	// NOTE: no "inLanguage" here on purpose. The caller wraps this with
+	// withInLanguage(pageLang) (see blog.go), but that helper is a no-op when
+	// the JSON already contains the key — a hardcoded "zh-CN" here therefore
+	// leaked onto /en/blog pages (HowTo declaring zh-CN inside an English
+	// article, which makes Google drop the rich result). Letting the helper
+	// inject it keeps the field tied to the page language.
 	return string(mustJSON(m)), true
 }
