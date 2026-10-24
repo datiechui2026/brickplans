@@ -77,11 +77,17 @@ func (h *Handler) blogList(c *gin.Context, lang string) {
 	// instead of an empty document. An empty index page would be a soft 404 and
 	// would drop the crawlable link chain for a crawler that followed a stale
 	// pagination link.
-	items, total := blog.Paginate(h.blogStore.FilterLang(lang, cat, tag), page, blog.SSRPageSize)
+	//
+	// The English tree is additionally gated by the release ledger: an
+	// unreleased English article is live and reachable but must not be linked
+	// from navigation, or the 100/day release schedule is decoration — the
+	// listing alone would hand a crawler all 1,537 URLs.
+	filtered := blog.FilterVisible(h.blogStore.FilterLang(lang, cat, tag), lang, h.exposure)
+	items, total := blog.Paginate(filtered, page, blog.SSRPageSize)
 	totalPages := blog.PageCount(total, blog.SSRPageSize)
 	if page > totalPages {
 		page = totalPages
-		items, total = blog.Paginate(h.blogStore.FilterLang(lang, cat, tag), page, blog.SSRPageSize)
+		items, total = blog.Paginate(filtered, page, blog.SSRPageSize)
 	}
 
 	catPrefix, tagPrefix := "分类：", "标签：#"
@@ -426,6 +432,20 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		// Debug aid for the M2 content rollout: this page is a Chinese fallback,
 		// not a translation. Search Console will attribute it to the zh canonical.
 		pd.OGType = "article"
+	}
+	// Release gate (2026-10-24): an English article that is not in
+	// content/en/sitemap-exposure.txt is live for readers but must not be
+	// indexed. The listing gate alone is not enough — article-to-article links
+	// still reach the unreleased corpus — so the page itself carries
+	// noindex/follow, plus the header form for crawlers that read headers
+	// before bodies. Released articles emit neither, byte-for-byte unchanged.
+	//
+	// Keyed on the REQUESTED language: a Chinese post served at an /en/ URL as a
+	// fallback already carries its Chinese canonical (it consolidates into the
+	// zh page), so gating it separately would be double work.
+	if lang == blog.LangEN && !h.exposure.Visible(lang, slug) {
+		pd.Noindex = true
+		c.Header("X-Robots-Tag", "noindex, follow")
 	}
 	h.r.Render(c, pd)
 }

@@ -86,6 +86,56 @@ func (l *ExposureLedger) Len() int {
 	return len(l.slugs)
 }
 
+// Visible reports whether the article page at slug may be indexed. Chinese
+// posts are never gated; English posts are gated by the same ledger that drives
+// the sitemaps, so "in sitemap" and "indexable" cannot drift apart.
+func (l *ExposureLedger) Visible(lang, slug string) bool {
+	if lang != LangEN {
+		return true
+	}
+	return l.Allows(slug)
+}
+
+// FilterVisible drops English posts that are not released yet.
+//
+// Why a listing has to be gated at all: the sitemap gate only controls what we
+// *advertise*. The English listing (/en/blog, its pagination and the category
+// filter behind /api/blog?lang=en) links every article, so a crawler that reads
+// the listing discovers the whole unreleased corpus no matter what the sitemap
+// says. The listing therefore shows only released posts; unreleased pages stay
+// reachable (see Visible / the noindex they carry) but stop being advertised by
+// navigation.
+//
+// A nil ledger, an empty path or a missing file returns posts untouched, so the
+// gate cannot accidentally empty the site before the ledger is deployed.
+func FilterVisible(posts []Post, lang string, l *ExposureLedger) []Post {
+	if lang != LangEN || !l.Active() {
+		return posts
+	}
+	out := make([]Post, 0, len(posts))
+	for _, p := range posts {
+		if l.Allows(p.Slug) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// CategoriesOf returns the distinct non-empty categories of posts, in the same
+// first-seen order the store uses, so a gated listing's filter bar matches the
+// posts the listing actually shows.
+func CategoriesOf(posts []Post) []string {
+	seen := make(map[string]bool, 16)
+	var cats []string
+	for _, p := range posts {
+		if p.Category != "" && !seen[p.Category] {
+			seen[p.Category] = true
+			cats = append(cats, p.Category)
+		}
+	}
+	return cats
+}
+
 // refresh reloads the file only when the on-disk state moved. Stat is cheap
 // (one syscall per sitemap request) and a handful of these files are served per
 // crawl, so this stays well inside any budget worth measuring.

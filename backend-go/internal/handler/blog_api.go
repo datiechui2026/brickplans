@@ -25,10 +25,18 @@ func langOf(c *gin.Context) string {
 type BlogAPIHandler struct {
 	cfg   *config.Config
 	store *blog.Store
+	// exposure gates the English listing (nil = everything released).
+	exposure *blog.ExposureLedger
 }
 
 func NewBlogAPIHandler(cfg *config.Config, store *blog.Store) *BlogAPIHandler {
 	return &BlogAPIHandler{cfg: cfg, store: store}
+}
+
+// WithExposure wires the English release ledger in (nil = gate disabled).
+func (h *BlogAPIHandler) WithExposure(l *blog.ExposureLedger) *BlogAPIHandler {
+	h.exposure = l
+	return h
 }
 
 func (h *BlogAPIHandler) RegisterRoutes(rg *gin.RouterGroup) {
@@ -81,7 +89,13 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 	// client (which never sends the param) is unaffected.
 	lang := langOf(c)
 
-	items, total := blog.Paginate(h.store.FilterLang(lang, cat, tag), page, size)
+	// The English listing is gated by the release ledger, exactly like the SSR
+	// listing: /en/blog hydrates from this endpoint, so an ungated API would put
+	// all 1,537 unreleased slugs back into the DOM that the SSR gate just
+	// removed. Categories are derived from the visible posts for the same
+	// reason the filter bar must not offer a bucket that renders empty.
+	visible := blog.FilterVisible(h.store.FilterLang(lang, cat, tag), lang, h.exposure)
+	items, total := blog.Paginate(visible, page, size)
 
 	out := make([]BlogPostOut, 0, len(items))
 	for _, p := range items {
@@ -103,7 +117,7 @@ func (h *BlogAPIHandler) List(c *gin.Context) {
 		"page_size":   size,
 		"total_pages": blog.PageCount(total, size),
 		"lang":        lang,
-		"categories":  h.store.CategoriesLang(lang),
+		"categories":  blog.CategoriesOf(visible),
 	}
 	if c.Query("with_tags") == "1" {
 		resp["tags"] = h.store.TagsLang(lang)

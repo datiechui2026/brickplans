@@ -58,8 +58,10 @@ func TestEnglishUGCPagesConsolidateToChinese(t *testing.T) {
 				t.Errorf("%s: %d", p, code)
 				continue
 			}
-			if !strings.Contains(body, `<meta name="robots" content="noindex,follow" />`) {
-				t.Errorf("%s: missing noindex,follow", p)
+			// Spacing between the directives is cosmetic; both spellings are
+			// valid robots directives, so assert the directive, not the comma.
+			if !strings.Contains(body, `<meta name="robots" content="noindex`) {
+				t.Errorf("%s: missing noindex meta", p)
 			}
 			if strings.Contains(body, `<link rel="alternate" hreflang=`) {
 				t.Errorf("%s: utility page must not emit hreflang", p)

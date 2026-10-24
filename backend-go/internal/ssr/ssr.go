@@ -64,7 +64,7 @@ type PageData struct {
 	// claim a language alternate. Declaring hreflang there is what Google calls a
 	// false language cluster and can get the whole cluster ignored.
 	NoHreflang bool
-	// Noindex emits <meta name="robots" content="noindex,follow">. Used for
+	// Noindex emits <meta name="robots" content="noindex, follow">. Used for
 	// private/utility pages (upload, edit, notifications, admin) that should never
 	// enter the index but may still pass link equity.
 	Noindex bool

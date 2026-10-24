@@ -9,7 +9,7 @@
   {{if .NoHreflang}}{{else if .Alternates}}{{range .Alternates}}<link rel="alternate" hreflang="{{.Hreflang}}" href="{{.Href}}" />
   {{end}}{{else}}<link rel="alternate" hreflang="zh-CN" href="{{.Canonical}}" />
   <link rel="alternate" hreflang="x-default" href="{{.Canonical}}" />
-  {{end}}{{if .Noindex}}<meta name="robots" content="noindex,follow" />
+  {{end}}{{if .Noindex}}<meta name="robots" content="noindex, follow" />
   {{end}}
   <meta property="og:title" content="{{.OGTitle}}" />
   <meta property="og:description" content="{{.OGDescription}}" />

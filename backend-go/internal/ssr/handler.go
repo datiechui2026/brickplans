@@ -17,10 +17,21 @@ type Handler struct {
 	gdb       *gorm.DB
 	r         *Renderer
 	blogStore *blog.Store
+	// exposure is the English release ledger. It gates the English listing and
+	// marks unreleased English articles noindex; nil (or a missing file) means
+	// "everything released", which is how the site behaved before 2026-10-24.
+	exposure *blog.ExposureLedger
 }
 
 func NewHandler(cfg *config.Config, gdb *gorm.DB, r *Renderer, blogStore *blog.Store) *Handler {
 	return &Handler{cfg: cfg, gdb: gdb, r: r, blogStore: blogStore}
+}
+
+// WithExposure wires the English release ledger in. Must be called before
+// RegisterRoutes; returns the handler so it can be chained at the call site.
+func (h *Handler) WithExposure(l *blog.ExposureLedger) *Handler {
+	h.exposure = l
+	return h
 }
 
 // RegisterRoutes mounts SSR page routes at the site root (alongside /api, /uploads).

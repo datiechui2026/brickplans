@@ -100,10 +100,10 @@ func newEngine(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin
 	handler.NewReportsHandler(cfg, gdb).RegisterRoutes(api)
 	handler.NewStatsHandler(cfg, gdb).RegisterRoutes(api)
 	handler.NewAdminHandler(cfg, gdb).RegisterRoutes(api)
-	handler.NewBlogAPIHandler(cfg, blogStore).RegisterRoutes(api)
+	handler.NewBlogAPIHandler(cfg, blogStore).WithExposure(exposure).RegisterRoutes(api)
 
 	// SSR page routes (site root) + sitemap.
-	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).RegisterRoutes(r)
+	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).WithExposure(exposure).RegisterRoutes(r)
 	handler.NewSEOHandler(cfg, gdb, blogStore).WithExposureLedger(exposure).RegisterRoutes(r)
 
 	// Fallback: /api/* → JSON 404; /en/* → English 404 page; anything else →
