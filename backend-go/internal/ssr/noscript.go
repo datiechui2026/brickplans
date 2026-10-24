@@ -179,18 +179,19 @@ func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Bluepri
 
 func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
 	l := bodyLabelsFor(lang)
+	title := bp.TitleIn(lang)
 	var b strings.Builder
 	b.WriteString(`<article>`)
-	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bp.Title)))
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(title)))
 	if bp.Author != nil {
 		b.WriteString(fmt.Sprintf(`<p>%s<a href="%s">%s</a></p>`, l.Author,
 			public+langPath(lang, "/user/"+bp.Author.ID), esc(bp.Author.Username)))
 	}
-	if bp.Description != nil && *bp.Description != "" {
-		b.WriteString(string(mdToHTML(*bp.Description)))
+	if desc := bp.DescriptionIn(lang); desc != nil && *desc != "" {
+		b.WriteString(string(mdToHTML(*desc)))
 	}
 	if cover != "" {
-		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(bp.Title)))
+		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(title)))
 	}
 	b.WriteString("<ul>")
 	if bp.Category != nil {
@@ -237,7 +238,7 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, rela
 		b.WriteString(fmt.Sprintf(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>%s</h2><ul>`, esc(l.Related)))
 		for _, r := range related {
 			b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
-				public+langPath(lang, "/detail/"+r.ID), esc(r.Title)))
+				public+langPath(lang, "/detail/"+r.ID), esc(r.TitleIn(lang))))
 			if r.Category != nil {
 				b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(*r.Category), l.CatClose))
 			}
@@ -263,7 +264,7 @@ func listNoscriptFor(lang string, bps []db.Blueprint, public string) template.HT
 	b.WriteString("<ul>")
 	for _, bp := range bps {
 		b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
-			public+langPath(lang, "/detail/"+bp.ID), esc(bp.Title)))
+			public+langPath(lang, "/detail/"+bp.ID), esc(bp.TitleIn(lang))))
 		if bp.Category != nil {
 			b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(*bp.Category), l.CatClose))
 		}
@@ -281,17 +282,18 @@ func listNoscriptFor(lang string, bps []db.Blueprint, public string) template.HT
 // builds — but with English labels and /en/detail links. The blueprint's own
 // title/description stay in their published language.
 func detailNoscriptEN(bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
+	title := bp.TitleIn("en")
 	var b strings.Builder
 	b.WriteString(`<article>`)
-	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bp.Title)))
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(title)))
 	if bp.Author != nil {
 		b.WriteString(fmt.Sprintf(`<p>By <a href="%s/user/%s">%s</a></p>`, public, esc(bp.Author.ID), esc(bp.Author.Username)))
 	}
-	if bp.Description != nil && *bp.Description != "" {
-		b.WriteString(string(mdToHTML(*bp.Description)))
+	if desc := bp.DescriptionIn("en"); desc != nil && *desc != "" {
+		b.WriteString(string(mdToHTML(*desc)))
 	}
 	if cover != "" {
-		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(bp.Title)))
+		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(title)))
 	}
 	b.WriteString("<ul>")
 	if bp.Category != nil {
@@ -334,7 +336,7 @@ func detailNoscriptEN(bp *db.Blueprint, cover, public string, related []db.Bluep
 	if len(related) > 0 {
 		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>Related builds</h2><ul>`)
 		for _, r := range related {
-			b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, r.ID, esc(r.Title)))
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, r.ID, esc(r.TitleIn("en"))))
 			if r.Category != nil {
 				b.WriteString(fmt.Sprintf(" (%s)", esc(*r.Category)))
 			}

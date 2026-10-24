@@ -105,8 +105,10 @@ type BlueprintOut struct {
 	ID               string          `json:"id"`
 	AuthorID         string          `json:"author_id"`
 	Title            string          `json:"title"`
+	TitleEN          *string         `json:"title_en"`
 	Slug             string          `json:"slug"`
 	Description      *string         `json:"description"`
+	DescriptionEN    *string         `json:"description_en"`
 	Difficulty       *int            `json:"difficulty"`
 	PieceCount       *int            `json:"piece_count"`
 	Category         *string         `json:"category"`

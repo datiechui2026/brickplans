@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,10 +31,10 @@ type User struct {
 	// avoid GORM splitting "WeChat" into "we_chat". WeChatOpenID is a pointer so
 	// non-WeChat users store NULL - a UNIQUE index allows many NULLs but not many
 	// empty strings, so this keeps the uniqueness check correct for everyone.
-	WeChatOpenID  *string `gorm:"type:varchar(64);column:wechat_open_id;uniqueIndex" json:"-"`
-	WeChatUnionID string  `gorm:"type:varchar(64);column:wechat_union_id;index" json:"-"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"-"`
+	WeChatOpenID  *string   `gorm:"type:varchar(64);column:wechat_open_id;uniqueIndex" json:"-"`
+	WeChatUnionID string    `gorm:"type:varchar(64);column:wechat_union_id;index" json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"-"`
 
 	Blueprints    []Blueprint    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE" json:"-"`
 	Comments      []Comment      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
@@ -51,14 +52,20 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 
 // Blueprint ──────────────────────────────────────────
 type Blueprint struct {
-	ID          string          `gorm:"type:char(36);primaryKey" json:"id"`
-	AuthorID    string          `gorm:"type:char(36);index;not null" json:"author_id"`
-	Title       string          `gorm:"type:varchar(100);not null" json:"title"`
-	Slug        string          `gorm:"type:varchar(120);index;not null" json:"slug"`
-	Description *string         `gorm:"type:text" json:"description"`
-	Difficulty  *int            `json:"difficulty"`
-	PieceCount  *int            `json:"piece_count"`
-	Category    *string         `gorm:"type:varchar(30);index" json:"category"`
+	ID       string `gorm:"type:char(36);primaryKey" json:"id"`
+	AuthorID string `gorm:"type:char(36);index;not null" json:"author_id"`
+	Title    string `gorm:"type:varchar(100);not null" json:"title"`
+	// TitleEN / DescriptionEN are the author-supplied English title and
+	// description shown on /en/ pages. Both are optional: when empty the English
+	// tree falls back to the Chinese fields, which is what every row uploaded
+	// before they existed does.
+	TitleEN       *string `gorm:"type:varchar(100)" json:"title_en"`
+	Slug          string  `gorm:"type:varchar(120);index;not null" json:"slug"`
+	Description   *string `gorm:"type:text" json:"description"`
+	DescriptionEN *string `gorm:"type:text" json:"description_en"`
+	Difficulty    *int    `json:"difficulty"`
+	PieceCount    *int    `json:"piece_count"`
+	Category      *string `gorm:"type:varchar(30);index" json:"category"`
 	// Brand is the brick brand the design belongs to (乐高/森宝/双鹰/...). Stored as a
 	// plain string so the curated list can grow without a schema change; the frontend
 	// renders it as a dropdown, the backend only enforces the length.
@@ -74,13 +81,32 @@ type Blueprint struct {
 	CreatedAt   time.Time       `gorm:"index" json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 
-	Author     *User             `gorm:"foreignKey:AuthorID" json:"-"`
-	Images     []BlueprintImage  `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"images"`
-	Tags       []BlueprintTag    `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
-	Comments   []Comment         `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
-	Favorites  []Favorite        `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
-	Likes      []Like            `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
-	Reports    []Report          `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+	Author    *User            `gorm:"foreignKey:AuthorID" json:"-"`
+	Images    []BlueprintImage `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"images"`
+	Tags      []BlueprintTag   `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+	Comments  []Comment        `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+	Favorites []Favorite       `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+	Likes     []Like           `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+	Reports   []Report         `gorm:"foreignKey:BlueprintID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+// TitleIn returns the title to display in one site language ("zh" | "en").
+// English falls back to the Chinese title when the author left title_en empty,
+// so the /en/ tree never shows a blank heading.
+func (b *Blueprint) TitleIn(lang string) string {
+	if lang == "en" && b.TitleEN != nil && strings.TrimSpace(*b.TitleEN) != "" {
+		return *b.TitleEN
+	}
+	return b.Title
+}
+
+// DescriptionIn returns the description to display in one site language, with
+// the same fallback rule as TitleIn.
+func (b *Blueprint) DescriptionIn(lang string) *string {
+	if lang == "en" && b.DescriptionEN != nil && strings.TrimSpace(*b.DescriptionEN) != "" {
+		return b.DescriptionEN
+	}
+	return b.Description
 }
 
 func (b *Blueprint) BeforeCreate(tx *gorm.DB) error {
@@ -113,10 +139,10 @@ func (i *BlueprintImage) BeforeCreate(tx *gorm.DB) error {
 
 // Tag ────────────────────────────────────────────────
 type Tag struct {
-	ID           string         `gorm:"type:char(36);primaryKey" json:"id"`
-	Name         string         `gorm:"type:varchar(30);uniqueIndex;not null" json:"name"`
+	ID            string         `gorm:"type:char(36);primaryKey" json:"id"`
+	Name          string         `gorm:"type:varchar(30);uniqueIndex;not null" json:"name"`
 	BlueprintTags []BlueprintTag `gorm:"foreignKey:TagID" json:"-"`
-	CreatedAt    time.Time      `json:"-"`
+	CreatedAt     time.Time      `json:"-"`
 }
 
 func (t *Tag) BeforeCreate(tx *gorm.DB) error {
@@ -166,11 +192,11 @@ func (l *Like) BeforeCreate(tx *gorm.DB) error {
 
 // Comment (one-level replies via ParentID) ───────────
 type Comment struct {
-	ID          string     `gorm:"type:char(36);primaryKey" json:"id"`
-	BlueprintID string     `gorm:"type:char(36);index;not null" json:"blueprint_id"`
-	UserID      string     `gorm:"type:char(36);index;not null" json:"user_id"`
-	ParentID    *string    `gorm:"type:char(36);index" json:"parent_id"`
-	Content     string     `gorm:"type:text;not null" json:"content"`
+	ID          string  `gorm:"type:char(36);primaryKey" json:"id"`
+	BlueprintID string  `gorm:"type:char(36);index;not null" json:"blueprint_id"`
+	UserID      string  `gorm:"type:char(36);index;not null" json:"user_id"`
+	ParentID    *string `gorm:"type:char(36);index" json:"parent_id"`
+	Content     string  `gorm:"type:text;not null" json:"content"`
 	// Status is the moderation state: "approved" (default, shown publicly) or
 	// "hidden" (removed from public listings by an admin).
 	Status    string    `gorm:"type:varchar(20);not null;default:approved" json:"status"`
@@ -192,21 +218,21 @@ func (c *Comment) BeforeCreate(tx *gorm.DB) error {
 
 // Notification ───────────────────────────────────────
 type Notification struct {
-	ID          string     `gorm:"type:char(36);primaryKey" json:"id"`
-	UserID      string     `gorm:"type:char(36);index;not null" json:"user_id"`
-	ActorID     *string    `gorm:"type:char(36)" json:"actor_id"`
-	Type        string     `gorm:"type:varchar(30);not null" json:"type"`
-	BlueprintID *string    `gorm:"type:char(36)" json:"blueprint_id"`
-	CommentID   *string    `gorm:"type:char(36)" json:"comment_id"`
+	ID          string          `gorm:"type:char(36);primaryKey" json:"id"`
+	UserID      string          `gorm:"type:char(36);index;not null" json:"user_id"`
+	ActorID     *string         `gorm:"type:char(36)" json:"actor_id"`
+	Type        string          `gorm:"type:varchar(30);not null" json:"type"`
+	BlueprintID *string         `gorm:"type:char(36)" json:"blueprint_id"`
+	CommentID   *string         `gorm:"type:char(36)" json:"comment_id"`
 	Payload     json.RawMessage `gorm:"type:json" json:"payload"`
-	IsRead      bool       `gorm:"not null;default:false" json:"is_read"`
-	CreatedAt   time.Time  `json:"created_at"`
-	ReadAt      *time.Time `json:"read_at"`
+	IsRead      bool            `gorm:"not null;default:false" json:"is_read"`
+	CreatedAt   time.Time       `json:"created_at"`
+	ReadAt      *time.Time      `json:"read_at"`
 
-	User      *User       `gorm:"foreignKey:UserID" json:"-"`
-	Actor     *User       `gorm:"foreignKey:ActorID;constraint:OnDelete:SET NULL" json:"actor"`
-	Blueprint *Blueprint  `gorm:"foreignKey:BlueprintID" json:"-"`
-	Comment   *Comment    `gorm:"foreignKey:CommentID" json:"-"`
+	User      *User      `gorm:"foreignKey:UserID" json:"-"`
+	Actor     *User      `gorm:"foreignKey:ActorID;constraint:OnDelete:SET NULL" json:"actor"`
+	Blueprint *Blueprint `gorm:"foreignKey:BlueprintID" json:"-"`
+	Comment   *Comment   `gorm:"foreignKey:CommentID" json:"-"`
 }
 
 func (n *Notification) BeforeCreate(tx *gorm.DB) error {

@@ -3,6 +3,7 @@ package ssr
 import (
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -168,8 +169,8 @@ func (h *Handler) Detail(c *gin.Context) {
 	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
 
 	jsonld := h.siteJSONLD()
-	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL))
-	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL))
+	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
+	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
 	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
 	h.r.Render(c, PageData{
 		Title:       bp.Title + " - BrickPlan 积木图纸",
@@ -184,10 +185,14 @@ func (h *Handler) Detail(c *gin.Context) {
 
 func (h *Handler) Explore(c *gin.Context) {
 	cat := c.Query("category")
+	brand := strings.TrimSpace(c.Query("brand"))
 	var bps []db.Blueprint
 	qry := h.gdb.Where("is_published = ?", true)
 	if cat != "" {
 		qry = qry.Where("category = ?", cat)
+	}
+	if brand != "" {
+		qry = qry.Where("brand = ?", brand)
 	}
 	qry.Order("created_at DESC").Limit(50).Find(&bps)
 	title := "发现图纸 — BrickPlan"

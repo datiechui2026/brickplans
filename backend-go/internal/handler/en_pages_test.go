@@ -164,3 +164,142 @@ func TestChinesePagesKeepTheirMarkup(t *testing.T) {
 		t.Errorf("Chinese detail lost its hreflang contract:\n%s", headLines(detail, "hreflang"))
 	}
 }
+
+// TestEnglishBlueprintTextUsesEnglishFields pins the language split for
+// user-generated blueprint text: title/description stay the Chinese document
+// (and the Chinese page keeps showing them), while /en/detail uses
+// title_en/description_en. Empty English fields fall back to the Chinese values
+// rather than rendering a blank heading.
+func TestEnglishBlueprintTextUsesEnglishFields(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	token, _ := registerUser(t, r, "builder", "builder@example.com")
+
+	w := doJSON(t, r, "POST", "/api/blueprints", map[string]any{
+		"title":          "城镇街角",
+		"title_en":       "Town Corner",
+		"description":    "中文描述",
+		"description_en": "English description",
+		"category":       "建筑",
+		"brand":          "乐高",
+		"is_published":   true,
+	}, token)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	created := parseJSON(t, w)
+	bpID := created["id"].(string)
+	if created["title_en"] != "Town Corner" || created["description_en"] != "English description" {
+		t.Fatalf("English fields not echoed: %v", created)
+	}
+
+	_, en := getHTML(t, r, "/en/detail/"+bpID)
+	if !strings.Contains(en, "<title>Town Corner — BrickPlan MOC blueprint</title>") {
+		t.Errorf("EN detail title did not use title_en:\n%s", headLines(en, "<title>"))
+	}
+	if !strings.Contains(en, "<h1>Town Corner</h1>") || !strings.Contains(en, "English description") {
+		t.Error("EN detail body did not use the English title/description")
+	}
+	if !strings.Contains(en, `"name":"Town Corner"`) {
+		t.Errorf("EN JSON-LD did not use title_en:\n%s", headLines(en, "CreativeWork"))
+	}
+
+	_, zh := getHTML(t, r, "/detail/"+bpID)
+	if !strings.Contains(zh, "<h1>城镇街角</h1>") || !strings.Contains(zh, "中文描述") {
+		t.Error("CN detail no longer renders the Chinese title/description")
+	}
+	if strings.Contains(zh, "Town Corner") {
+		t.Error("Chinese detail leaked the English title")
+	}
+
+	// Fallback: a blueprint without translations still renders its Chinese
+	// title on the English page.
+	w = doJSON(t, r, "POST", "/api/blueprints", map[string]any{
+		"title": "无译文作品", "is_published": true,
+	}, token)
+	plainID := parseJSON(t, w)["id"].(string)
+	_, fallback := getHTML(t, r, "/en/detail/"+plainID)
+	if !strings.Contains(fallback, "<h1>无译文作品</h1>") {
+		t.Error("EN detail lost the Chinese fallback title")
+	}
+}
+
+// TestExploreBrandFilter pins the brand filter on both trees: the API, the
+// server-rendered listing all match the stored Chinese value (what the dropdown
+// sends), not the English display label.
+func TestExploreBrandFilter(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	token, _ := registerUser(t, r, "builder", "builder@example.com")
+
+	create := func(fields map[string]any) string {
+		t.Helper()
+		fields["is_published"] = true
+		w := doJSON(t, r, "POST", "/api/blueprints", fields, token)
+		if w.Code != 201 {
+			t.Fatalf("create blueprint: %d %s", w.Code, w.Body.String())
+		}
+		return parseJSON(t, w)["id"].(string)
+	}
+	legoID := create(map[string]any{"title": "乐高城堡", "brand": "乐高"})
+	semboID := create(map[string]any{"title": "森宝街景", "brand": "森宝"})
+
+	code, en := getHTML(t, r, "/en/explore?brand="+url.QueryEscape("乐高"))
+	if code != 200 {
+		t.Fatalf("/en/explore: %d", code)
+	}
+	if !strings.Contains(en, "/en/detail/"+legoID) {
+		t.Error("EN explore?brand=乐高 does not list the LEGO build")
+	}
+	if strings.Contains(en, "/en/detail/"+semboID) {
+		t.Error("EN explore?brand=乐高 leaked another brand")
+	}
+
+	_, zh := getHTML(t, r, "/explore?brand="+url.QueryEscape("森宝"))
+	if !strings.Contains(zh, "/detail/"+semboID) || strings.Contains(zh, "/detail/"+legoID) {
+		t.Error("CN explore?brand=森宝 is not filtering by the stored brand")
+	}
+
+	w := doJSON(t, r, "GET", "/api/blueprints?brand="+url.QueryEscape("乐高"), nil, token)
+	if w.Code != 200 {
+		t.Fatalf("API list: %d", w.Code)
+	}
+	if total := parseJSON(t, w)["total"].(float64); total != 1 {
+		t.Errorf("API brand filter total = %v, want 1", total)
+	}
+}
+
+// TestNavShowsThreeTabs pins requirement 1: the server-rendered header shows
+// only Explore / Blog / About (the same three links the SPA renders), while the
+// footer keeps Home / FAQ / Privacy so those pages do not lose their internal
+// links.
+func TestNavShowsThreeTabs(t *testing.T) {
+	r, _ := setupSitemapTest(t, 0, 0)
+	_, body := getHTML(t, r, "/en/about")
+	start := strings.Index(body, `<nav class="site-nav navbar"`)
+	if start < 0 {
+		t.Fatal("no server-rendered <nav>")
+	}
+	end := strings.Index(body[start:], "</nav>")
+	if end < 0 {
+		t.Fatal("unterminated <nav>")
+	}
+	nav := body[start : start+end]
+	for _, want := range []string{`href="/en/explore"`, `href="/en/blog"`, `href="/en/about"`} {
+		if !strings.Contains(nav, want) {
+			t.Errorf("nav missing %s", want)
+		}
+	}
+	for _, unwanted := range []string{`href="/en/faq"`, `href="/en/privacy"`} {
+		if strings.Contains(nav, unwanted) {
+			t.Errorf("nav still links %s", unwanted)
+		}
+	}
+	if got := strings.Count(nav, "<li><a href="); got != 3 {
+		t.Errorf("nav has %d menu links, want 3:\n%s", got, nav)
+	}
+	// The two static pages stay reachable from the site footer (the English
+	// home's footer links the canonical Chinese utility paths).
+	_, home := getHTML(t, r, "/en/")
+	if !strings.Contains(home, `href="/faq"`) || !strings.Contains(home, `href="/privacy"`) {
+		t.Error("footer lost the FAQ/Privacy links")
+	}
+}

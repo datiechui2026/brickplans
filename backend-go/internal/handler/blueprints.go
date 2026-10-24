@@ -116,6 +116,7 @@ func (h *BlueprintsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 // Free-text attribute limits. Brand comes from a curated dropdown but is stored as
 // a plain string, so the backend only enforces these bounds.
 const (
+	maxTitleLen       = 100
 	maxBrandLen       = 30
 	maxProductCodeLen = 60
 	// lookupLimit bounds the strict brand+code lookup response; a set with more
@@ -152,19 +153,34 @@ func normOptional(s *string, maxLen int) (*string, bool) {
 	return &v, true
 }
 
+// trimOptional trims a free-text field and collapses blank input to nil. Unlike
+// normOptional it enforces no length bound, for `text` columns (descriptions).
+func trimOptional(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	v := strings.TrimSpace(*s)
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 // ── CREATE ──────────────────────────────────────────
 
 type blueprintCreateReq struct {
-	Title       string          `json:"title" binding:"required,min=1,max=100"`
-	Description *string         `json:"description"`
-	Difficulty  *int            `json:"difficulty"`
-	PieceCount  *int            `json:"piece_count"`
-	Category    *string         `json:"category"`
-	Brand       *string         `json:"brand"`
-	ProductCode *string         `json:"product_code"`
-	Dimensions  *string         `json:"dimensions"`
-	PartList    json.RawMessage `json:"part_list"`
-	IsPublished *bool           `json:"is_published"`
+	Title         string          `json:"title" binding:"required,min=1,max=100"`
+	TitleEN       *string         `json:"title_en"`
+	Description   *string         `json:"description"`
+	DescriptionEN *string         `json:"description_en"`
+	Difficulty    *int            `json:"difficulty"`
+	PieceCount    *int            `json:"piece_count"`
+	Category      *string         `json:"category"`
+	Brand         *string         `json:"brand"`
+	ProductCode   *string         `json:"product_code"`
+	Dimensions    *string         `json:"dimensions"`
+	PartList      json.RawMessage `json:"part_list"`
+	IsPublished   *bool           `json:"is_published"`
 }
 
 func (h *BlueprintsHandler) create(c *gin.Context) {
@@ -188,19 +204,26 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "product_code must be at most 60 chars"})
 		return
 	}
+	titleEN, ok := normOptional(req.TitleEN, maxTitleLen)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "title_en must be at most 100 chars"})
+		return
+	}
 	bp := db.Blueprint{
-		Title:       req.Title,
-		Slug:        slugify(req.Title),
-		Description: req.Description,
-		Difficulty:  req.Difficulty,
-		PieceCount:  req.PieceCount,
-		Category:    req.Category,
-		Brand:       brand,
-		ProductCode: productCode,
-		Dimensions:  req.Dimensions,
-		PartList:    req.PartList,
-		IsPublished: true,
-		AuthorID:    user.ID,
+		Title:         req.Title,
+		TitleEN:       titleEN,
+		Slug:          slugify(req.Title),
+		Description:   req.Description,
+		DescriptionEN: trimOptional(req.DescriptionEN),
+		Difficulty:    req.Difficulty,
+		PieceCount:    req.PieceCount,
+		Category:      req.Category,
+		Brand:         brand,
+		ProductCode:   productCode,
+		Dimensions:    req.Dimensions,
+		PartList:      req.PartList,
+		IsPublished:   true,
+		AuthorID:      user.ID,
 	}
 	if req.IsPublished != nil {
 		bp.IsPublished = *req.IsPublished
@@ -255,16 +278,18 @@ func (h *BlueprintsHandler) get(c *gin.Context) {
 // ── UPDATE ──────────────────────────────────────────
 
 type blueprintUpdateReq struct {
-	Title       *string         `json:"title"`
-	Description *string         `json:"description"`
-	Difficulty  *int            `json:"difficulty"`
-	PieceCount  *int            `json:"piece_count"`
-	Category    *string         `json:"category"`
-	Brand       *string         `json:"brand"`
-	ProductCode *string         `json:"product_code"`
-	Dimensions  *string         `json:"dimensions"`
-	PartList    json.RawMessage `json:"part_list"`
-	IsPublished *bool           `json:"is_published"`
+	Title         *string         `json:"title"`
+	TitleEN       *string         `json:"title_en"`
+	Description   *string         `json:"description"`
+	DescriptionEN *string         `json:"description_en"`
+	Difficulty    *int            `json:"difficulty"`
+	PieceCount    *int            `json:"piece_count"`
+	Category      *string         `json:"category"`
+	Brand         *string         `json:"brand"`
+	ProductCode   *string         `json:"product_code"`
+	Dimensions    *string         `json:"dimensions"`
+	PartList      json.RawMessage `json:"part_list"`
+	IsPublished   *bool           `json:"is_published"`
 }
 
 func (h *BlueprintsHandler) update(c *gin.Context) {
@@ -289,15 +314,27 @@ func (h *BlueprintsHandler) update(c *gin.Context) {
 		return
 	}
 	if req.Title != nil {
-		if len(*req.Title) < 1 || len(*req.Title) > 100 {
+		if len(*req.Title) < 1 || len(*req.Title) > maxTitleLen {
 			c.JSON(http.StatusBadRequest, gin.H{"detail": "title must be 1-100 chars"})
 			return
 		}
 		bp.Title = *req.Title
 		bp.Slug = slugify(*req.Title)
 	}
+	if req.TitleEN != nil {
+		v, ok := normOptional(req.TitleEN, maxTitleLen)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "title_en must be at most 100 chars"})
+			return
+		}
+		// A blank string clears the translation instead of storing "".
+		bp.TitleEN = v
+	}
 	if req.Description != nil {
 		bp.Description = req.Description
+	}
+	if req.DescriptionEN != nil {
+		bp.DescriptionEN = trimOptional(req.DescriptionEN)
 	}
 	if req.Difficulty != nil {
 		bp.Difficulty = req.Difficulty
@@ -397,8 +434,11 @@ func (h *BlueprintsHandler) list(c *gin.Context) {
 	if q != "" {
 		like := "%" + escapeLike(q) + "%"
 		// product_code participates in the free-text search too, so pasting a set
-		// number ("76344") into the search box finds the blueprint.
-		qry = qry.Where("title LIKE ? OR description LIKE ? OR product_code LIKE ?", like, like, like)
+		// number ("76344") into the search box finds the blueprint. The English
+		// title/description are searched as well so /en/ users can find a
+		// blueprint by its translated name.
+		qry = qry.Where("title LIKE ? OR description LIKE ? OR title_en LIKE ? OR description_en LIKE ? OR product_code LIKE ?",
+			like, like, like, like, like)
 	}
 	if brandQuery != "" {
 		// normalizeBrand collapses the LEGO/乐高 spellings to the stored value.
@@ -864,8 +904,10 @@ func toBlueprintOut(bp *db.Blueprint, favCount, likeCount int, isLiked, isFav bo
 		ID:               bp.ID,
 		AuthorID:         bp.AuthorID,
 		Title:            bp.Title,
+		TitleEN:          bp.TitleEN,
 		Slug:             bp.Slug,
 		Description:      bp.Description,
+		DescriptionEN:    bp.DescriptionEN,
 		Difficulty:       bp.Difficulty,
 		PieceCount:       bp.PieceCount,
 		Category:         bp.Category,

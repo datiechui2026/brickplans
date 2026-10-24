@@ -1,7 +1,7 @@
 import * as api from './api.js';
 import './styles/main.css';
 import { marked } from 'marked';
-import { tr, CATEGORIES, categoryLabel, categoryOptions, difficultyLabel, errorMessage, isEnglishPath } from './i18n.js';
+import { tr, CATEGORIES, categoryLabel, categoryOptions, difficultyLabel, errorMessage, isEnglishPath, brandLabel, blueprintTitle, blueprintDescription } from './i18n.js';
 
 // Configure marked: disable mangle/email autolink for safety
 marked.setOptions({ breaks: true, gfm: true });
@@ -49,7 +49,7 @@ const state = {
   editId: null,
   notificationUnreadCount: 0,
   flashMessage: null,
-  explore: { page: 1, q: '', category: '', sort: 'new', tag: '', items: [], total: 0 },
+  explore: { page: 1, q: '', category: '', brand: '', sort: 'new', tag: '', items: [], total: 0 },
   user: api.getCurrentUser(),
   userLoaded: !api.isLoggedIn(),
   userProfile: { id: null, username: null, tab: 'blueprints', page: 1 },
@@ -72,6 +72,15 @@ const BRANDS = [
   '启蒙', '布鲁可', '潘洛斯', '宇星模王', '星堡', '奇积', '卫积',
   '咔搭', '双钻', '得高', '小鲁班', '高砖', '星钻', '酷彼', '美高', '其他',
 ];
+
+// brandOptions returns [storedValue, displayLabel] pairs for the brand filter
+// and the upload/edit dropdowns. Filtering always sends the stored Chinese
+// value; only the label is translated (see brandLabel in i18n.js).
+function brandOptions(includeAll = true) {
+  const out = includeAll ? [['', tr('全部品牌', 'All brands')]] : [];
+  for (const b of BRANDS) out.push([b, brandLabel(b)]);
+  return out;
+}
 
 // ═══════════════════════════════════════════
 // Cover image helpers
@@ -375,6 +384,8 @@ function applyState(page, params = {}) {
   else if (page !== 'explore') { state.explore.q = ''; }
   if (params.category) state.explore.category = params.category;
   else if (page !== 'explore') { state.explore.category = ''; }
+  if (params.brand) state.explore.brand = params.brand;
+  else if (page !== 'explore') { state.explore.brand = ''; }
   if (params.tag) state.explore.tag = params.tag;
   else if (page !== 'explore') { state.explore.tag = ''; }
   if (params.sort) state.explore.sort = params.sort;
@@ -1114,7 +1125,7 @@ function renderHomeSlider(items) {
         ? h('img', {
             className: 'home-slide-img',
             src: cover,
-            alt: bp.title,
+            alt: blueprintTitle(bp),
             // First slide is the LCP element → eager + high priority; the rest
             // load lazily so the initial paint isn't blocked by extra images.
             loading: i === 0 ? 'eager' : 'lazy',
@@ -1125,7 +1136,7 @@ function renderHomeSlider(items) {
         : h('div', { className: 'home-slide-noimg' }, emoji),
       h('div', { className: 'home-slide-overlay' },
         h('span', { className: 'home-slide-cat' }, `${emoji} ${categoryLabel(bp.category) || tr('积木', 'Bricks')}`),
-        h('h3', { className: 'home-slide-title' }, bp.title),
+        h('h3', { className: 'home-slide-title' }, blueprintTitle(bp)),
         h('p', { className: 'home-slide-meta' },
           h('span', {}, bp.author?.username || tr('匿名', 'Anonymous')),
           h('span', {}, `👁 ${bp.view_count || 0}`),
@@ -1191,9 +1202,9 @@ function renderHome() {
           className: 'cat-pill' + (cat === '全部' ? ' active' : ''),
           onclick: () => {
             if (cat === '全部') {
-              state.explore.category = ''; state.explore.page = 1; state.explore.q = ''; navigate('explore');
+              state.explore.category = ''; state.explore.brand = ''; state.explore.page = 1; state.explore.q = ''; navigate('explore');
             } else {
-              state.explore.category = cat; state.explore.page = 1; state.explore.q = ''; navigate('explore');
+              state.explore.category = cat; state.explore.brand = ''; state.explore.page = 1; state.explore.q = ''; navigate('explore');
             }
           },
         }, `${emojis[cat]} ${cat === '全部' ? tr('全部', 'All') : categoryLabel(cat)}`),
@@ -1349,7 +1360,7 @@ function renderExplore() {
       h('div', { className: 'filter-bar' },
         h('div', { className: 'filter-group' },
           h('input', { type: 'text', id: 'explore-search', className: 'form-input', value: state.explore.q, placeholder: tr('🔍 搜索关键词...', '🔍 Search blueprints...'),
-            onkeydown: (e) => { if (e.key === 'Enter') { state.explore.q = e.target.value; state.explore.category = $id('explore-category')?.value || ''; state.explore.sort = $id('explore-sort')?.value || 'new'; state.explore.page = 1; loadExploreResults(); } },
+            onkeydown: (e) => { if (e.key === 'Enter') { state.explore.q = e.target.value; state.explore.category = $id('explore-category')?.value || ''; state.explore.brand = $id('explore-brand')?.value || ''; state.explore.sort = $id('explore-sort')?.value || 'new'; state.explore.page = 1; loadExploreResults(); } },
           }),
         ),
         h('div', { className: 'filter-group' },
@@ -1358,6 +1369,14 @@ function renderExplore() {
             // the label is translated, or filtering would silently return 0.
             ...categoryOptions(true)
               .map(([v, t]) => h('option', { value: v, ...(state.explore.category === v ? { selected: '' } : {}) }, t)),
+          ),
+        ),
+        h('div', { className: 'filter-group' },
+          h('select', { id: 'explore-brand', className: 'form-select' },
+            // Same rule as category: the option VALUE is the stored brand
+            // (乐高/森宝/...), only the visible label is translated.
+            ...brandOptions(true)
+              .map(([v, t]) => h('option', { value: v, ...(state.explore.brand === v ? { selected: '' } : {}) }, t)),
           ),
         ),
         h('div', { className: 'filter-group' },
@@ -1371,6 +1390,7 @@ function renderExplore() {
           onclick: () => {
             state.explore.q = $id('explore-search')?.value || '';
             state.explore.category = $id('explore-category')?.value || '';
+            state.explore.brand = $id('explore-brand')?.value || '';
             state.explore.sort = $id('explore-sort')?.value || 'new';
             state.explore.page = 1;
             loadExploreResults();
@@ -1416,6 +1436,7 @@ async function loadExploreResults() {
       size: 12,
       q: state.explore.q || undefined,
       category: state.explore.category || undefined,
+      brand: state.explore.brand || undefined,
       tag: state.explore.tag || undefined,
       sort: state.explore.sort,
     });
@@ -1577,9 +1598,9 @@ async function loadDetail(id) {
     // <head> stays untouched (it already describes this exact URL). After an
     // in-app navigation we own the head again and rewrite it in English.
     if (!headLocked) {
-      document.title = `${bp.title} — BrickPlan`;
-      setMeta('og:title', bp.title);
-      const plainDesc = stripMarkdown(bp.description || tr('BrickPlan 积木图纸分享社区', 'BrickPlan blueprint community'));
+      document.title = `${blueprintTitle(bp)} — BrickPlan`;
+      setMeta('og:title', blueprintTitle(bp));
+      const plainDesc = stripMarkdown(blueprintDescription(bp) || tr('BrickPlan 积木图纸分享社区', 'BrickPlan blueprint community'));
       setMeta('og:description', plainDesc);
       setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
       setMeta('og:url', isEnglishPath() ? `${window.location.origin}${location.pathname}` : `${window.location.origin}/detail/${bp.id}`);
@@ -1592,8 +1613,8 @@ async function loadDetail(id) {
         {
           '@context': 'https://schema.org',
           '@type': 'CreativeWork',
-          name: bp.title,
-          description: bp.description || '',
+          name: blueprintTitle(bp),
+          description: blueprintDescription(bp) || '',
           image: coverImg,
           author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
           datePublished: bp.created_at || undefined,
@@ -1601,10 +1622,10 @@ async function loadDetail(id) {
         {
           '@context': 'https://schema.org',
           '@type': 'Product',
-          name: bp.title,
-          description: bp.description || '',
+          name: blueprintTitle(bp),
+          description: blueprintDescription(bp) || '',
           image: coverImg,
-          brand: { '@type': 'Brand', name: bp.brand || 'BrickPlan' },
+          brand: { '@type': 'Brand', name: brandLabel(bp.brand) || 'BrickPlan' },
           offers: {
             '@type': 'Offer',
             price: '0',
@@ -1703,7 +1724,7 @@ async function loadDetail(id) {
               } else {
                 mainContentEl = h('img', {
                   src: currentItem.url,
-                  alt: bp.title,
+                  alt: blueprintTitle(bp),
                   loading: 'lazy',
                   onclick: () => {
                     if (nonPdfImages.length === 0) return;
@@ -1760,7 +1781,7 @@ async function loadDetail(id) {
                 } else {
                   const newImg = h('img', {
                     src: item.url,
-                    alt: bp.title,
+                    alt: blueprintTitle(bp),
                     loading: 'lazy',
                     onclick: () => {
                       if (nonPdfImages.length > 0) {
@@ -1832,7 +1853,7 @@ async function loadDetail(id) {
         // RIGHT: Sidebar
         h('div', { className: 'detail-sidebar' },
           h('div', { className: 'info-card' },
-            h('h1', { className: 'card-title', style: { fontSize: '1.5rem', marginBottom: '12px' } }, bp.title),
+            h('h1', { className: 'card-title', style: { fontSize: '1.5rem', marginBottom: '12px' } }, blueprintTitle(bp)),
             (state.user?.id && bp.author?.id === state.user.id) ? h('div', { style: { marginBottom: '12px' } },
               h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.preventDefault(); navigate('edit', { id: bp.id }); } }, tr('✏️ 编辑', '✏️ Edit')),
             ) : null,
@@ -1868,7 +1889,7 @@ async function loadDetail(id) {
                 ) : null,
                 bp.brand ? h('div', { className: 'meta-item' },
                   h('span', { className: 'meta-label' }, tr('品牌', 'Brand')),
-                  h('span', { className: 'meta-value' }, bp.brand),
+                  h('span', { className: 'meta-value' }, brandLabel(bp.brand)),
                 ) : null,
                 bp.product_code ? h('div', { className: 'meta-item' },
                   h('span', { className: 'meta-label' }, tr('编号', 'Set no.')),
@@ -1959,10 +1980,10 @@ async function loadDetail(id) {
             })(),
           ] : []),
           // ── Description inside sidebar (markdown rendered) ──
-          ...(bp.description ? [
+          ...(blueprintDescription(bp) ? [
             h('div', { className: 'desc-card' },
               h('h3', {}, tr('📝 图纸介绍', '📝 About this blueprint')),
-              h('div', { className: 'markdown-body', innerHTML: marked.parse(bp.description) }),
+              h('div', { className: 'markdown-body', innerHTML: marked.parse(blueprintDescription(bp)) }),
             ),
           ] : []),
           // ── Tags inside sidebar ──
@@ -2263,6 +2284,15 @@ function renderUpload() {
           h('input', { type: 'text', id: 'upload-title', className: 'form-input', placeholder: tr('给你的作品起个名字', 'Give your build a name') }),
         ),
 
+        // English title (optional)
+        h('div', { className: 'form-group' },
+          h('label', { className: 'form-label' }, tr('英文标题（可选）', 'English title (optional)')),
+          h('input', {
+            type: 'text', id: 'upload-title-en', className: 'form-input', maxlength: '100',
+            placeholder: tr('英文站显示的标题；留空则用中文标题', 'Shown on the English site; defaults to the Chinese title'),
+          }),
+        ),
+
         // Files upload
         h('div', { className: 'form-group' },
           h('label', { className: 'form-label' }, tr('图片 / PDF', 'Images / PDF')),
@@ -2291,6 +2321,15 @@ function renderUpload() {
           h('textarea', { id: 'upload-desc', className: 'form-textarea', placeholder: tr('描述你的作品...', 'Describe your build...') }),
         ),
 
+        // English description (optional)
+        h('div', { className: 'form-group' },
+          h('label', { className: 'form-label' }, tr('英文描述（可选）', 'English description (optional)')),
+          h('textarea', {
+            id: 'upload-desc-en', className: 'form-textarea',
+            placeholder: tr('英文站显示的描述；留空则用中文描述', 'Shown on the English site; defaults to the Chinese description'),
+          }),
+        ),
+
         // Category + Difficulty (2-col)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
@@ -2315,7 +2354,7 @@ function renderUpload() {
             h('label', { className: 'form-label' }, tr('品牌', 'Brand')),
             h('select', { id: 'upload-brand', className: 'form-select' },
               h('option', { value: '' }, tr('选择品牌', 'Choose a brand')),
-              ...BRANDS.map(b => h('option', { value: b }, b)),
+              ...BRANDS.map(b => h('option', { value: b }, brandLabel(b))),
             ),
           ),
           h('div', { className: 'form-group' },
@@ -2586,7 +2625,9 @@ async function handleUpload() {
   if (okEl) okEl.innerHTML = '';
 
   const title = $id('upload-title')?.value.trim();
+  const titleEN = $id('upload-title-en')?.value.trim();
   const description = $id('upload-desc')?.value.trim();
+  const descriptionEN = $id('upload-desc-en')?.value.trim();
   const category = $id('upload-category')?.value;
   const difficulty = parseInt($id('upload-difficulty')?.value) || undefined;
   const piece_count = parseInt($id('upload-pieces')?.value) || undefined;
@@ -2601,7 +2642,8 @@ async function handleUpload() {
     // 1. Create blueprint
     if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">${tr('创建图纸中...', 'Creating the blueprint...')}</div>`;
     const data = await api.createBlueprint({
-      title, description: description || undefined,
+      title, title_en: titleEN || undefined,
+      description: description || undefined, description_en: descriptionEN || undefined,
       category: category || undefined, difficulty,
       piece_count: piece_count || undefined,
       dimensions: dimensions || undefined,
@@ -2666,8 +2708,8 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
   const emojis = { '建筑': '🏰', '车辆': '🚗', '机甲': '🤖', '奇幻': '🐉', '科幻': '🛸', '场景': '🎨' };
   const emoji = emojis[bp.category] || '🧱';
   const bgColors = ['#6366f1', '#8b5cf6', '#ef4444', '#b91c1c', '#f59e0b', '#d97706', '#06b6d4', '#0891b2', '#a855f7', '#7c3aed', '#ec4899', '#be185d'];
-  const bg = bgColors[Math.abs(bp.title?.length || 0) % bgColors.length];
-  const bg2 = bgColors[(Math.abs(bp.title?.length || 0) + 1) % bgColors.length];
+  const bg = bgColors[Math.abs(blueprintTitle(bp)?.length || 0) % bgColors.length];
+  const bg2 = bgColors[(Math.abs(blueprintTitle(bp)?.length || 0) + 1) % bgColors.length];
 
   const authorAvatar = bp.author?.avatar_url
     || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author?.username || bp.id || 'anon')}`;
@@ -2678,7 +2720,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
         ? h('img', {
             className: 'card-img',
             src: coverUrl,
-            alt: bp.title,
+            alt: blueprintTitle(bp),
             loading: 'lazy',
             decoding: 'async',
             onerror: "this.style.display='none';this.parentElement.style.background='linear-gradient(135deg," + bg + "," + bg2 + ")'",
@@ -2691,7 +2733,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
       bp.piece_count ? h('span', { className: 'card-parts' }, tr(`🧩 ${bp.piece_count}片`, `🧩 ${bp.piece_count} pcs`)) : null,
     ),
     h('div', { className: 'card-body' },
-      h('div', { className: 'card-title' }, bp.title),
+      h('div', { className: 'card-title' }, blueprintTitle(bp)),
       h('div', { className: 'card-author' },
         h('img', { src: authorAvatar, alt: '', loading: 'lazy', decoding: 'async' }),
         h('span', {}, bp.author?.username || tr('匿名', 'Anonymous')),
@@ -2710,7 +2752,7 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
       h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.stopPropagation(); navigate('edit', { id: bp.id }); } }, tr('✏️ 编辑', '✏️ Edit')),
       h('button', { className: 'btn btn-ghost btn-sm', style: { color: '#ef4444' }, onclick: async (e) => {
         e.stopPropagation();
-        if (!confirm(tr(`确定删除「${bp.title}」吗？此操作不可恢复。`, `Delete "${bp.title}"? This cannot be undone.`))) return;
+        if (!confirm(tr(`确定删除「${blueprintTitle(bp)}」吗？此操作不可恢复。`, `Delete "${blueprintTitle(bp)}"? This cannot be undone.`))) return;
         try {
           await api.deleteBlueprint(bp.id);
           showToast(tr('已删除', 'Deleted'), 'success');
@@ -3191,7 +3233,7 @@ async function handleChangePassword() {
 // Delete Blueprint
 // ═══════════════════════════════════════════
 async function handleDeleteBlueprint(bp) {
-  if (!confirm(tr(`确定要删除「${bp.title}」吗？此操作不可撤销！`, `Delete "${bp.title}"? This cannot be undone.`))) return;
+  if (!confirm(tr(`确定要删除「${blueprintTitle(bp)}」吗？此操作不可撤销！`, `Delete "${blueprintTitle(bp)}"? This cannot be undone.`))) return;
 
   try {
     await api.deleteBlueprint(bp.id);
@@ -3420,10 +3462,29 @@ async function loadEditPage(id) {
           h('input', { type: 'text', id: 'edit-bp-title', className: 'form-input', value: bp.title || '', placeholder: tr('图纸标题', 'Blueprint title') }),
         ),
 
+        // English title (optional)
+        h('div', { className: 'form-group' },
+          h('label', { className: 'form-label' }, tr('英文标题（可选）', 'English title (optional)')),
+          h('input', {
+            type: 'text', id: 'edit-bp-title-en', className: 'form-input', maxlength: '100',
+            value: bp.title_en || '',
+            placeholder: tr('英文站显示的标题；留空则用中文标题', 'Shown on the English site; defaults to the Chinese title'),
+          }),
+        ),
+
         // Description
         h('div', { className: 'form-group' },
           h('label', { className: 'form-label' }, tr('描述', 'Description')),
           h('textarea', { id: 'edit-bp-desc', className: 'form-textarea', placeholder: tr('描述你的作品...', 'Describe your build...') }, bp.description || ''),
+        ),
+
+        // English description (optional)
+        h('div', { className: 'form-group' },
+          h('label', { className: 'form-label' }, tr('英文描述（可选）', 'English description (optional)')),
+          h('textarea', {
+            id: 'edit-bp-desc-en', className: 'form-textarea',
+            placeholder: tr('英文站显示的描述；留空则用中文描述', 'Shown on the English site; defaults to the Chinese description'),
+          }, bp.description_en || ''),
         ),
 
         // Category + Difficulty (form-row)
@@ -3451,7 +3512,7 @@ async function loadEditPage(id) {
             h('label', { className: 'form-label' }, tr('品牌', 'Brand')),
             h('select', { id: 'edit-bp-brand', className: 'form-select' },
               h('option', { value: '' }, tr('选择品牌', 'Choose a brand')),
-              ...editBrandOptions.map(b => h('option', { value: b, ...(editBrand === b ? { selected: '' } : {}) }, b)),
+              ...editBrandOptions.map(b => h('option', { value: b, ...(editBrand === b ? { selected: '' } : {}) }, brandLabel(b))),
             ),
           ),
           h('div', { className: 'form-group' },
@@ -3561,7 +3622,9 @@ async function handleSaveEditBlueprint(id) {
   if (errEl) errEl.innerHTML = '';
 
   const title = document.getElementById('edit-bp-title')?.value.trim();
+  const titleEN = document.getElementById('edit-bp-title-en')?.value.trim();
   const description = document.getElementById('edit-bp-desc')?.value.trim();
+  const descriptionEN = document.getElementById('edit-bp-desc-en')?.value.trim();
   const category = document.getElementById('edit-bp-category')?.value;
   const difficultyRaw = document.getElementById('edit-bp-difficulty')?.value;
   const difficulty = difficultyRaw ? parseInt(difficultyRaw) : null;
@@ -3579,7 +3642,10 @@ async function handleSaveEditBlueprint(id) {
   try {
     await api.updateBlueprint(id, {
       title,
+      // Sent even when blank so clearing the English fields removes them.
+      title_en: titleEN || '',
       description: description || undefined,
+      description_en: descriptionEN || '',
       category: category || undefined,
       difficulty: difficulty || undefined,
       piece_count,
@@ -3778,7 +3844,7 @@ async function renderAdminPage() {
           h('span', { style: { color: 'var(--text-sec)', width: '24px', textAlign: 'center', fontWeight: 700 } }, String(i + 1)),
           cover ? h('img', { src: cover, className: 'cell-thumb' }) : h('div', { className: 'cell-thumb', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '-'),
           h('div', { style: { flex: '1', minWidth: '0' } },
-            h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, bp.title),
+            h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, blueprintTitle(bp)),
             h('div', { style: { fontSize: '0.8rem', color: 'var(--text-sec)' } }, bp.author ? bp.author.username : '-'),
           ),
           h('button', { className: 'btn btn-ghost btn-sm', style: { marginRight: '4px' }, disabled: i === 0, onclick: () => handleMoveFeatured(i, -1) }, '↑'),
@@ -3810,7 +3876,7 @@ async function renderAdminPage() {
           h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--border)' } },
             cover ? h('img', { src: cover, className: 'cell-thumb' }) : h('div', { className: 'cell-thumb', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, '-'),
             h('div', { style: { flex: '1', minWidth: '0' } },
-              h('span', { style: { fontWeight: 700 } }, bp.title),
+              h('span', { style: { fontWeight: 700 } }, blueprintTitle(bp)),
               h('span', { style: { fontSize: '0.8rem', color: 'var(--text-sec)', marginLeft: '8px' } }, bp.author ? bp.author.username : '-'),
             ),
             already
@@ -3930,7 +3996,7 @@ async function renderAdminPage() {
             h('tr', { style: { borderLeft: '3px solid var(--danger)' } },
               h('td', {}, cover ? h('img', { src: cover, className: 'cell-thumb' }) : '—'),
               h('td', {},
-                h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, bp.title),
+                h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, blueprintTitle(bp)),
                 h('div', { style: { fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 700 } }, `🚩 ${item.report_count} 次举报`),
               ),
               h('td', {}, bp.author ? bp.author.username : '—'),
@@ -4201,7 +4267,7 @@ async function renderAdminPage() {
 
         return h('tr', {},
           h('td', {}, coverUrl(bp) ? h('img', { src: coverUrl(bp), className: 'cell-thumb' }) : '—'),
-          h('td', {}, h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, bp.title)),
+          h('td', {}, h('a', { href: `#/detail?id=${bp.id}`, style: { fontWeight: 700 } }, blueprintTitle(bp))),
           h('td', {}, bp.author ? bp.author.username : '—'),
           h('td', {}, bp.category || '—'),
           h('td', {}, `${diff.stars}`),

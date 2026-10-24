@@ -163,10 +163,11 @@ export async function logout() {
 }
 
 // ── Blueprints ──
-export async function listBlueprints({ page = 1, size = 12, q, category, sort, tag } = {}) {
+export async function listBlueprints({ page = 1, size = 12, q, category, brand, sort, tag } = {}) {
   const params = new URLSearchParams({ page, size });
   if (q) params.set('q', q);
   if (category) params.set('category', category);
+  if (brand) params.set('brand', brand);
   if (sort) params.set('sort', sort);
   if (tag) params.set('tag', tag);
   return request(`/api/blueprints?${params}`);

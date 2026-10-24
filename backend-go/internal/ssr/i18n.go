@@ -81,7 +81,17 @@ func otherLangs(code string) []Lang {
 // navPaths is the language-neutral nav skeleton. Labels come from navLabels[lang];
 // a missing label falls back to the path itself rather than rendering an empty
 // <a>, so adding a language never silently produces a blank menu item.
-var navPaths = []string{"/", "/explore", "/blog", "/about", "/faq", "/privacy"}
+//
+// The header shows only the three primary sections — the same three the SPA's
+// renderNavbar links — so server-rendered and hydrated users see one menu. The
+// home page is the brand logo; FAQ and Privacy remain reachable from the footer
+// (footerPaths), which keeps their internal links intact for crawlers.
+var navPaths = []string{"/explore", "/blog", "/about"}
+
+// footerPaths is the footer's link set: the header's three plus home, FAQ and
+// Privacy. It is deliberately separate from navPaths so trimming the header
+// does not orphan the static pages.
+var footerPaths = []string{"/", "/explore", "/blog", "/about", "/faq", "/privacy"}
 
 var navLabels = map[string]map[string]string{
 	"zh": {"/": "首页", "/explore": "发现图纸", "/blog": "博客", "/about": "关于我们", "/faq": "常见问题", "/privacy": "隐私策略"},
@@ -354,7 +364,7 @@ func englishBuildList(bps []db.Blueprint, public string) template.HTML {
 	var b strings.Builder
 	b.WriteString("<ul>")
 	for _, bp := range bps {
-		b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, bp.ID, esc(bp.Title)))
+		b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, bp.ID, esc(bp.TitleIn("en"))))
 		if bp.Category != nil && *bp.Category != "" {
 			b.WriteString(fmt.Sprintf(" (%s)", esc(*bp.Category)))
 		}
@@ -375,7 +385,7 @@ func homeFooterEN(public string) template.HTML {
 	b.WriteString(`<footer class="footer">`)
 	b.WriteString(`<p>BrickPlan — MOC blueprints, building guides and brick reviews.</p>`)
 	b.WriteString(`<p>`)
-	for i, p := range navPaths {
+	for i, p := range footerPaths {
 		if i > 0 {
 			b.WriteString(" · ")
 		}
@@ -396,7 +406,7 @@ func homeFooterCN(public string) template.HTML {
 	b.WriteString(`<footer class="footer">`)
 	b.WriteString(`<p>BrickPlan — 积木图纸分享社区，MOC 图纸、搭建教程与作品评测。</p>`)
 	b.WriteString(`<p>`)
-	for i, p := range navPaths {
+	for i, p := range footerPaths {
 		if i > 0 {
 			b.WriteString(" · ")
 		}

@@ -144,6 +144,20 @@ go run ./cmd/migrate --sqlite ../backend/brickplans.db --reset    # 先清空 My
 
 迁移保留 UUID、时间戳、bcrypt 密码哈希（passlib `$2b$` 与 Go bcrypt 二进制兼容）；旧用户标记 `email_verified=true` 以免被 24h 未验证清理删除。上传文件（`backend/uploads/`）需手动复制到 `backend-go/uploads/`，或把 `UPLOAD_DIR` 指向旧目录。
 
+## 7b. 批量翻译存量图纸的英文标题/描述
+
+`title_en` / `description_en` 是可选字段，老数据为空时英文站回退显示中文。要把存量中文标题和描述一次性翻成英文：
+
+```bash
+cd /home/ubuntu/project/brickplans/backend-go
+go run ./cmd/translate-blueprints --dry-run       # 先看会翻哪些
+go run ./cmd/translate-blueprints                 # 翻译所有缺失字段（幂等，可断点续跑）
+go run ./cmd/translate-blueprints --limit 20      # 只翻前 20 条
+go run ./cmd/translate-blueprints --force         # 重翻已有译文
+```
+
+依赖与英文博客改写流水线相同：`ANTHROPIC_API_KEY`（可选 `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`），数据库读 `.env` 的 `MYSQL_DSN`。命令启动时会自动补齐两个新列；已存在译文的行会跳过，失败批次下次重跑即可。建议在低峰执行，`--batch 10` 为默认批量。
+
 ## 8. 前端 + nginx
 
 前端构建不变：

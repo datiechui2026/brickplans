@@ -91,12 +91,12 @@ func (h *Handler) siteJSONLD() []template.JS {
 	return []template.JS{mustJSON(org), mustJSON(website)}
 }
 
-func creativeWorkJSONLD(bp *db.Blueprint, cover, public string) template.JS {
+func creativeWorkJSONLD(bp *db.Blueprint, cover, public, lang string) template.JS {
 	m := map[string]interface{}{
 		"@context":      "https://schema.org",
 		"@type":         "CreativeWork",
-		"name":          bp.Title,
-		"description":   derefStr(bp.Description),
+		"name":          bp.TitleIn(lang),
+		"description":   derefStr(bp.DescriptionIn(lang)),
 		"image":         cover,
 		"url":           public + "/detail/" + bp.ID,
 		"datePublished": bp.CreatedAt.Format("2006-01-02"),
@@ -133,8 +133,8 @@ func creativeWorkJSONLDEN(bp *db.Blueprint, cover, public string) template.JS {
 	m := map[string]interface{}{
 		"@context":      "https://schema.org",
 		"@type":         "CreativeWork",
-		"name":          bp.Title,
-		"description":   derefStr(bp.Description),
+		"name":          bp.TitleIn("en"),
+		"description":   derefStr(bp.DescriptionIn("en")),
 		"image":         cover,
 		"url":           public + "/en/detail/" + bp.ID,
 		"datePublished": bp.CreatedAt.Format("2006-01-02"),
@@ -178,12 +178,12 @@ func brandNode(bp *db.Blueprint) map[string]interface{} {
 // This helps search engines (especially Baidu) display rich snippets with product info.
 // The blueprint is always a free (price 0) downloadable design, so offers carries
 // price 0 and interactionStatistic exposes the real engagement counters.
-func productJSONLD(bp *db.Blueprint, cover, public string) template.JS {
+func productJSONLD(bp *db.Blueprint, cover, public, lang string) template.JS {
 	m := map[string]interface{}{
 		"@context":    "https://schema.org",
 		"@type":       "Product",
-		"name":        bp.Title,
-		"description": derefStr(bp.Description),
+		"name":        bp.TitleIn(lang),
+		"description": derefStr(bp.DescriptionIn(lang)),
 		"image":       cover,
 		"url":         public + "/detail/" + bp.ID,
 		"sku":         bp.ID,
@@ -235,8 +235,8 @@ func productJSONLDEN(bp *db.Blueprint, cover, public string) template.JS {
 	m := map[string]interface{}{
 		"@context":    "https://schema.org",
 		"@type":       "Product",
-		"name":        bp.Title,
-		"description": derefStr(bp.Description),
+		"name":        bp.TitleIn("en"),
+		"description": derefStr(bp.DescriptionIn("en")),
 		"image":       cover,
 		"url":         detailURL,
 		"sku":         bp.ID,
@@ -298,13 +298,13 @@ func engagementStatistic(views, likes int) []map[string]interface{} {
 // blueprintListItem maps one blueprint to the nested Product node used inside
 // ItemList. Image is deliberately omitted: list handlers do not preload images,
 // so including it would mean an N+1 query on every listing page.
-func blueprintListItem(bp db.Blueprint, public string) map[string]interface{} {
+func blueprintListItem(bp db.Blueprint, public, lang string) map[string]interface{} {
 	url := public + "/detail/" + bp.ID
 	m := map[string]interface{}{
 		"@type":       "Product",
-		"name":        bp.Title,
+		"name":        bp.TitleIn(lang),
 		"url":         url,
-		"description": derefStr(bp.Description),
+		"description": derefStr(bp.DescriptionIn(lang)),
 		"brand":       brandNode(&bp),
 		"offers": map[string]interface{}{
 			"@type":         "Offer",
@@ -380,7 +380,15 @@ func breadcrumbJSONLDEN(category, title, public string) template.JS {
 // Each entry nests a full Product node so list pages carry the same GEO signal
 // (free offer, rating, interaction counters) as detail pages.
 func itemListJSONLD(bps []db.Blueprint, public string) template.JS {
-	return itemListJSONLDURL(bps, public, func(id string) string { return public + "/detail/" + id })
+	return itemListJSONLDLang(bps, public, "zh")
+}
+
+// itemListJSONLDLang is itemListJSONLD for one site language: titles and
+// descriptions use the English fields when they exist, while the URLs stay in
+// the tree the caller chose (the /en/ pages still canonicalise to the Chinese
+// detail URLs, so their ItemList links there too).
+func itemListJSONLDLang(bps []db.Blueprint, public, lang string) template.JS {
+	return itemListJSONLDURL(bps, public, lang, func(id string) string { return public + "/detail/" + id })
 }
 
 // itemListJSONLDEN is the English-tree variant: same shape as itemListJSONLD
@@ -390,14 +398,14 @@ func itemListJSONLD(bps []db.Blueprint, public string) template.JS {
 // keeps CNY, so the two ItemLists never claim different currencies for the
 // same blueprint.
 func itemListJSONLDEN(bps []db.Blueprint, public string) template.JS {
-	return itemListJSONLDURL(bps, public, func(id string) string { return public + "/en/detail/" + id })
+	return itemListJSONLDURL(bps, public, "en", func(id string) string { return public + "/en/detail/" + id })
 }
 
-func itemListJSONLDURL(bps []db.Blueprint, public string, urlFor func(id string) string) template.JS {
+func itemListJSONLDURL(bps []db.Blueprint, public, lang string, urlFor func(id string) string) template.JS {
 	items := make([]map[string]interface{}, 0, len(bps))
 	for i, bp := range bps {
 		u := urlFor(bp.ID)
-		item := blueprintListItem(bp, public)
+		item := blueprintListItem(bp, public, lang)
 		// Localize the nested node for the English tree: URL, Offer URL and
 		// price currency. The title/description stay in their published
 		// language (user content), matching the page's visible copy.
@@ -414,7 +422,7 @@ func itemListJSONLDURL(bps []db.Blueprint, public string, urlFor func(id string)
 		items = append(items, map[string]interface{}{
 			"@type":    "ListItem",
 			"position": i + 1,
-			"name":     bp.Title,
+			"name":     bp.TitleIn(lang),
 			"url":      u,
 			"item":     item,
 		})

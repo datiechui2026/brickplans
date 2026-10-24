@@ -3,6 +3,7 @@ package ssr
 import (
 	"html/template"
 	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -131,7 +132,7 @@ func (h *Handler) HomeEN(c *gin.Context) {
 	jsonld = append(jsonld, webPageJSONLD(h.cfg.PublicURL, "/en/",
 		"BrickPlan — MOC Blueprints, Building Guides and Brick Reviews",
 		"Browse MOC blueprints and read English guides on brick parts, brands, techniques and set reviews.", "en"))
-	jsonld = append(jsonld, itemListJSONLD(latest, h.cfg.PublicURL))
+	jsonld = append(jsonld, itemListJSONLDLang(latest, h.cfg.PublicURL, "en"))
 
 	h.r.Render(c, PageData{
 		Lang:        "en",
@@ -204,10 +205,16 @@ func (h *Handler) PrivacyEN(c *gin.Context) {
 // their authors wrote them).
 func (h *Handler) ExploreEN(c *gin.Context) {
 	cat := c.Query("category")
+	brand := strings.TrimSpace(c.Query("brand"))
 	var bps []db.Blueprint
 	qry := h.gdb.Where("is_published = ?", true)
 	if cat != "" {
 		qry = qry.Where("category = ?", cat)
+	}
+	if brand != "" {
+		// Same stored value the SPA sends (乐高/森宝/...), so the SSR body a
+		// crawler receives matches the filtered view the user lands on.
+		qry = qry.Where("brand = ?", brand)
 	}
 	qry.Order("created_at DESC").Limit(50).Find(&bps)
 
@@ -221,7 +228,7 @@ func (h *Handler) ExploreEN(c *gin.Context) {
 	jsonld := h.siteJSONLD()
 	jsonld = append(jsonld, webPageJSONLD(h.cfg.PublicURL, "/en/explore",
 		"Explore MOC blueprints", "Browse community brick blueprints by category, tag and keyword.", "en"))
-	jsonld = append(jsonld, itemListJSONLD(bps, h.cfg.PublicURL))
+	jsonld = append(jsonld, itemListJSONLDLang(bps, h.cfg.PublicURL, "en"))
 
 	h.r.Render(c, PageData{
 		Lang:        "en",
@@ -253,9 +260,10 @@ func (h *Handler) DetailEN(c *gin.Context) {
 		return
 	}
 	cover := coverURL(bp.Images, h.cfg.PublicURL)
-	desc := "BrickPlan MOC blueprint: " + bp.Title
-	if bp.Description != nil && *bp.Description != "" {
-		desc = *bp.Description
+	titleEN := bp.TitleIn("en")
+	desc := "BrickPlan MOC blueprint: " + titleEN
+	if d := bp.DescriptionIn("en"); d != nil && *d != "" {
+		desc = *d
 	}
 	category := ""
 	if bp.Category != nil {
@@ -272,13 +280,13 @@ func (h *Handler) DetailEN(c *gin.Context) {
 	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
 
 	jsonld := h.siteJSONLD()
-	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL))
-	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL))
-	jsonld = append(jsonld, breadcrumbJSONLDFor(category, bp.Title, h.cfg.PublicURL, "en"))
+	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "en"))
+	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "en"))
+	jsonld = append(jsonld, breadcrumbJSONLDFor(category, titleEN, h.cfg.PublicURL, "en"))
 
 	h.r.Render(c, PageData{
 		Lang:        "en",
-		Title:       bp.Title + " — BrickPlan MOC blueprint",
+		Title:       titleEN + " — BrickPlan MOC blueprint",
 		Description: truncate(desc, 160),
 		// Consolidation target: the Chinese page is the original document.
 		Canonical:  h.cfg.PublicURL + "/detail/" + bp.ID,
@@ -300,7 +308,7 @@ func (h *Handler) TagEN(c *gin.Context) {
 		Order("created_at DESC").Limit(50).Find(&bps)
 
 	jsonld := h.siteJSONLD()
-	jsonld = append(jsonld, itemListJSONLD(bps, h.cfg.PublicURL))
+	jsonld = append(jsonld, itemListJSONLDLang(bps, h.cfg.PublicURL, "en"))
 
 	h.r.Render(c, PageData{
 		Lang:        "en",

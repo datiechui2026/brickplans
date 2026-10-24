@@ -56,6 +56,57 @@ export function categoryOptions(includeAll = true) {
   return out;
 }
 
+// ── Brand labels ───────────────────────────────────────────────────────────
+// Brands are stored as the Chinese value picked from the curated dropdown
+// (乐高/森宝/...). English pages show the brand's international name but MUST
+// send the stored value to the API, exactly like categories.
+const BRAND_EN = {
+  乐高: 'LEGO',
+  小米: 'Xiaomi',
+  森宝: 'SEMBO',
+  双鹰: 'Double Eagle',
+  万格: 'Wange',
+  邦宝: 'BanBao',
+  沃马: 'Woma',
+  开智: 'KAZI',
+  启蒙: 'QMAN',
+  布鲁可: 'Bloks',
+  潘洛斯: 'Panlos',
+  宇星模王: 'Mould King',
+  星堡: 'Xingbao',
+  奇积: 'Qiji',
+  卫积: 'Weiji',
+  咔搭: 'CaDA',
+  双钻: 'Shuangzuan',
+  得高: 'DECOOL',
+  小鲁班: 'Sluban',
+  高砖: 'Gobricks',
+  星钻: 'Star Diamond',
+  酷彼: 'Kubi',
+  美高: 'Mega Bloks',
+  其他: 'Other',
+};
+
+export function brandLabel(value) {
+  if (!value) return value;
+  if (!isEnglishPath()) return value;
+  return BRAND_EN[value] || value;
+}
+
+// ── User-generated blueprint text ──────────────────────────────────────────
+// title_en / description_en are optional translations the uploader provides.
+// An empty value falls back to the Chinese field so the English tree never
+// renders a blank heading (the API returns both fields).
+export function blueprintTitle(bp) {
+  if (!bp) return '';
+  return isEnglishPath() && bp.title_en ? bp.title_en : bp.title;
+}
+
+export function blueprintDescription(bp) {
+  if (!bp) return '';
+  return isEnglishPath() && bp.description_en ? bp.description_en : bp.description;
+}
+
 // ── Difficulty ─────────────────────────────────────────────────────────────
 const DIFFICULTY_EN = { 1: 'Easy', 2: 'Beginner', 3: 'Medium', 4: 'Hard', 5: 'Expert' };
 const DIFFICULTY_ZH = { 1: '简单', 2: '初级', 3: '中等', 4: '困难', 5: '专家' };
