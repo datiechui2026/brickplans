@@ -46,8 +46,6 @@ Usage
 
 Exit codes: 0 ok (including "nothing to do"), 1 usage/IO error.
 """
-from __future__ import annotations
-
 import argparse
 import datetime as dt
 import os
