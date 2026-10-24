@@ -38,7 +38,7 @@ var categoryBuckets = []CategoryBucket{
 		Label: "品牌推荐",
 		raws:  []string{"品牌推荐", "品牌评测", "品牌选购", "国产积木", "积木推荐", "选购指南", "Brand Guide", "Brand Review", "Buying Guide", "Brand Comparison",
 			// M2 英文作者实际会写出的简写/变体（实测已有 "Brand" 落到 other）
-			"Brand", "Brands", "Brand Ranking", "Brand Overview"},
+			"Brand", "Brands", "Brand Ranking", "Brand Overview", },
 	},
 	{
 		Slug:  "beginner",
@@ -52,7 +52,7 @@ var categoryBuckets = []CategoryBucket{
 	{
 		Slug:  "parts",
 		Label: "零件知识",
-		raws:  []string{"零件知识", "零件指南", "积木零件", "Parts Guide", "Brick Parts", "Parts Explained"},
+		raws:  []string{"零件知识", "零件指南", "积木零件", "Parts Guide", "Brick Parts", "Parts Explained", "Parts"},
 	},
 	{
 		Slug:  "building",
@@ -69,7 +69,9 @@ var categoryBuckets = []CategoryBucket{
 	{
 		Slug:  "moc-review",
 		Label: "MOC图纸评测",
-		raws:  []string{"MOC图纸评测", "图纸评测", "MOC图纸", "MOC评测", "MOC Review", "Blueprint Review", "Instructions Review"},
+		raws:  []string{"MOC图纸评测", "图纸评测", "MOC图纸", "MOC评测", "MOC Review", "Blueprint Review", "Instructions Review",
+			// M2 English 50-piece batch review titles (MOC Review category)
+			"MOC Collection", "MOC Building Review"},
 	},
 	{
 		Slug:  "moc-tutorial",

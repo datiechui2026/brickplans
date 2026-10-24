@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -17,14 +18,23 @@ import (
 	"brickplans/internal/storage"
 )
 
-// New assembles the gin engine with global middleware and all route groups.
+// New assembles the gin engine with global middleware and all route groups, and
+// returns the handler the HTTP server should serve.
+//
+// The return type is http.Handler rather than *gin.Engine on purpose: HEAD has
+// to be rewritten to GET *before* gin routes the request (see
+// middleware.HeadToGet), which is impossible from inside the gin chain. Tests get
+// the same wrapper, so what they assert is what production serves.
 // ssrRenderer renders server-side HTML for page routes (SEO/GEO).
-func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engine {
+func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) http.Handler {
+	return middleware.HeadToGet(newEngine(cfg, gdb, ssrRenderer))
+}
+
+func newEngine(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engine {
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.HeadToGet()) // HEAD -> GET conversion (must be first, before routing)
 	r.Use(middleware.Recovery())
 	r.Use(middleware.SecurityHeaders(cfg))
 	r.Use(cors.New(cors.Config{
@@ -42,6 +52,12 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 	blogStore, blogErr := blog.LoadDirs(cfg.BlogContentDir, cfg.BlogContentDirEN)
 	if blogErr != nil {
 		fmt.Printf("[blog] warning: failed to load blog content from %s (+ %s): %v\n", cfg.BlogContentDir, cfg.BlogContentDirEN, blogErr)
+	}
+	// Intrinsic image sizes for the <img width/height> decoration done by the
+	// SSR markdown renderer. Lives next to the content dirs; a missing manifest
+	// only costs the CLS win, so it must never block startup.
+	if err := ssr.LoadImageDims(filepath.Join(filepath.Dir(cfg.BlogContentDir), "image-dims.json")); err != nil {
+		fmt.Printf("[ssr] warning: image dims manifest not loaded (%v); <img> will ship without width/height\n", err)
 	}
 	// The renderer needs the store to resolve a blog article's counterpart when
 	// building the language switcher target (see ssr.Renderer.switchTargets).
@@ -81,13 +97,20 @@ func New(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin.Engin
 	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).RegisterRoutes(r)
 	handler.NewSEOHandler(cfg, gdb, blogStore).RegisterRoutes(r)
 
-	// Fallback: /api/* → JSON 404; anything else → SSR 404 page.
+	// Fallback: /api/* → JSON 404; /en/* → English 404 page; anything else →
+	// Chinese 404 page. The /en/ tree must never leak its unknown-URL misses
+	// into the Chinese 404 (P2-1), so the language is chosen by the URL prefix.
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{"detail": "Not found"})
 			return
 		}
-		ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).NotFound(c)
+		h := ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore)
+		if strings.HasPrefix(c.Request.URL.Path, "/en") {
+			h.NotFoundEN(c)
+			return
+		}
+		h.NotFound(c)
 	})
 
 	return r

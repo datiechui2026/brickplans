@@ -296,3 +296,19 @@ func faqDataFor(lang string) []QA {
 		{"支持哪些分类？", "建筑、车辆、机甲、奇幻、科幻、场景六大分类，可配合标签进一步细化。"},
 	}
 }
+
+// NotFoundEN renders an English 404 body. /en/* must never fall through to
+// the Chinese 404 body, or the Chinese page leaks into the EN language cluster.
+func (h *Handler) NotFoundEN(c *gin.Context) {
+	c.Status(http.StatusNotFound)
+	h.r.Render(c, PageData{
+		Lang:        "en",
+		Title:       "Page not found — BrickPlan",
+		Description: "The page you are looking for does not exist.",
+		Canonical:   h.cfg.PublicURL + "/en/",
+		OGType:      "website",
+		JSONLD:      h.siteJSONLD(),
+		BodyClass:   "blog-detail",
+		Noscript:    template.HTML(`<h1>404 — Page not found</h1><p>The page you are looking for does not exist.</p><p><a href="` + h.cfg.PublicURL + `/en/` + `">Back to the English home</a> · <a href="` + h.cfg.PublicURL + `/en/explore` + `">Browse blueprints</a></p>`),
+	})
+}

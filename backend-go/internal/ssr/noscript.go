@@ -276,6 +276,76 @@ func listNoscriptFor(lang string, bps []db.Blueprint, public string) template.HT
 	return template.HTML(b.String())
 }
 
+// detailNoscriptEN renders the English blueprint detail body (/en/detail).
+// Mirrors detailNoscript one-for-one — same fields, same order, same 4 related
+// builds — but with English labels and /en/detail links. The blueprint's own
+// title/description stay in their published language.
+func detailNoscriptEN(bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<article>`)
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bp.Title)))
+	if bp.Author != nil {
+		b.WriteString(fmt.Sprintf(`<p>By <a href="%s/user/%s">%s</a></p>`, public, esc(bp.Author.ID), esc(bp.Author.Username)))
+	}
+	if bp.Description != nil && *bp.Description != "" {
+		b.WriteString(string(mdToHTML(*bp.Description)))
+	}
+	if cover != "" {
+		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(bp.Title)))
+	}
+	b.WriteString("<ul>")
+	if bp.Category != nil {
+		b.WriteString(fmt.Sprintf("<li>Category: %s</li>", esc(*bp.Category)))
+	}
+	if bp.Difficulty != nil {
+		b.WriteString(fmt.Sprintf("<li>Difficulty: %d / 5</li>", *bp.Difficulty))
+	}
+	if bp.PieceCount != nil {
+		b.WriteString(fmt.Sprintf("<li>Pieces: %d</li>", *bp.PieceCount))
+	}
+	if bp.Dimensions != nil {
+		b.WriteString(fmt.Sprintf("<li>Dimensions: %s</li>", esc(*bp.Dimensions)))
+	}
+	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
+		b.WriteString(fmt.Sprintf("<li>Brand: %s</li>", esc(strings.TrimSpace(*bp.Brand))))
+	}
+	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
+		b.WriteString(fmt.Sprintf("<li>Set code: %s</li>", esc(strings.TrimSpace(*bp.ProductCode))))
+	}
+	b.WriteString(fmt.Sprintf("<li>Views: %d</li>", bp.ViewCount))
+	b.WriteString(fmt.Sprintf("<li>Likes: %d</li>", bp.LikeCount))
+	b.WriteString("</ul>")
+	if len(bp.Tags) > 0 {
+		b.WriteString("<p>Tags: ")
+		for i, bt := range bp.Tags {
+			if bt.Tag == nil {
+				continue
+			}
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(fmt.Sprintf(`<a href="%s/tags/%s">%s</a>`, public, esc(bt.Tag.Name), esc(bt.Tag.Name)))
+		}
+		b.WriteString("</p>")
+	}
+	b.WriteString("</article>")
+
+	// Related blueprints section — English labels, /en/detail links.
+	if len(related) > 0 {
+		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>Related builds</h2><ul>`)
+		for _, r := range related {
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, r.ID, esc(r.Title)))
+			if r.Category != nil {
+				b.WriteString(fmt.Sprintf(" (%s)", esc(*r.Category)))
+			}
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul></section>")
+	}
+	b.WriteString(`<p><a href="` + public + `/en/explore` + `">← Back to the blueprint library</a> · <a href="` + public + `/en/blog` + `">English blog</a></p>`)
+	return template.HTML(b.String())
+}
+
 func homeNoscript(featured, latest []db.Blueprint, posts []blog.Post, public string) template.HTML {
 	return homeBodyFor("zh", featured, latest, posts, public, "")
 }
@@ -311,6 +381,9 @@ func homeBodyFor(lang string, featured, latest []db.Blueprint, posts []blog.Post
 		b.WriteString("</ul>")
 		b.WriteString(fmt.Sprintf(`<p><a href="%s">%s</a></p>`, public+postBase, esc(l.AllPosts)))
 	}
+	// CN footer (P1-1): mirrors homeFooterEN on /en/ so both homepages end with
+	// the same structure — site line + nav links + a cross-language link.
+	b.WriteString(string(homeFooterCN(public)))
 	return template.HTML(b.String())
 }
 

@@ -104,11 +104,20 @@ func (s *Store) loadDir(dir, lang string) error {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
+		slug := strings.TrimSuffix(entry.Name(), ".md")
+		// Retired English URLs are still served by a 301 (see redirects.go).
+		// Skipping them at load time is what keeps them out of the sitemap and
+		// the /en/blog listing even if their markdown is restored by a sync.
+		if lang == LangEN {
+			if target, retired := RetiredENSlugs[slug]; retired {
+				fmt.Printf("[blog] skip retired EN slug %q (301 -> %q)\n", slug, target)
+				continue
+			}
+		}
 		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
 			continue
 		}
-		slug := strings.TrimSuffix(entry.Name(), ".md")
 		post, err := parsePost(slug, string(raw))
 		if err != nil {
 			continue

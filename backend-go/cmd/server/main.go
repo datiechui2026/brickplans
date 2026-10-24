@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"time"
 
 	"gorm.io/gorm"
@@ -31,9 +32,14 @@ func main() {
 	// go cleanupUnverified(gdb)
 
 	renderer := ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)
-	r := router.New(cfg, gdb, renderer)
+	handler := router.New(cfg, gdb, renderer)
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	log.Printf("BrickPlan backend-go listening on %s (env=%s)", cfg.HTTPAddr, cfg.AppEnv)
-	if err := r.Run(cfg.HTTPAddr); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

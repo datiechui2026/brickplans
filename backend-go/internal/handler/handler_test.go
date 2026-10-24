@@ -27,7 +27,7 @@ import (
 
 const testSecret = "test-secret-key-must-be-at-least-32-characters-long"
 
-func setupTest(t *testing.T) (*gin.Engine, *gorm.DB) {
+func setupTest(t *testing.T) (http.Handler, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	dsn := filepath.Join(t.TempDir(), "test.db")
@@ -60,7 +60,7 @@ func setupTest(t *testing.T) (*gin.Engine, *gorm.DB) {
 
 // ── HTTP helpers ──
 
-func doJSON(t *testing.T, r *gin.Engine, method, path string, body any, token string) *httptest.ResponseRecorder {
+func doJSON(t *testing.T, r http.Handler, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	var rd io.Reader
 	if body != nil {
@@ -95,7 +95,7 @@ func extractCookie(w *httptest.ResponseRecorder, name string) string {
 	return ""
 }
 
-func registerUser(t *testing.T, r *gin.Engine, username, email string) (token, userID string) {
+func registerUser(t *testing.T, r http.Handler, username, email string) (token, userID string) {
 	w := doJSON(t, r, "POST", "/api/auth/register",
 		map[string]string{"username": username, "email": email, "password": "password123"}, "")
 	if w.Code != 201 {
@@ -107,7 +107,7 @@ func registerUser(t *testing.T, r *gin.Engine, username, email string) (token, u
 	return
 }
 
-func createBlueprint(t *testing.T, r *gin.Engine, token, title string, published bool) string {
+func createBlueprint(t *testing.T, r http.Handler, token, title string, published bool) string {
 	body := map[string]any{"title": title}
 	if !published {
 		body["is_published"] = false
@@ -353,7 +353,7 @@ func TestCommentSerializationHasNoEmail(t *testing.T) {
 
 // ── upload helpers ──
 
-func uploadAvatarRequest(t *testing.T, r *gin.Engine, token, filename, contentType string, content []byte) *httptest.ResponseRecorder {
+func uploadAvatarRequest(t *testing.T, r http.Handler, token, filename, contentType string, content []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -849,7 +849,7 @@ func makeAdmin(t *testing.T, gdb *gorm.DB, userID string) {
 	}
 }
 
-func listPublicComments(t *testing.T, r *gin.Engine, bpID string) []any {
+func listPublicComments(t *testing.T, r http.Handler, bpID string) []any {
 	t.Helper()
 	w := doJSON(t, r, "GET", "/api/blueprints/"+bpID+"/comments", nil, "")
 	if w.Code != 200 {

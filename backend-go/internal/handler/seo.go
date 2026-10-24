@@ -199,13 +199,25 @@ func (h *SEOHandler) sitemapSite(c *gin.Context, lang string) {
 		for _, t := range tags {
 			writeURL(&b, base+"/tags/"+url.PathEscape(t.Name), contentDay, "0.6", "weekly")
 		}
+	}
 
-		// Blueprint detail pages live in the Chinese hub: blueprints have no
-		// English tree, so they are not a per-language resource.
-		var bps []db.Blueprint
-		h.gdb.Where("is_published = ?", true).Order("updated_at DESC").Find(&bps)
+	// Blueprint detail pages: CN hub lists /detail/... (priority 0.8).
+	var bps []db.Blueprint
+	h.gdb.Where("is_published = ?", true).Order("updated_at DESC").Find(&bps)
+	for _, bp := range bps {
+		writeURL(&b, base+"/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.8", "weekly")
+	}
+
+	if lang == blog.LangEN {
+		// P0-2: /en/detail/{uuid} is a real, crawlable page (EN chrome, /en/detail
+		// JSON-LD), so it now belongs in the English hub sitemap — otherwise it
+		// is only discoverable by crawling the EN tree. The CN hub above already
+		// lists the same record, so the two hubs form a valid hreflang cluster.
 		for _, bp := range bps {
-			writeURL(&b, base+"/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.8", "weekly")
+			writeURL(&b, base+"/en/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.7", "weekly",
+				altLink{"zh-CN", base + "/detail/" + bp.ID},
+				altLink{"en", base + "/en/detail/" + bp.ID},
+				altLink{"x-default", base + "/en/detail/" + bp.ID})
 		}
 	}
 

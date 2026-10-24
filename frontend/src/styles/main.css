@@ -1184,7 +1184,12 @@ tr:hover td { background: #fafafa; }
 .markdown-body em { font-style: italic; }
 .markdown-body code { background: var(--bg-alt); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
 .markdown-body blockquote { border-left: 3px solid var(--border); margin: 10px 0; padding: 4px 14px; color: var(--text-sec); }
-.markdown-body img { max-width: 100%; border-radius: 8px; margin: 10px 0; }
+/* height:auto + aspect-ratio: the SSR renderer ships intrinsic width/height
+   attributes so the browser reserves the box before the image loads (CLS).
+   Without height:auto those attributes would win over max-width and squash
+   the image at narrow viewports. height:auto + the attribute-derived aspect
+   ratio is the standard no-CLS pattern. */
+.markdown-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0; }
 .markdown-body a { color: var(--accent); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body table { width: 100%; border-collapse: collapse; margin: 10px 0; }
@@ -1220,7 +1225,7 @@ tr:hover td { background: #fafafa; }
 .blog-detail .blog-content li { margin: 6px 0; }
 .blog-detail .blog-content code { background: var(--bg-alt); padding: 2px 6px; border-radius: 4px; font-size: 0.88em; }
 .blog-detail .blog-content blockquote { border-left: 3px solid var(--accent); margin: 14px 0; padding: 8px 18px; color: var(--text-sec); background: rgba(99,102,241,.04); border-radius: 0 8px 8px 0; }
-.blog-detail .blog-content img { max-width: 100%; border-radius: 10px; margin: 14px 0; }
+.blog-detail .blog-content img { max-width: 100%; height: auto; border-radius: 10px; margin: 14px 0; }
 .blog-detail .blog-nav { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); gap: 16px; }
 .blog-detail .blog-nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
 .blog-detail .blog-nav a:hover { text-decoration: underline; }

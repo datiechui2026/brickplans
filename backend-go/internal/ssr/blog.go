@@ -3,6 +3,7 @@ package ssr
 import (
 	"fmt"
 	"html/template"
+	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
@@ -331,11 +332,28 @@ func (h *Handler) BlogDetailEN(c *gin.Context) { h.blogDetail(c, blog.LangEN) }
 
 func (h *Handler) blogDetail(c *gin.Context, lang string) {
 	slug := c.Param("slug")
+	// Retired English URLs keep their inbound links and index entries: answer
+	// with a 301 to the successor article instead of a 404 (see
+	// blog.RetiredENSlugs). This runs before the store lookup on purpose — the
+	// retired markdown is gone, and the store refuses to load it even if a
+	// content sync brings it back.
+	if lang == blog.LangEN {
+		if target, retired := blog.RetiredENSlugs[slug]; retired {
+			c.Redirect(http.StatusMovedPermanently, h.cfg.PublicURL+blogDetailPath(blog.LangEN, target))
+			return
+		}
+	}
 	// GetByLang falls back to the Chinese post when the translation is missing,
 	// so an aggregate link to /en/blog/<slug> renders instead of 404ing. The
 	// returned post's own Lang is the truth about what language this page shows.
 	post := h.blogStore.GetByLang(slug, lang)
 	if post == nil {
+		// The 404 body must match the tree the URL lives in: an /en/ URL that
+		// falls back to the Chinese 404 leaks every miss into the CN cluster.
+		if lang == blog.LangEN {
+			h.NotFoundEN(c)
+			return
+		}
 		h.NotFound(c)
 		return
 	}
@@ -363,8 +381,11 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 	}
 
 	jsonld := h.siteJSONLD()
+	// One article entity per page: BlogPosting (which is itself an Article
+	// subtype) carries image/wordCount/dateModified, so emitting a second
+	// Article node only duplicated the payload and made Rich Results report a
+	// conflicting pair.
 	jsonld = append(jsonld, blogPostJSONLD(post, h.cfg.PublicURL, pageLang))
-	jsonld = append(jsonld, articleJSONLD(post, h.cfg.PublicURL, pageLang))
 	// GEO: derive FAQPage Q&A pairs from the article's own H2/H3 sections so AI
 	// answer engines get explicit question/answer pairs instead of free prose.
 	if qa := buildFAQFromBody(post.Body, 6); len(qa) > 0 {
@@ -562,43 +583,100 @@ func withInLanguage(js template.JS, lang string) template.JS {
 
 func blogPostJSONLD(post *blog.Post, public string, lang string) template.JS {
 	pageURL := public + blogDetailPath(lang, post.Slug)
-	jsonStr := fmt.Sprintf(`{"@context":"https://schema.org","@type":"BlogPosting","headline":%q,"description":%q,"datePublished":%q,"dateModified":%q,"author":{"@type":"Person","name":%q},"publisher":{"@type":"Organization","name":"BrickPlan","url":%q},"mainEntityOfPage":{"@type":"WebPage","@id":%q},"url":%q,"inLanguage":%q}`,
-		post.Title,
-		post.Description,
-		post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		post.Author,
-		public,
-		pageURL,
-		pageURL,
-		isoLang(lang),
-	)
-	return template.JS(jsonStr)
-}
-
-// articleJSONLD emits Schema.org Article structured data for blog detail pages.
-// This complements BlogPosting (which is a subtype of Article) for maximum
-// search engine compatibility, especially for Baidu SEO.
-func articleJSONLD(post *blog.Post, public string, lang string) template.JS {
-	pageURL := public + blogDetailPath(lang, post.Slug)
+	published := post.Date.Format("2006-01-02T15:04:05Z07:00")
 	m := map[string]interface{}{
-		"@context":         "https://schema.org",
-		"@type":            "Article",
-		"headline":         post.Title,
-		"description":      post.Description,
-		"datePublished":    post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		"dateModified":     post.Date.Format("2006-01-02T15:04:05Z07:00"),
-		"author":           map[string]interface{}{"@type": "Person", "name": post.Author},
-		"publisher":        map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public, "logo": map[string]interface{}{"@type": "ImageObject", "url": public + "/og-default.png"}},
-		"mainEntityOfPage": map[string]interface{}{"@type": "WebPage", "@id": pageURL},
-		"url":              pageURL,
-		"inLanguage":       isoLang(lang),
+		"@context":    "https://schema.org",
+		"@type":       "BlogPosting",
+		"@id":         pageURL + "#article",
+		"headline":    truncate(post.Title, 110),
+		"description": post.Description,
+		"datePublished": published,
+		// No `updated:` frontmatter field exists yet, so the two dates are the
+		// same value; the key is still emitted because Google's Article
+		// guidelines treat dateModified as recommended and Rich Results flags
+		// its absence.
+		"dateModified": published,
+		"wordCount":    postWordCount(post),
+		"author": map[string]interface{}{
+			"@type": "Person",
+			"name":  post.Author,
+			"url":   public + "/about",
+		},
+		"publisher": map[string]interface{}{
+			"@type": "Organization",
+			"@id":   public + "/#organization",
+			"name":  "BrickPlan",
+			"url":   public,
+			"logo": map[string]interface{}{
+				"@type":  "ImageObject",
+				"url":    public + "/og-default.png",
+				"width":  1200,
+				"height": 630,
+			},
+		},
+		"mainEntityOfPage": map[string]interface{}{
+			"@type": "WebPage",
+			"@id":   pageURL,
+		},
+		"url":        pageURL,
+		"inLanguage": isoLang(lang),
+	}
+	if imgs := postImageObjects(post.Body, 3); len(imgs) > 0 {
+		m["image"] = imgs
+		m["thumbnailUrl"] = imgs[0]["url"]
+	}
+	if post.Category != "" {
+		m["articleSection"] = post.Category
 	}
 	if len(post.Tags) > 0 {
 		m["keywords"] = strings.Join(post.Tags, ", ")
 	}
-	if img := firstImageURL(post.Body); img != "" {
-		m["image"] = []string{img}
-	}
 	return mustJSON(m)
+}
+
+// postImageObjects returns up to max images from the post body as Schema.org
+// ImageObject nodes carrying the real intrinsic size. Google wants an image
+// array on BlogPosting; supplying width/height also lets the crawler reserve
+// layout and pick the best rendition without fetching every file.
+func postImageObjects(body string, max int) []map[string]interface{} {
+	out := []map[string]interface{}{}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		for _, m := range mdImageRE.FindAllStringSubmatch(line, -1) {
+			u := m[1]
+			if seen[u] {
+				continue
+			}
+			seen[u] = true
+			obj := map[string]interface{}{"@type": "ImageObject", "url": u}
+			if w, h, ok := imageSize(u); ok {
+				obj["width"] = w
+				obj["height"] = h
+			}
+			out = append(out, obj)
+			if len(out) >= max {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+// postWordCount estimates the article's word count for structured data.
+// Latin text counts whitespace-separated tokens; run of CJK characters are
+// counted in pairs (the usual 2-character ≈ 1-word convention), so a Chinese
+// article does not report "1 word" for a paragraph of Han characters.
+func postWordCount(post *blog.Post) int {
+	txt := plainMDText(post.Title + "\n" + post.Description + "\n" + post.Body)
+	words := 0
+	han := 0
+	for _, tok := range strings.Fields(txt) {
+		words++
+		for _, r := range tok {
+			if r >= 0x4E00 && r <= 0x9FFF {
+				han++
+			}
+		}
+	}
+	return words + han/2
 }

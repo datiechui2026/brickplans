@@ -86,10 +86,14 @@ func parsePost(slug, raw string) (*Post, error) {
 		case "category":
 			post.Category = val
 		case "tags":
-			// Parse [tag1, tag2, tag3] format
+			// Parse [tag1, tag2, tag3] format. Whitespace must be stripped
+			// BEFORE the quote trim: `'brickplan'` after a comma is
+			// " 'brickplan'", and trimming quotes on the raw field leaves the
+			// leading apostrophe behind (producing tags like `'brickplan` and
+			// garbage tag URLs/keywords).
 			val = strings.Trim(val, "[]")
 			for _, tag := range strings.Split(val, ",") {
-				tag = strings.TrimSpace(strings.Trim(tag, "\"'"))
+				tag = strings.Trim(strings.TrimSpace(tag), "\"'")
 				if tag != "" {
 					post.Tags = append(post.Tags, tag)
 				}

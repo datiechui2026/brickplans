@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -86,7 +87,16 @@ func fixtureBucket(p fixturePost) string { return blog.BucketFor(p.cat) }
 // fixture markdown, so the language × category split can be asserted end to end.
 // bulkZH/bulkEN are extra single-language posts (all in one bucket) used to
 // cross the SSR page-size boundary.
-func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (*gin.Engine, *gorm.DB) {
+func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (http.Handler, *gorm.DB) {
+	t.Helper()
+	return setupSitemapTestWith(t, bulkZH, bulkEN, nil, nil)
+}
+
+// setupSitemapTestWith is setupSitemapTest plus extra per-language fixtures, for
+// tests that need a post whose slug is special (e.g. a retired English article
+// that must stay out of the sitemap even while its markdown sits on disk, while
+// its Chinese twin keeps serving).
+func setupSitemapTestWith(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fixturePost) (http.Handler, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -116,7 +126,13 @@ func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (*gin.Engine, *gorm.DB) 
 	for _, p := range zhFixtures {
 		write(zhDir, p.slug, p.cat, "ZH "+p.slug)
 	}
+	for _, p := range extraZH {
+		write(zhDir, p.slug, p.cat, "ZH "+p.slug)
+	}
 	for _, p := range enFixtures {
+		write(enDir, p.slug, p.cat, "EN "+p.slug)
+	}
+	for _, p := range extraEN {
 		write(enDir, p.slug, p.cat, "EN "+p.slug)
 	}
 	for i := 0; i < bulkZH; i++ {
@@ -124,6 +140,17 @@ func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (*gin.Engine, *gorm.DB) 
 	}
 	for i := 0; i < bulkEN; i++ {
 		write(enDir, fmt.Sprintf("sm-bulk-en-%03d", i), "Beginner Guide", fmt.Sprintf("EN bulk %d", i))
+	}
+
+	// Intrinsic-size manifest for the only image the fixtures reference: this is
+	// what the SSR markdown renderer reads to emit <img width height>, so the
+	// CLS decoration path gets exercised through the real router, not just the
+	// ssr unit tests.
+	dims := map[string]map[string]int{
+		"https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/blog/sm-parts/sm-parts-1.jpg": {"w": 1200, "h": 800},
+	}
+	if raw, err := json.Marshal(dims); err == nil {
+		_ = os.WriteFile(filepath.Join(filepath.Dir(zhDir), "image-dims.json"), raw, 0o644)
 	}
 
 	dsn := filepath.Join(t.TempDir(), "test.db")
@@ -154,7 +181,7 @@ func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (*gin.Engine, *gorm.DB) 
 	return router.New(cfg, gdb, ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)), gdb
 }
 
-func getSitemap(t *testing.T, r *gin.Engine, path string) (int, string) {
+func getSitemap(t *testing.T, r http.Handler, path string) (int, string) {
 	t.Helper()
 	req := httptest.NewRequest("GET", path, nil)
 	w := httptest.NewRecorder()
@@ -182,12 +209,33 @@ func headLines(body, needle string) string {
 	return strings.Join(out, "\n")
 }
 
-func getHTML(t *testing.T, r *gin.Engine, path string) (int, string) {
+// jsonLDOfType returns the raw JSON of the first ld+json block whose @type
+// matches, so failure messages can show the actual entity instead of "missing".
+func jsonLDOfType(body, typ string) string {
+	re := regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)</script>`)
+	for _, m := range re.FindAllStringSubmatch(body, -1) {
+		if strings.Contains(m[1], `"@type":"`+typ+`"`) {
+			return m[1]
+		}
+	}
+	return "(none)"
+}
+
+func getHTML(t *testing.T, r http.Handler, path string) (int, string) {
 	t.Helper()
-	req := httptest.NewRequest("GET", path, nil)
+	w := doRequest(t, r, http.MethodGet, path)
+	return w.Code, w.Body.String()
+}
+
+// doRequest is the method-aware form of getHTML: HEAD assertions need the status
+// code and headers without a body, and HEAD is exactly where the status used to
+// get lost (see middleware.HeadToGet).
+func doRequest(t *testing.T, r http.Handler, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	return w.Code, w.Body.String()
+	return w
 }
 
 // ── Category mapping semantics ──
@@ -637,9 +685,66 @@ func TestEnglishFallbackServesChineseCanonical(t *testing.T) {
 		t.Error("fallback page should declare the language it actually renders")
 	}
 
-	// A slug in neither tree is still a real 404.
-	if code, _ := getHTML(t, r, "/en/blog/does-not-exist-anywhere"); code != 404 {
+	// A slug in neither tree is still a real 404 — and it must be a 404 on HEAD
+	// too, because crawlers probe with HEAD before fetching. The status lives in
+	// gin's buffered writer until a body write flushes it, so a HEAD response
+	// that drops the body used to come back as an implicit 200 (soft 404).
+	unknown := "/en/blog/does-not-exist-anywhere"
+	if code, _ := getHTML(t, r, unknown); code != 404 {
 		t.Errorf("unknown slug: HTTP %d, want 404", code)
+	}
+	headResp := doRequest(t, r, http.MethodHead, unknown)
+	if headResp.Code != 404 {
+		t.Errorf("unknown slug (HEAD): HTTP %d, want 404", headResp.Code)
+	}
+	// The 404 body must be the English one: this URL lives in the /en/ tree.
+	if code, body := getHTML(t, r, unknown); code != 404 || !strings.Contains(body, "Page not found") {
+		t.Errorf("unknown EN slug should render the English 404 body (code=%d)", code)
+	}
+}
+
+// TestRetiredENSlugRedirects pins the retirement contract for the 51 thin English
+// articles: the one slug that was already indexed answers 301 to its successor
+// (GET and HEAD), never reappears in the sitemap or the /en/blog listing even
+// while its markdown is still on disk, and does not drag its Chinese twin down.
+func TestRetiredENSlugRedirects(t *testing.T) {
+	const retired = "brick-parts-buy-guide"
+	const target = "https://brickplans.test/en/blog/bricklink-parts-ordering-guide"
+
+	// The fixture deliberately writes the retired markdown: a content sync from
+	// an older branch must not be able to resurrect the URL.
+	r, _ := setupSitemapTestWith(t, 0, 0,
+		[]fixturePost{{retired, "零件知识"}},
+		[]fixturePost{{retired, "Parts Guide"}},
+	)
+
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		w := doRequest(t, r, method, "/en/blog/"+retired)
+		if w.Code != 301 {
+			t.Errorf("%s /en/blog/%s: HTTP %d, want 301", method, retired, w.Code)
+			continue
+		}
+		if loc := w.Header().Get("Location"); loc != target {
+			t.Errorf("%s Location = %q, want %q", method, loc, target)
+		}
+	}
+
+	bucket := blog.BucketFor("Parts Guide")
+	_, body := getSitemap(t, r, "/sitemap-en-blog-"+bucket+".xml")
+	if strings.Contains(body, retired) {
+		t.Errorf("retired slug still listed in /sitemap-en-blog-%s.xml", bucket)
+	}
+	if _, list := getHTML(t, r, "/en/blog"); strings.Contains(list, retired) {
+		t.Errorf("retired slug still linked from /en/blog")
+	}
+	// The Chinese twin stays live: only the English tree was retired, so
+	// /blog/<slug> must still serve the Chinese article.
+	zh := doRequest(t, r, http.MethodGet, "/blog/"+retired)
+	if zh.Code != 200 {
+		t.Errorf("/blog/%s: HTTP %d, want 200 — the ZH twin must survive the EN retirement", retired, zh.Code)
+	}
+	if !strings.Contains(zh.Body.String(), "ZH "+retired) {
+		t.Errorf("/blog/%s did not render the Chinese article", retired)
 	}
 }
 
@@ -870,13 +975,15 @@ func TestEnglishTreeIsLinkedFromNav(t *testing.T) {
 	}
 
 	// No English counterpart exists for /upload → the switcher must land on the
-	// English blog list rather than a 404 or a Chinese page under /en/.
+	// English home, not a 404 or a Chinese page under /en/. P1-2 (2026-10-23)
+	// moved that default from /en/blog to /en/: the EN tree is a real page tree
+	// now and the blog list is just one module of the EN home.
 	code, body = getHTML(t, r, "/upload")
 	if code != 200 {
 		t.Fatalf("/upload: %d", code)
 	}
-	if !strings.Contains(body, `href="/en/blog"`) {
-		t.Error("switcher on a page without an English version does not fall back to /en/blog")
+	if !strings.Contains(body, `href="/en/"`) {
+		t.Error("switcher on a page without an English version does not fall back to the English home (/en/)")
 	}
 }
 
@@ -894,11 +1001,21 @@ func TestArticleOgImageUsesBodyImage(t *testing.T) {
 	if !strings.Contains(body, `<meta property="og:image" content="`+want+`" />`) {
 		t.Errorf("og:image is not the body image:\n%s", headLines(body, "og:image"))
 	}
-	if !strings.Contains(body, `"image":["`+want+`"]`) {
-		t.Error("Article JSON-LD does not carry the image")
+	if !strings.Contains(body, `"image":[{"@type":"ImageObject"`) || !strings.Contains(jsonLDOfType(body, "BlogPosting"), `"url":"`+want+`"`) {
+		t.Errorf("BlogPosting JSON-LD does not carry the image array:\n%s", jsonLDOfType(body, "BlogPosting"))
+	}
+	if strings.Contains(body, `"@type":"Article"`) {
+		t.Error("page still emits a second Article entity; BlogPosting must be the only article node")
 	}
 	if strings.Contains(body, `<meta property="og:image" content="/og-default.png"`) {
 		t.Error("og:image still falls back to the default")
+	}
+	// CLS: the body image must ship real intrinsic dimensions plus decoding and
+	// eager/high-priority hints — it is the article's LCP element.
+	for _, want := range []string{`width="1200"`, `height="800"`, `loading="eager"`, `fetchpriority="high"`, `decoding="async"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("article <img> is missing %s:\n%s", want, headLines(body, "<img"))
+		}
 	}
 	// A post without images must keep the default, not emit an empty og:image.
 	code, plain := getHTML(t, r, "/blog/sm-empty")

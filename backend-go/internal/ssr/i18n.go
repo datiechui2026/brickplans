@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 	"strings"
+
+	"brickplans/internal/db"
 )
 
 // ── 站点语言注册表 ─────────────────────────────────────────────────────────
@@ -240,6 +242,10 @@ func faqDataEN() []QA {
 		{"Who owns the blueprint copyright?", "Copyright stays with the creator. Do not upload work you do not own. If you find an infringement, use the Report link at the bottom of the build page."},
 		{"How do I get more visibility?", "Complete descriptions, accurate tags and a clear cover image are the biggest factors. Builds with high view counts surface on the homepage."},
 		{"Which categories are supported?", "Six: architecture, vehicles, mecha, fantasy, sci-fi and scenery. Tags refine them further."},
+		{"Can I download blueprints as a PDF?", "Yes — any published blueprint page offers a PDF download of its instruction set, and the free MOC blueprint articles in the English blog link to the full PDF directly."},
+		{"Are English-language blueprints available?", "Blueprint titles and descriptions are currently published in Chinese. The English blog (blog.brickplan.cn/en/blog) carries the reviews, tutorials and part guides in English, and new English titles are being translated from the Chinese catalogue."},
+		{"How are blueprints ranked on the homepage?", "The homepage surfaces builds with the highest view counts among recently updated posts. A build with high views also appears on the explore page's featured section."},
+		{"Can I edit or delete my published blueprint?", "Yes. Sign in, open your blueprint from the account menu, and use the Edit or Delete actions. Deleting also removes its cover image and any attached PDF."},
 	}
 }
 
@@ -301,25 +307,63 @@ func privacyBodyEN() template.HTML {
 	b.WriteString("<li>Images and PDFs are served from Tencent Cloud COS (Hong Kong region).</li>")
 	b.WriteString("<li>Anonymous visit statistics are collected by a self-hosted analytics service.</li>")
 	b.WriteString("</ul>")
-	b.WriteString("<h2>Your choices</h2><ul>")
-	b.WriteString("<li>You can edit or delete your published work at any time from your account.</li>")
-	b.WriteString("<li>For deletion of your account or any stored data, email ghostjeky@hotmail.com.</li>")
-	b.WriteString("</ul>")
+	b.WriteString(`<h2>Your choices</h2><ul>`)
+	b.WriteString(`<li>You can edit or delete your published work at any time from your account.</li>`)
+	b.WriteString(`<li>For deletion of your account or any stored data, email ghostjeky@hotmail.com.</li>`)
+	b.WriteString(`</ul>`)
+	b.WriteString(`<h2>Cookies and local storage</h2><ul>`)
+	b.WriteString(`<li>BrickPlan uses a single session cookie to keep you signed in. No advertising or cross-site tracking cookies are set.</li>`)
+	b.WriteString(`<li>Browser local storage holds UI preferences (theme, last-explored category) only; none of it is read server-side.</li>`)
+	b.WriteString(`</ul>`)
+	b.WriteString(`<h2>Data retention</h2><ul>`)
+	b.WriteString(`<li>Published blueprints and their media are retained until you delete them or we take down the site.</li>`)
+	b.WriteString(`<li>Account records are kept for as long as the account exists; a deleted account removes the username, email and password hash within 30 days.</li>`)
+	b.WriteString(`</ul>`)
+	b.WriteString(`<h2>Accuracy</h2>`)
+	b.WriteString(`<p>If any of your stored data is wrong — for example an old email address — sign in and update it from the account settings page, or email ghostjeky@hotmail.com and we will correct it.</p>`)
 	b.WriteString(`<p><a href="/en/about">About BrickPlan</a> · <a href="/en/faq">FAQ</a> · <a href="/en/blog">Blog</a></p>`)
 	b.WriteString("</article>")
 	return template.HTML(b.String())
 }
 
-// exploreBodyEN is the English shell for the SPA browse page. The blueprint data
-// is Chinese-language today, so this page is an English frame that links into the
-// existing /explore list rather than pretending to be a translated catalogue.
-func exploreBodyEN() template.HTML {
+// exploreBodyEN renders /en/explore as the same single list the Chinese
+// /explore shows: the 50 newest published blueprints (P0-1), under English
+// headings. Blueprint titles are shown in their published language (Chinese
+// today) — translating user-generated titles in SSR would desync from the SPA
+// catalogue. Every entry links into /en/detail/{uuid}.
+func exploreBodyEN(bps []db.Blueprint, public string) template.HTML {
 	var b strings.Builder
 	b.WriteString("<article>")
 	b.WriteString("<h1>Explore MOC blueprints</h1>")
-	b.WriteString("<p>Browse brick blueprints shared by the community — architecture, vehicles, mecha, fantasy, sci-fi and scenery. Filter by category, tag or keyword.</p>")
-	b.WriteString("<p>Blueprint titles and metadata are currently published in Chinese, so the catalogue itself is served from the main <a href=\"/explore\">explore page</a>. English guides and reviews live in the <a href=\"/en/blog\">English blog</a>.</p>")
+	b.WriteString(`<p>Browse brick blueprints shared by the community — architecture, vehicles, mecha, fantasy, sci-fi and scenery. Filter by category, tag or keyword.</p>`)
+	if len(bps) > 0 {
+		b.WriteString("<h2>Latest builds</h2>")
+		b.WriteString(string(englishBuildList(bps, public)))
+	} else {
+		b.WriteString("<p>No published blueprints yet.</p>")
+	}
+	b.WriteString(`<p>Blueprint titles are shown in their published language (Chinese today). English guides and reviews live in the <a href="/en/blog">English blog</a>.</p>`)
 	b.WriteString("</article>")
+	return template.HTML(b.String())
+}
+
+// englishBuildList renders a blueprint list with English metadata labels
+// (category / pieces / views) while keeping user titles untouched. Links go
+// into the English detail tree (/en/detail/{uuid}).
+func englishBuildList(bps []db.Blueprint, public string) template.HTML {
+	var b strings.Builder
+	b.WriteString("<ul>")
+	for _, bp := range bps {
+		b.WriteString(fmt.Sprintf(`<li><a href="%s/en/detail/%s">%s</a>`, public, bp.ID, esc(bp.Title)))
+		if bp.Category != nil && *bp.Category != "" {
+			b.WriteString(fmt.Sprintf(" (%s)", esc(*bp.Category)))
+		}
+		if bp.PieceCount != nil {
+			b.WriteString(fmt.Sprintf(" · %d pieces", *bp.PieceCount))
+		}
+		b.WriteString("</li>")
+	}
+	b.WriteString("</ul>")
 	return template.HTML(b.String())
 }
 
@@ -338,7 +382,28 @@ func homeFooterEN(public string) template.HTML {
 		b.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`, esc(langFor("en").URL(p)), esc(navLabel("en", p))))
 	}
 	b.WriteString(`</p>`)
-	b.WriteString(fmt.Sprintf(`<p><a href="%s">BrickPlan 中文站</a></p>`, public+"/"))
+	b.WriteString(fmt.Sprintf(`<p><a href="%s/">BrickPlan 中文站</a></p>`, public))
+	b.WriteString(`</footer>`)
+	return template.HTML(b.String())
+}
+
+// homeFooterCN is the Chinese counterpart of homeFooterEN (P1-1): the CN home
+// page previously had no footer at all, while /en/ did — the two trees were
+// asymmetric. Content mirrors the EN footer: site line + the CN nav links + a
+// cross-link into the English tree.
+func homeFooterCN(public string) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<footer class="footer">`)
+	b.WriteString(`<p>BrickPlan — 积木图纸分享社区，MOC 图纸、搭建教程与作品评测。</p>`)
+	b.WriteString(`<p>`)
+	for i, p := range navPaths {
+		if i > 0 {
+			b.WriteString(" · ")
+		}
+		b.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`, esc(langFor("zh").URL(p)), esc(navLabel("zh", p))))
+	}
+	b.WriteString(`</p>`)
+	b.WriteString(fmt.Sprintf(`<p><a href="%s">English</a></p>`, public+"/en/"))
 	b.WriteString(`</footer>`)
 	return template.HTML(b.String())
 }

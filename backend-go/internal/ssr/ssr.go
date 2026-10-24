@@ -253,7 +253,14 @@ func (r *Renderer) switchTargets(c *gin.Context, current Lang) map[string]string
 			// alternates (the body language is the same) — only a switcher target.
 			targets[l.Code] = l.URL(neutral)
 		default:
-			targets[l.Code] = l.URL("/blog")
+			// /tags/…, /user/… — no counterpart tree exists. The EN tree's
+			// default fallback is its home page, not the blog list: the blog
+			// list is now just one module of the EN home.
+			if l.Code == "en" {
+				targets[l.Code] = l.URL("/")
+			} else {
+				targets[l.Code] = l.URL("/blog")
+			}
 		}
 	}
 	return targets
