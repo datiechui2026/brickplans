@@ -18,10 +18,28 @@ type SEOHandler struct {
 	cfg       *config.Config
 	gdb       *gorm.DB
 	blogStore *blog.Store
+	exposure  *blog.ExposureLedger
 }
 
 func NewSEOHandler(cfg *config.Config, gdb *gorm.DB, blogStore *blog.Store) *SEOHandler {
 	return &SEOHandler{cfg: cfg, gdb: gdb, blogStore: blogStore}
+}
+
+// WithExposureLedger installs the English article exposure gate (see
+// blog.ExposureLedger). A nil ledger — or a ledger whose file is missing —
+// advertises every English post, which is the pre-2026-10-24 behaviour.
+//
+// Only the English article sitemaps are gated. The Chinese tree has its own
+// indexable history and must not be affected by an English rollout knob.
+func (h *SEOHandler) WithExposureLedger(l *blog.ExposureLedger) *SEOHandler {
+	h.exposure = l
+	return h
+}
+
+// enExposed reports whether an English post may be advertised in
+// sitemap-en-blog-*.xml. Nil-safe: no ledger means "yes".
+func (h *SEOHandler) enExposed(slug string) bool {
+	return h.exposure.Allows(slug)
 }
 
 // Sitemap layout (v1.0.31 — language × category):
@@ -147,13 +165,14 @@ func (h *SEOHandler) sitemapIndex(c *gin.Context) {
 		writeSitemapRef(&b, base+blogBucketPath(blog.LangZH, st.Slug), st.LatestDay)
 	}
 	writeSitemapRef(&b, base+sitemapENPath, h.latestContentDay(blog.LangEN))
-	// English buckets appear only once they hold at least one post: an empty
-	// <urlset> is valid but shows up in Search Console as "0 discovered pages",
-	// which reads like a bug rather than "the translations are not written yet".
-	for _, st := range h.bucketStats(blog.LangEN) {
-		if st.Count > 0 {
-			writeSitemapRef(&b, base+blogBucketPath(blog.LangEN, st.Slug), st.LatestDay)
-		}
+	// English buckets appear only once they hold at least one *exposed* post: an
+	// empty <urlset> is valid but shows up in Search Console as "0 discovered
+	// pages", which reads like a bug rather than "this topic has not been
+	// released yet". The counts therefore come from the exposure gate, not from
+	// the raw corpus — otherwise a freshly-seeded ledger would advertise eight
+	// empty child sitemaps on day one.
+	for _, st := range h.enBucketExposedStats() {
+		writeSitemapRef(&b, base+blogBucketPath(blog.LangEN, st.Slug), st.LatestDay)
 	}
 
 	b.WriteString("</sitemapindex>\n")
@@ -266,6 +285,12 @@ func (h *SEOHandler) sitemapBlogBucket(c *gin.Context, lang, slug string) {
 	openURLSet(&b)
 	if h.blogStore != nil {
 		for _, post := range h.blogStore.PostsInBucketLang(lang, slug) {
+			// The exposure gate applies to the English tree only: 1,537 EN
+			// translations are released 100/day (see blog.ExposureLedger), while
+			// the Chinese corpus is fully indexed and must not change shape.
+			if lang == blog.LangEN && !h.enExposed(post.Slug) {
+				continue
+			}
 			writeURL(&b, base+blogDetailPath(lang, post.Slug), post.Date.Format("2006-01-02"), "0.8", "weekly",
 				h.postAlternates(lang, post.Slug)...)
 		}
@@ -374,4 +399,48 @@ func (h *SEOHandler) bucketStats(lang string) []blog.BucketStat {
 		return stats
 	}
 	return h.blogStore.StatsLang(lang)
+}
+
+// enBucketExposedStats is bucketStats(EN) recomputed through the exposure gate:
+// counts and newest dates reflect only the posts the ledger currently exposes,
+// so a bucket with nothing released yet is omitted from the sitemap index
+// instead of advertising an empty child sitemap.
+//
+// When no ledger is active this returns exactly bucketStats(EN), which keeps the
+// pre-rollout output byte-identical.
+func (h *SEOHandler) enBucketExposedStats() []blog.BucketStat {
+	if h.blogStore == nil || !h.exposure.Active() {
+		out := h.bucketStats(blog.LangEN)
+		if h.blogStore == nil {
+			return out
+		}
+		filtered := out[:0]
+		for _, st := range out {
+			if st.Count > 0 {
+				filtered = append(filtered, st)
+			}
+		}
+		return filtered
+	}
+
+	raw := h.bucketStats(blog.LangEN)
+	out := make([]blog.BucketStat, 0, len(raw))
+	for _, st := range raw {
+		count := 0
+		latest := ""
+		for _, p := range h.blogStore.PostsInBucketLang(blog.LangEN, st.Slug) {
+			if !h.enExposed(p.Slug) {
+				continue
+			}
+			count++
+			if d := p.Date.Format("2006-01-02"); d > latest {
+				latest = d
+			}
+		}
+		if count == 0 {
+			continue
+		}
+		out = append(out, blog.BucketStat{Slug: st.Slug, Label: st.Label, Count: count, LatestDay: latest})
+	}
+	return out
 }

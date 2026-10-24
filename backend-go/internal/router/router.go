@@ -59,6 +59,15 @@ func newEngine(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin
 	if err := ssr.LoadImageDims(filepath.Join(filepath.Dir(cfg.BlogContentDir), "image-dims.json")); err != nil {
 		fmt.Printf("[ssr] warning: image dims manifest not loaded (%v); <img> will ship without width/height\n", err)
 	}
+	// English sitemap exposure ledger: releases the 1,537 translated articles
+	// 100/day instead of all at once. Lives in content/en/, next to the English
+	// content dir. Missing file = no gate (every article advertised), so this is
+	// also the rollback switch: delete the file and the full corpus is back.
+	exposurePath := filepath.Join(filepath.Dir(cfg.BlogContentDirEN), "sitemap-exposure.txt")
+	exposure := blog.NewExposureLedger(exposurePath)
+	if !exposure.Active() {
+		fmt.Printf("[seo] exposure ledger not found at %s — advertising all English articles\n", exposurePath)
+	}
 	// The renderer needs the store to resolve a blog article's counterpart when
 	// building the language switcher target (see ssr.Renderer.switchTargets).
 	if ssrRenderer != nil {
@@ -95,7 +104,7 @@ func newEngine(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin
 
 	// SSR page routes (site root) + sitemap.
 	ssr.NewHandler(cfg, gdb, ssrRenderer, blogStore).RegisterRoutes(r)
-	handler.NewSEOHandler(cfg, gdb, blogStore).RegisterRoutes(r)
+	handler.NewSEOHandler(cfg, gdb, blogStore).WithExposureLedger(exposure).RegisterRoutes(r)
 
 	// Fallback: /api/* → JSON 404; /en/* → English 404 page; anything else →
 	// Chinese 404 page. The /en/ tree must never leak its unknown-URL misses

@@ -89,7 +89,8 @@ func fixtureBucket(p fixturePost) string { return blog.BucketFor(p.cat) }
 // cross the SSR page-size boundary.
 func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (http.Handler, *gorm.DB) {
 	t.Helper()
-	return setupSitemapTestWith(t, bulkZH, bulkEN, nil, nil)
+	r, gdb, _ := setupSitemapFixture(t, bulkZH, bulkEN, nil, nil)
+	return r, gdb
 }
 
 // setupSitemapTestWith is setupSitemapTest plus extra per-language fixtures, for
@@ -97,6 +98,15 @@ func setupSitemapTest(t *testing.T, bulkZH, bulkEN int) (http.Handler, *gorm.DB)
 // that must stay out of the sitemap even while its markdown sits on disk, while
 // its Chinese twin keeps serving).
 func setupSitemapTestWith(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fixturePost) (http.Handler, *gorm.DB) {
+	t.Helper()
+	r, gdb, _ := setupSitemapFixture(t, bulkZH, bulkEN, extraZH, extraEN)
+	return r, gdb
+}
+
+// setupSitemapFixture is setupSitemapTestWith plus the parent directory of the
+// English content dir — the place the exposure ledger is expected to live, so
+// exposure tests can seed/append it the same way the deploy does.
+func setupSitemapFixture(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fixturePost) (http.Handler, *gorm.DB, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -178,7 +188,7 @@ func setupSitemapTestWith(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []f
 	storage.Reset()
 	sqlDB, _ := gdb.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return router.New(cfg, gdb, ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)), gdb
+	return router.New(cfg, gdb, ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)), gdb, filepath.Dir(enDir)
 }
 
 func getSitemap(t *testing.T, r http.Handler, path string) (int, string) {
@@ -709,13 +719,19 @@ func TestEnglishFallbackServesChineseCanonical(t *testing.T) {
 // while its markdown is still on disk, and does not drag its Chinese twin down.
 func TestRetiredENSlugRedirects(t *testing.T) {
 	const retired = "brick-parts-buy-guide"
-	const target = "https://brickplans.test/en/blog/bricklink-parts-ordering-guide"
+	successor, ok := blog.RetiredENSlugs[retired]
+	if !ok || successor == "" {
+		t.Fatalf("%q must stay registered in blog.RetiredENSlugs", retired)
+	}
+	target := "https://brickplans.test/en/blog/" + successor
 
 	// The fixture deliberately writes the retired markdown: a content sync from
-	// an older branch must not be able to resurrect the URL.
+	// an older branch must not be able to resurrect the URL. The successor is
+	// taken from the map instead of being hardcoded, so retargeting the 301
+	// cannot silently leave this test asserting a dead URL.
 	r, _ := setupSitemapTestWith(t, 0, 0,
 		[]fixturePost{{retired, "零件知识"}},
-		[]fixturePost{{retired, "Parts Guide"}},
+		[]fixturePost{{retired, "Parts Guide"}, {successor, "Parts Guide"}},
 	)
 
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
