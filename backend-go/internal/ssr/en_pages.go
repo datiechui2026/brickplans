@@ -14,6 +14,11 @@ import (
 // categoryEN maps the stored Chinese category value to the English label the
 // English UI shows. The VALUE stays Chinese everywhere it is sent back to the
 // API (filters, forms) — only display copy is translated.
+//
+// The first six are the taxonomy the site advertises on /explore. The rest is
+// what the table actually holds (SELECT DISTINCT category, 2026-10-24): uploads
+// arrive tagged with LEGO themes, so 其他 alone covers 1,801 of 2,135 rows and
+// the English tree used to print it untranslated.
 var categoryEN = map[string]string{
 	"建筑": "Architecture",
 	"车辆": "Vehicles",
@@ -21,6 +26,14 @@ var categoryEN = map[string]string{
 	"奇幻": "Fantasy",
 	"科幻": "Sci-Fi",
 	"场景": "Scenery",
+	"其他": "Other",
+	"星战": "Star Wars",
+	"城市": "City",
+	"朋友": "Friends",
+	"图标": "Icons",
+	"机械": "Technic",
+	"创意": "Creator",
+	"赛车": "Speed Champions",
 }
 
 func categoryLabelEN(cat string) string {
@@ -242,12 +255,36 @@ func (h *Handler) ExploreEN(c *gin.Context) {
 	})
 }
 
-// DetailEN renders /en/detail/:id. The body is the author's Chinese content;
-// only the chrome is English. It therefore canonicalises to /detail/:id and
-// emits no hreflang: it is a UI variant, not a translation.
+// blueprintHasEnglish reports whether the row carries a real English title,
+// i.e. cmd/translate-blueprints (or the author) supplied one. Without it both
+// trees render the Chinese text and /en/detail stays a UI variant.
+func blueprintHasEnglish(bp *db.Blueprint) bool {
+	return bp.TitleEN != nil && strings.TrimSpace(*bp.TitleEN) != ""
+}
+
+// blueprintDetailAlternates is the hreflang cluster for a translated blueprint.
+// It must stay identical to the altLink set sitemap-en emits for the same URL
+// (handler/seo.go sitemapSite) — a one-sided pair gets the whole cluster
+// discarded, and x-default follows the sitemap: the English page.
+func blueprintDetailAlternates(id, public string) []AltLink {
+	zhURL := public + "/detail/" + id
+	enURL := public + "/en/detail/" + id
+	return []AltLink{
+		{"en", enURL},
+		{"zh-CN", zhURL},
+		{"x-default", enURL},
+	}
+}
+
+// DetailEN renders /en/detail/:id.
 //
-// When blueprints gain real English titles/descriptions, flip this page to
-// self-canonical + sitemap + hreflang (and add it to sitemap-en.xml).
+// Before 2026-10-24 every row's English page carried the author's Chinese text,
+// so it was a UI variant: canonical to /detail/:id, no hreflang. That premise is
+// gone — 2,135 rows now have real English titles and descriptions, so a
+// translated row is a genuine alternate: self-canonical, in the hreflang
+// cluster, and (already) listed in sitemap-en.xml. Rows the translator has not
+// reached keep the old consolidation behaviour; announcing them as English
+// would recreate exactly the duplicate this page used to avoid.
 func (h *Handler) DetailEN(c *gin.Context) {
 	id := c.Param("id")
 	var bp db.Blueprint
@@ -284,19 +321,31 @@ func (h *Handler) DetailEN(c *gin.Context) {
 	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "en"))
 	jsonld = append(jsonld, breadcrumbJSONLDFor(category, titleEN, h.cfg.PublicURL, "en"))
 
+	// Translated rows are alternates of the Chinese original: self-canonical and
+	// in the hreflang cluster. Untranslated rows stay consolidated into
+	// /detail/:id with no annotations (see the func comment).
+	canonical := h.cfg.PublicURL + "/detail/" + bp.ID
+	var alts []AltLink
+	noHreflang := true
+	if blueprintHasEnglish(&bp) {
+		canonical = h.cfg.PublicURL + "/en/detail/" + bp.ID
+		alts = blueprintDetailAlternates(bp.ID, h.cfg.PublicURL)
+		noHreflang = false
+	}
+
 	h.r.Render(c, PageData{
 		Lang:        "en",
 		Title:       titleEN + " — BrickPlan MOC blueprint",
 		Description: truncate(desc, 160),
-		// Consolidation target: the Chinese page is the original document.
-		Canonical:  h.cfg.PublicURL + "/detail/" + bp.ID,
-		OGUrl:      h.cfg.PublicURL + "/en/detail/" + bp.ID,
-		OGType:     "article",
-		OGImage:    cover,
-		JSONLD:     jsonld,
-		NoHreflang: true,
-		BodyWrap:   true,
-		Noscript:   detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, relatedBps),
+		Canonical:   canonical,
+		OGUrl:       h.cfg.PublicURL + "/en/detail/" + bp.ID,
+		OGType:      "article",
+		OGImage:     cover,
+		JSONLD:      jsonld,
+		Alternates:  alts,
+		NoHreflang:  noHreflang,
+		BodyWrap:    true,
+		Noscript:    detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, relatedBps),
 	})
 }
 

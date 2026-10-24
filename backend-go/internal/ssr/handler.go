@@ -172,6 +172,16 @@ func (h *Handler) Detail(c *gin.Context) {
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
 	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
 	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
+
+	// The Chinese page is the original, but once the row has a real English
+	// translation the pair must point at each other. Leaving Alternates nil
+	// keeps the historical self-only zh-CN + x-default pair, which is still the
+	// right answer for rows the translator has not reached.
+	var alts []AltLink
+	if blueprintHasEnglish(&bp) {
+		alts = blueprintDetailAlternates(bp.ID, h.cfg.PublicURL)
+	}
+
 	h.r.Render(c, PageData{
 		Title:       bp.Title + " - BrickPlan 积木图纸",
 		Description: truncate(desc, 160),
@@ -179,6 +189,7 @@ func (h *Handler) Detail(c *gin.Context) {
 		OGType:      "article",
 		OGImage:     cover,
 		JSONLD:      jsonld,
+		Alternates:  alts,
 		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL, relatedBps),
 	})
 }

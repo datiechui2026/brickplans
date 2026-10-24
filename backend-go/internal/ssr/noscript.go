@@ -195,7 +195,14 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, rela
 	}
 	b.WriteString("<ul>")
 	if bp.Category != nil {
-		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Category, esc(*bp.Category)))
+		cat := *bp.Category
+		if lang == "en" {
+			// Category is stored in Chinese and must stay Chinese in API payloads,
+			// but the English chrome cannot print 其他 / 星战 (1,801 of 2,135 rows
+			// are 其他). Unknown values pass through unchanged.
+			cat = categoryLabelEN(cat)
+		}
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Category, esc(cat)))
 	}
 	if bp.Difficulty != nil {
 		b.WriteString(fmt.Sprintf("<li>%s%d / 5</li>", l.Difficulty, *bp.Difficulty))

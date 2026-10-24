@@ -207,8 +207,16 @@ func (h *SEOHandler) sitemapSite(c *gin.Context, lang string) {
 		writeURL(&b, base+"/about", "", "0.6", "monthly")
 		writeURL(&b, base+"/privacy", "", "0.3", "yearly")
 
-		// Category pages
-		for _, cat := range []string{"建筑", "车辆", "机甲", "奇幻", "科幻", "场景"} {
+		// Category pages. Derived from what authors actually used instead of a
+		// hardcoded taxonomy: the old list (车辆/机甲/奇幻/科幻 …) matched zero
+		// rows while the real values authors pick (星战/城市/朋友/图标/机械/创意/
+		// 赛车/其他) were never advertised, so those filters were reachable only
+		// through the UI.
+		var cats []string
+		h.gdb.Model(&db.Blueprint{}).
+			Where("is_published = ? AND category IS NOT NULL AND category <> ''", true).
+			Distinct().Order("category ASC").Pluck("category", &cats)
+		for _, cat := range cats {
 			writeURL(&b, base+"/explore?category="+url.QueryEscape(cat), contentDay, "0.7", "weekly")
 		}
 
@@ -232,7 +240,15 @@ func (h *SEOHandler) sitemapSite(c *gin.Context, lang string) {
 		// JSON-LD), so it now belongs in the English hub sitemap — otherwise it
 		// is only discoverable by crawling the EN tree. The CN hub above already
 		// lists the same record, so the two hubs form a valid hreflang cluster.
+		//
+		// Only translated rows are advertised (v1.1.1): an untranslated row's
+		// /en/detail page still canonicalises to /detail/{uuid}, so submitting it
+		// here would feed Google a URL that folds into another one. Keep this
+		// predicate identical to ssr.blueprintHasEnglish.
 		for _, bp := range bps {
+			if bp.TitleEN == nil || strings.TrimSpace(*bp.TitleEN) == "" {
+				continue
+			}
 			writeURL(&b, base+"/en/detail/"+bp.ID, bp.UpdatedAt.Format("2006-01-02"), "0.7", "weekly",
 				altLink{"zh-CN", base + "/detail/" + bp.ID},
 				altLink{"en", base + "/en/detail/" + bp.ID},
