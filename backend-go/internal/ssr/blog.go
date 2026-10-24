@@ -460,7 +460,15 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 func (h *Handler) blogDetailAlternates(lang, slug, canonical string) []AltLink {
 	enURL := h.cfg.PublicURL + blogDetailPath(blog.LangEN, slug)
 	zhURL := h.cfg.PublicURL + blogDetailPath(blog.LangZH, slug)
-	if h.blogStore.HasLang(slug, blog.LangEN) && h.blogStore.HasLang(slug, blog.LangZH) {
+	// A translation the exposure ledger has not released is noindex (see
+	// Visible), and Google requires BOTH sides of an hreflang pair to be
+	// indexable — offering an alternate that answers noindex makes Search
+	// Console drop the annotation for the whole cluster ("Alternate page with
+	// noindex"). Gate the English side on the same ledger that drives the
+	// sitemap and the page's own robots header so they cannot drift apart.
+	// No ledger file → Allows is always true → the pre-rollout pair, unchanged.
+	if h.blogStore.HasLang(slug, blog.LangEN) && h.exposure.Allows(slug) &&
+		h.blogStore.HasLang(slug, blog.LangZH) {
 		return []AltLink{
 			{"en", enURL},
 			{"zh-CN", zhURL},

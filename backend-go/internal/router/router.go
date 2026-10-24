@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -63,7 +64,17 @@ func newEngine(cfg *config.Config, gdb *gorm.DB, ssrRenderer *ssr.Renderer) *gin
 	// 100/day instead of all at once. Lives in content/en/, next to the English
 	// content dir. Missing file = no gate (every article advertised), so this is
 	// also the rollback switch: delete the file and the full corpus is back.
-	exposurePath := filepath.Join(filepath.Dir(cfg.BlogContentDirEN), "sitemap-exposure.txt")
+	//
+	// EXPOSURE_LEDGER_PATH moves the ledger outside the repository. Production
+	// needs that: scripts/brickplan_en_sitemap_release.py appends 100 slugs a
+	// day on the server, and the in-repo file would be reset to whatever the
+	// deployed tag contains by the next `git checkout -f <tag>` — silently
+	// rewinding the rollout. Keep the in-repo file as the seed for a fresh
+	// checkout; point production at an untracked path.
+	exposurePath := os.Getenv("EXPOSURE_LEDGER_PATH")
+	if exposurePath == "" {
+		exposurePath = filepath.Join(filepath.Dir(cfg.BlogContentDirEN), "sitemap-exposure.txt")
+	}
 	exposure := blog.NewExposureLedger(exposurePath)
 	if !exposure.Active() {
 		fmt.Printf("[seo] exposure ledger not found at %s — advertising all English articles\n", exposurePath)

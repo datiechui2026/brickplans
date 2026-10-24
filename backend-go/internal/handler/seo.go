@@ -352,11 +352,27 @@ func (h *SEOHandler) postAlternates(lang, slug string) []altLink {
 		return nil
 	}
 	base := h.cfg.PublicURL
+	// Same gate as ssr.blogDetailAlternates: an English translation the
+	// exposure ledger has not released answers noindex, and an <xhtml:link>
+	// pointing at a noindex URL gets the whole cluster discarded as
+	// "Alternate page with noindex". Keep the Chinese entry with its own
+	// hreflang only — no en, no x-default pointing at an unindexable page.
+	if !h.enExposed(slug) {
+		return []altLink{{hreflangOf(lang), base + blogDetailPath(lang, slug)}}
+	}
 	return []altLink{
 		{"zh-CN", base + blogDetailPath(blog.LangZH, slug)},
 		{"en", base + blogDetailPath(blog.LangEN, slug)},
 		{"x-default", base + blogDetailPath(blog.LangEN, slug)},
 	}
+}
+
+// hreflangOf maps a content language to the hreflang value used in annotations.
+func hreflangOf(lang string) string {
+	if lang == blog.LangEN {
+		return "en"
+	}
+	return "zh-CN"
 }
 
 // ── lastmod derivation ──

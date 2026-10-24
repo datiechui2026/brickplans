@@ -180,14 +180,86 @@ curl -sI http://127.0.0.1:8310/ | grep -iE 'x-content-type-options|strict-transp
 
 ## 10. 更新
 
+**顺序要点：前端必须先构建，后端后重启。** `ssr.NewRenderer` 在**启动时**读
+`frontend/dist/manifest.json`（见 `internal/ssr/ssr.go`），而 Vite 每次构建都会换掉带 hash 的
+文件名。先重启后端的话，它记住的是**旧 hash**，新构建一落盘旧 hash 就 404，直到你再重启一次
+才恢复——用户看到的是"页面没样式/白屏"，爬虫拿到的是坏 HTML。正确顺序：
+
 ```bash
 cd /home/ubuntu/project/brickplans
-git pull --ff-only
-cd backend-go && go build -o brickplans-backend ./cmd/server
-sudo systemctl restart brickplans-backend-go
-cd ../frontend && npm ci && npm run build
-sudo systemctl reload nginx
+git fetch --tags && git checkout -f <tag>      # 生产按 tag 部署
+
+# 1) 前端先构建（SSR 需要新的 manifest.json）
+cd frontend && npm ci && npm run build
+
+# 2) 再处理后端：生产 1.87G 内存禁止 go build（OOM），用本机交叉编译产物替换
+#    CGO_ENABLED=0 go build -ldflags='-s -w' ./cmd/server  → 传上来
+cd ../backend-go
+sudo systemctl restart brickplans-backend-go   # 重启时才读 manifest
+
+# 3) nginx 一般无需 reload；改了 nginx 配置才执行
+sudo nginx -t && sudo systemctl reload nginx
 ```
+
+**部署后必须校验 asset hash 一致**（下面的检查一旦报 MISSING，就是"后端比 build 早启动"：
+
+```bash
+cd /home/ubuntu/project/brickplans
+for a in $(curl -s http://127.0.0.1:8100/ | grep -oE '/assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u); do
+  if [ -f "frontend/dist$a" ]; then echo "OK      $a"; else echo "MISSING $a  ← 重启后端再验一次"; fi
+done
+# 反向再验一次：dist 里最新的 js 是否真被 HTML 引用（防止服务的是上一版）
+latest=$(ls -t frontend/dist/assets/*.js | head -1 | sed 's|frontend/dist||')
+curl -s http://127.0.0.1:8100/ | grep -q "$latest" && echo "OK      $latest 已被引用" || echo "STALE   前端未生效"
+```
+
+## 10a. 英文站放量台账（100 篇/天）
+
+英文 1,536 篇译文由 `content/en/sitemap-exposure.txt` 控制放量（`internal/blog/exposure.go`）：
+台账内的 slug 进 `sitemap-en-blog-*.xml`、可索引、可被 `hreflang` 引用、出现在 `/en/` 与
+`/en/blog`；未放量的文章仍返回 200，但带 `noindex, follow` + `X-Robots-Tag`，且从列表与
+sitemap 里过滤掉。四个面共用一张表，所以不会漂移。
+
+**每天 +100 由脚本执行**（仓库里没有 cron 就永远停在种子批次）：
+
+```bash
+# 手动：查看进度 / 模拟 / 真放量
+python3 scripts/brickplan_en_sitemap_release.py --status
+python3 scripts/brickplan_en_sitemap_release.py --dry-run
+python3 scripts/brickplan_en_sitemap_release.py            # 每天第一次运行才生效（幂等），--force 可强制
+```
+
+生产把台账放在**仓库外**（`EXPOSURE_LEDGER_PATH`），否则下一次 `git checkout -f <tag>` 会把
+放量进度回退到 tag 里那份。`backend-go/.env` 或 systemd unit 里设：
+
+```bash
+EXPOSURE_LEDGER_PATH=/home/ubuntu/project/brickplans/shared/sitemap-exposure.txt
+```
+
+每日定时（systemd timer，日志进 journal）：
+
+```ini
+# /etc/systemd/system/brickplan-en-release.service
+[Unit]
+Description=brickplan.cn English sitemap exposure release (+100/day)
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/project/brickplans
+Environment=EXPOSURE_LEDGER_PATH=/home/ubuntu/project/brickplans/shared/sitemap-exposure.txt
+ExecStart=/usr/bin/python3 scripts/brickplan_en_sitemap_release.py
+
+# /etc/systemd/system/brickplan-en-release.timer
+[Unit]
+Description=Daily English sitemap exposure release
+[Timer]
+OnCalendar=*-*-* 00:15:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+`systemctl enable --now brickplan-en-release.timer` 即可；`Persistent=true` 让机器停机后补跑一次。
+**回滚**：`rm` 掉台账文件 → 闸门自动失效，全部英文文章恢复收录（改完下个请求生效，无需重启）。
 
 ## 11. 回退到 Python 后端
 

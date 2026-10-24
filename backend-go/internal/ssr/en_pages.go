@@ -117,6 +117,12 @@ func (h *Handler) HomeEN(c *gin.Context) {
 		// homepage is the strongest internal link source on the site, and the
 		// English tree is small — listing every article there is what gives each
 		// /en/blog/<slug> a referrer instead of leaving it sitemap-only.
+		//
+		// "Whole tree" now means the *released* tree: an article the exposure
+		// ledger has not released answers noindex, and linking it from the
+		// homepage spends crawl budget and PageRank on a URL we deliberately do
+		// not advertise. Same filter as /en/blog, so nav and sitemap agree.
+		posts = blog.FilterVisible(posts, blog.LangEN, h.exposure)
 		if len(posts) > enHomeBlogLimit {
 			posts = posts[:enHomeBlogLimit]
 		}
