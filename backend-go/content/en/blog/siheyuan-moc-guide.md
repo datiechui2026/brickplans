@@ -61,3 +61,5 @@ A: Use gray brick walls with red columns and gold fittings, lattice windows buil
 
 **Q: Can a beginner build a siheyuan MOC straight away?**
 A: Yes, but build two or three small structures first. A siheyuan demands high symmetry — one crooked step skews the entire compound. brickplan.cn has instructions with detailed step diagrams, which raises your success rate considerably.
+
+Traditional architecture rewards symmetry; nature builds reward the opposite. If you want a change of rhythm after the courtyard, the [treehouse MOC tutorial](/en/blog/treehouse-moc-guide) walks through organic trunk geometry and foliage layering that no axial plan can teach you.

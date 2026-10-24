@@ -50,3 +50,5 @@ This tier is **the favourite of advanced builders**. Dinosaur head detailing and
 The world of animal MOC blueprints is both fun and surprisingly deep. From a small pet you can finish in a few minutes to a realistic predator that takes a whole evening to refine, there is always one that fits you. **Pick the right blueprint and get the details right**, and your desk can hold a small zoo of your own.
 
 Looking for more high-quality **animal MOC blueprints** with step-by-step instructions? Visit **brickplan.cn** and browse the animal category for a large selection of curated designs, from pets to predators, to help you find your next build.
+
+Animals on a baseplate are one approach; an animal inside its habitat is another. The [treehouse MOC build guide](/en/blog/treehouse-moc-guide) shows how to build the habitat itself — trunk, canopy tiers, platform — so a small mammal or bird figure has somewhere believable to live.

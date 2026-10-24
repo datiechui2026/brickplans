@@ -33,6 +33,8 @@ Sand and dark brown for the tower, red-brown for the roof, white for the blades 
 
 The difficulty in a windmill MOC really sits in one place: the axle. Everything else is patience. Follow the order above and 800 pieces takes about 6 hours — a display piece that looks great at home or on an office shelf, and very photogenic.
 
+The countryside theme has a natural second act. Where the windmill supplies the vertical landmark, the [treehouse MOC guide](/en/blog/treehouse-moc-guide) supplies the organic counterweight: layered canopy, a cantilevered platform and a rope bridge that share the same timber-and-stone palette, so both models can sit on one long shelf without fighting each other.
+
 ## FAQ
 
 **Q: Where do I find windmill MOC plans?**

@@ -48,3 +48,5 @@ The completed model measures about 30cm x 30cm x 25cm, an ideal size for desktop
 **Overall: ★★★★★**
 
 This is a Chinese-architecture MOC blueprint with serious collector value. The build is demanding, but the finished model justifies the effort. Download the original high-resolution blueprint on [BrickPlans](https://brickplan.cn), and check the color schemes other builders in the community have posted. With a different parts palette you can build spring, summer, autumn and winter versions of the Temple of Heaven.
+
+Architectural plans are disciplined and orthogonal. For a project that inverts those rules while still demanding a real BOM and build order, the [treehouse MOC walkthrough](/en/blog/treehouse-moc-guide) is a useful contrast case: organic silhouette, engineering-grade structure.

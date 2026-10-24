@@ -117,6 +117,8 @@ The most common MOC failure is the opposite order: detailing a sub-assembly beau
 
 ![Close-up of brick texture detail: slopes, tiles and greebles on a model surface](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/en-blog/building-techniques-illustrated/building-techniques-illustrated-3.jpg)
 
+Both interlocking and overhang show up in nature builds, where a cantilevered platform has to hang off a tapered trunk without a straight wall to bite into. The [treehouse MOC trunk and canopy guide](/en/blog/treehouse-moc-guide) is a good place to test them together on a 600 to 800 piece model.
+
 ## FAQ
 
 **Q:** What is the single highest-impact building technique to learn first?

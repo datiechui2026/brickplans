@@ -11,6 +11,10 @@ tags: [treehouse moc, brick building tutorial, moc canopy techniques, minifig sc
 
 Short answer first: the biggest trap in a brick-built treehouse MOC is canopy collapse. Build a load-bearing technic core inside the trunk, layer the canopy with staggered, offset placement, and you can finish a tree that stands firm and holds minifigures in roughly 1,800-2,500 pieces and 8-12 hours. Mix green pieces randomly for the foliage — it looks far more natural than neat rows.
 
+![LEGO treehouse MOC model with a brick-built trunk, three tiers of green foliage canopy, wooden platform and rope bridge](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/en-blog/treehouse-moc-guide/treehouse-moc-guide-1.jpg)
+
+*Figure 1: The finished treehouse MOC — brick trunk, three foliage tiers, and a rope bridge out to the lookout platform.*
+
 ## 1. Build the Trunk First: Load-Bearing Is Everything
 
 Step one: use an 8x8 baseplate as the root disc, then stack brown bricks upward in a staggered (offset) pattern. Every 6 layers, insert an 8-stud technic rod down the heart of the trunk as a load-bearing core, running all the way up to the canopy level — this is the key to a treehouse that does not fall apart. Step two: once the trunk reaches 18-20 bricks high, start splitting. Build the main fork with 2x2 bricks plus hinge pieces fanned out to both sides to make a Y shape. Step three: at the fork, build a 12x12 platform for the floor of the house, smooth it with plates, and lock it to the trunk using 1x2 technic bricks with holes. Once that platform is rock solid, everything after it is easy.
@@ -27,11 +31,21 @@ Above the platform, build a skeleton from 1x2 plates and extend it outward 3-4 l
 
 Lay a ring of 16x16 green baseplates under the tree as grass, then add a small pond, two small bushes and a rope ladder. The ladder alternates 1x1 plates with 1x2 plates, hanging from the platform down to the ground — it sells the scene immediately. Place 2-3 minifigures: one on the platform enjoying the view, one climbing the rope ladder, one picnicking below with a small table and two 1x1 cups, and the story writes itself. If you want lighting, budget an extra 80-120 yuan for a small LED string wound through the canopy.
 
+![Step-by-step treehouse MOC build: bare brick trunk and Technic support beams on the baseplate with sorted brown and green parts](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/en-blog/treehouse-moc-guide/treehouse-moc-guide-2.jpg)
+
+*Figure 2: Build order up to the platform — trunk first, platform second, foliage last so you can still reach the join.*
+
 ## 5. Reinforce and Display: The Finished Model Should Move
 
 When everything is built, check vertically from the roots to the canopy and add 1x1 bricks under any spot that clearly overhangs without support. Add a 6-stud crossbar as a diagonal brace at the largest canopy fork so the branches do not sag after long display. Built this way, the treehouse can be lifted and moved without shattering, and it photographs beautifully in a display cabinet under warm light.
 
 The whole treehouse MOC comes down to one sentence: a technic load-bearing core plus a randomly mixed canopy. Nail those two and you are most of the way there. Searching "treehouse" on brickplan.cn turns up more than 10 instruction sets; pick one in the region of 2,000 pieces for the best value.
+
+![Close-up of a LEGO treehouse MOC platform railing, rope ladder and layered leaf elements with a minifigure](https://brickplan2-1317217681.cos.ap-hongkong.myqcloud.com/en-blog/treehouse-moc-guide/treehouse-moc-guide-3.jpg)
+
+*Figure 3: Railing and rope ladder detail — the small pieces that sell the scale.*
+
+*Related reading: [whale MOC guide](/en/blog/whale-moc-guide) · [windmill MOC guide](/en/blog/windmill-moc-guide)*
 
 ## FAQ
 

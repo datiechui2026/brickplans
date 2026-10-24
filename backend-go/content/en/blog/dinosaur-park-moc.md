@@ -33,6 +33,8 @@ The extra credit in a park MOC all comes from the facilities: a ticket booth at 
 
 Work through it as baseplate, then terrain decoration, then large dinosaurs, then small dinosaurs, then facilities and planting, then minifigures as the final touch. Photograph each zone as you finish it so you can adjust everything consistently at the end. Overall, this dinosaur park plan has sensible zoning and solid structure, which makes it a good entry point into prehistoric scene building — following the order above, it takes roughly one to two weekends to complete.
 
+The landscape skills transfer directly to a quieter setting. Builders who enjoyed planting the dino park usually get on well with the [brick treehouse MOC guide](/en/blog/treehouse-moc-guide), which treats foliage density and ground cover as carefully as any prehistoric diorama.
+
 ## FAQ
 
 **Q: How should I plan the layout of a dinosaur park MOC?**
