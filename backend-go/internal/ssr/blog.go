@@ -135,8 +135,8 @@ func (h *Handler) blogList(c *gin.Context, lang string) {
 	if !isZH {
 		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
-		// The SPA does not hydrate /en/* (frontend isSsrOnlyPath), so this SSR
-		// body is the final page and must carry the container skeleton itself.
+		// The SPA hydrates /en/blog too, but the SSR body is what crawlers and
+		// pre-hydration readers see, so it must carry the container skeleton.
 		pd.BodyClass = "blog-list"
 	}
 	// The two listings always exist, so they are always a valid hreflang pair.
@@ -394,10 +394,10 @@ func (h *Handler) blogDetail(c *gin.Context, lang string) {
 		pd.Lang = blog.LangEN
 		pd.HTMLLang = "en"
 	}
-	// Keyed on the REQUESTED language, not pageLang: what decides whether the SPA
-	// hydrates is the URL (/en/* never does), not the text language. A Chinese
-	// post served at an /en/ URL as a fallback therefore needs the skeleton too,
-	// otherwise that page renders unstyled while its neighbour does not.
+	// Keyed on the REQUESTED language, not pageLang: the skeleton is about the
+	// URL, not the text language. A Chinese post served at an /en/ URL as a
+	// fallback therefore needs it too, otherwise that page renders unstyled
+	// before hydration while its neighbour does not.
 	if lang == blog.LangEN {
 		pd.BodyClass = "blog-detail"
 	}

@@ -654,9 +654,8 @@ func TestEnglishBlogListIsCrawlable(t *testing.T) {
 	}
 	for _, want := range []string{
 		"<h1>📖 BrickPlan Blog</h1>",
-		// P0 2026-10-15: the SPA never hydrates /en/* (frontend isSsrOnlyPath),
-		// so the SSR body IS the page and must carry the SPA's container
-		// classes itself.
+		// P0 2026-10-15: crawlers and pre-hydration readers see the SSR body, so
+		// it must carry the SPA's container classes itself.
 		`<div class="page active"><div class="main"><div class="blog-list">`,
 		`<a class="blog-card" href="https://brickplans.test/en/blog/`,
 		`href="https://brickplans.test/en/blog/sm-bulk-en-000"`,

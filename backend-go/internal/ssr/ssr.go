@@ -38,12 +38,12 @@ type PageData struct {
 	// BodyClass, when non-empty, wraps Noscript in the same container skeleton
 	// the SPA builds for the equivalent page:
 	//   <div class="page active"><div class="main"><div class="BodyClass">…</div></div></div>
-	// Only pages the SPA will NOT hydrate need it (today: every /en/* page — see
-	// frontend isSsrOnlyPath). For those pages the SSR body IS the visible page,
-	// and without these classes main.css has nothing to attach .main/.blog-list/
-	// .blog-detail to, so the content renders as unstyled text at the top-left of
-	// the viewport (P0, 2026-10-15). Chinese pages leave it empty: their markup
-	// stays byte-identical because the SPA replaces #app on boot anyway.
+	// Every page rendered by the server needs it: non-JS crawlers and readers
+	// between HTML delivery and SPA hydration see the SSR body, and without
+	// these classes main.css has nothing to attach .main/.blog-list/
+	// .blog-detail to, so the content renders as unstyled text at the top-left
+	// of the viewport (P0, 2026-10-15). Chinese pages leave it empty: their
+	// markup stays byte-identical because the SPA replaces #app on boot anyway.
 	BodyClass string
 	JSFile    string
 	CSSFile   string
