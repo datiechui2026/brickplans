@@ -1,6 +1,7 @@
 import * as api from './api.js';
 import './styles/main.css';
 import { marked } from 'marked';
+import { tr, CATEGORIES, categoryLabel, categoryOptions, difficultyLabel, errorMessage, isEnglishPath } from './i18n.js';
 
 // Configure marked: disable mangle/email autolink for safety
 marked.setOptions({ breaks: true, gfm: true });
@@ -54,6 +55,11 @@ const state = {
   userProfile: { id: null, username: null, tab: 'blueprints', page: 1 },
 };
 
+// headLocked is true while an English page still shows the SSR-rendered head.
+// It is lifted the first time the user navigates inside the SPA, after which the
+// SPA owns title/meta/JSON-LD for the new (client-rendered) URL.
+let headLocked = isEnglishPath();
+
 // ═══════════════════════════════════════════
 // Brand list (图纸属性: 品牌)
 // ═══════════════════════════════════════════
@@ -99,13 +105,14 @@ function getCoverIndex(images) {
 // ═══════════════════════════════════════════
 function formatDifficulty(n) {
   const map = {
-    1: { stars: '⭐', label: '简单', color: '#22c55e', bg: 'rgba(34,197,94,.75)' },
-    2: { stars: '⭐⭐', label: '初级', color: '#3b82f6', bg: 'rgba(59,130,246,.75)' },
-    3: { stars: '⭐⭐⭐', label: '中等', color: '#f59e0b', bg: 'rgba(245,158,11,.75)' },
-    4: { stars: '⭐⭐⭐⭐', label: '困难', color: '#ef4444', bg: 'rgba(239,68,68,.75)' },
-    5: { stars: '⭐⭐⭐⭐⭐', label: '专家', color: '#a855f7', bg: 'rgba(168,85,247,.75)' },
+    1: { stars: '⭐', color: '#22c55e', bg: 'rgba(34,197,94,.75)' },
+    2: { stars: '⭐⭐', color: '#3b82f6', bg: 'rgba(59,130,246,.75)' },
+    3: { stars: '⭐⭐⭐', color: '#f59e0b', bg: 'rgba(245,158,11,.75)' },
+    4: { stars: '⭐⭐⭐⭐', color: '#ef4444', bg: 'rgba(239,68,68,.75)' },
+    5: { stars: '⭐⭐⭐⭐⭐', color: '#a855f7', bg: 'rgba(168,85,247,.75)' },
   };
-  return map[n] || map[3];
+  const level = n || 3;
+  return { ...(map[level] || map[3]), label: difficultyLabel(level) };
 }
 
 // ═══════════════════════════════════════════
@@ -132,6 +139,21 @@ function setMetaName(name, content) {
 }
 
 function resetMeta() {
+  // On an EN page's first render the Go SSR already wrote a correct English
+  // <head>. Do not touch it: Googlebot indexes the rendered DOM, so rewriting
+  // title/meta/JSON-LD here is exactly how a bilingual SPA loses its English
+  // signals. The lock lifts on the first in-app navigation (see navigate()).
+  if (headLocked) return;
+  if (isEnglishPath()) {
+    document.title = 'BrickPlan — MOC Blueprints and Building Guides';
+    setMeta('og:title', 'BrickPlan — MOC Blueprints and Building Guides');
+    setMeta('og:description', 'Discover and share LEGO MOC blueprints, part guides, brand comparisons and building tutorials.');
+    setMeta('og:image', '/og-default.png');
+    setMeta('og:url', location.href);
+    setMeta('og:type', 'website');
+    setMetaName('description', 'BrickPlan is a blueprint-sharing community for brick and MOC builders.');
+    return;
+  }
   document.title = 'BrickPlan — 积木图纸分享';
   setMeta('og:title', 'BrickPlan — 积木图纸分享社区');
   setMeta('og:description', '分享你的乐高MOC创意，探索海量积木图纸');
@@ -146,7 +168,10 @@ function resetMeta() {
 // ═══════════════════════════════════════════
 // Router — history API (real URLs for SEO; native back/forward via popstate)
 // ═══════════════════════════════════════════
-function buildPath(page, params = {}) {
+// neutralPath builds the language-free path; buildPath puts the current
+// language prefix back on. Keeping the two separate means a page never has to
+// know which language tree it is being rendered into.
+function neutralPath(page, params = {}) {
   if (!page || page === 'home') return '/';
   if (page === 'detail' && params.id) return `/detail/${encodeURIComponent(params.id)}`;
   if (page === 'user' && params.id) return `/user/${encodeURIComponent(params.id)}`;
@@ -174,6 +199,10 @@ function buildPath(page, params = {}) {
     return '/explore' + (qs ? '?' + qs : '');
   }
   return '/' + page;
+}
+
+function buildPath(page, params = {}) {
+  return withLangPrefix(neutralPath(page, params));
 }
 
 // ═══════════════════════════════════════════
@@ -216,12 +245,35 @@ function navLabel(lang, path) {
   return (NAV_LABELS[lang.code] || {})[path] || path;
 }
 
-// SSR_ONLY_PATHS: the English shell and the English blog are fully rendered by
-// the server. The SPA must NOT hydrate them — its UI strings are Chinese, so
-// hydrating would overwrite an English page with a Chinese one. The Chinese
-// site (/, /about, …) is unaffected and keeps hydrating exactly as before.
+// STATIC_ENGLISH_PATHS are the only /en pages whose SSR body stays final.
+// about/faq/privacy carry original English copy written in Go; hydrating them
+// with the SPA would only duplicate that copy in JavaScript. Every other /en
+// path now hydrates exactly like its Chinese twin (home, explore, detail, user,
+// blog, upload, edit, notifications, admin) and renders the same layout with
+// English UI strings.
+const STATIC_ENGLISH_PATHS = ['/en/about', '/en/faq', '/en/privacy'];
 function isSsrOnlyPath(p) {
-  return p === '/en' || p.startsWith('/en/');
+  return STATIC_ENGLISH_PATHS.includes(p);
+}
+
+// stripLangPrefix maps "/en/explore" → "/explore" and "/en/" → "/".
+// The current language is read from the real URL, never from SPA state, so the
+// router and the SSR pass always agree.
+function stripLangPrefix(path) {
+  const cur = currentLang();
+  if (!cur.prefix) return path;
+  if (path === cur.prefix) return '/';
+  if (path.startsWith(cur.prefix + '/')) return path.slice(cur.prefix.length);
+  return path;
+}
+
+// withLangPrefix is the inverse: it puts the current language back in front of a
+// language-neutral path. Used by buildPath() so every in-app navigation stays
+// inside the language tree the user is browsing.
+function withLangPrefix(path) {
+  const cur = currentLang();
+  if (!cur.prefix) return path;
+  return path === '/' ? cur.prefix + '/' : cur.prefix + path;
 }
 
 // The SSR nav already resolved the switcher target per language — including the
@@ -248,6 +300,9 @@ function switchTarget(lang) {
     neutral = neutral.slice(cur.prefix.length) || '/';
   }
   if (NAV_PATHS.includes(neutral)) return langURL(lang, neutral);
+  // detail/user/tags have a UI counterpart in both trees. These are switcher
+  // targets, not hreflang alternates (the body language is the same).
+  if (/^\/(detail|user|tags)\//.test(neutral)) return langURL(lang, neutral);
   return langURL(lang, '/blog');
 }
 
@@ -269,7 +324,9 @@ function renderLangSwitch() {
 }
 
 function parsePath() {
-  const path = location.pathname;
+  // Match against the language-neutral path, so /en/detail/x and /detail/x
+  // resolve to the same SPA page (the renderer's language comes from the URL).
+  const path = stripLangPrefix(location.pathname);
   const params = {};
   new URLSearchParams(location.search).forEach((v, k) => { params[k] = v; });
   if (path === '/' || path === '') return { page: 'home', params };
@@ -326,6 +383,9 @@ function applyState(page, params = {}) {
 }
 
 function navigate(page, params = {}) {
+  // From here on the page is client-rendered: the SSR <head> describes the URL
+  // the user landed on, not the one they are navigating to.
+  headLocked = false;
   history.pushState({ page, params }, '', buildPath(page, params));
   onRouteChange();
 }
@@ -444,7 +504,7 @@ async function renderPDF(container, url) {
     container.appendChild(h('a', {
       href: url, download: '',
       style: { display: 'block', textAlign: 'center', padding: '8px', color: 'var(--accent)' },
-    }, '下载完整 PDF'));
+    }, tr('下载完整 PDF', 'Download the full PDF')));
 
     // Render the first 3 pages immediately; lazy-render the rest on scroll.
     for (let i = 1; i <= Math.min(3, total); i++) renderPage(i);
@@ -463,8 +523,8 @@ async function renderPDF(container, url) {
   } catch (e) {
     container.innerHTML = '';
     container.appendChild(h('div', { style: { padding: '24px', textAlign: 'center' } },
-      h('p', { style: { color: 'var(--text-sec)' } }, 'PDF 预览不可用'),
-      h('a', { href: url, download: '', style: { color: 'var(--accent)' } }, '下载 PDF'),
+      h('p', { style: { color: 'var(--text-sec)' } }, tr('PDF 预览不可用', 'PDF preview is unavailable')),
+      h('a', { href: url, download: '', style: { color: 'var(--accent)' } }, tr('下载 PDF', 'Download PDF')),
     ));
   }
 }
@@ -476,7 +536,7 @@ function pdfContainer(url) {
       background: '#f5f5f5', borderRadius: '8px', padding: '12px',
     },
   });
-  container.appendChild(h('div', { style: { padding: '24px', color: 'var(--text-sec)', textAlign: 'center' } }, '加载 PDF…'));
+  container.appendChild(h('div', { style: { padding: '24px', color: 'var(--text-sec)', textAlign: 'center' } }, tr('加载 PDF…', 'Loading PDF…')));
   renderPDF(container, url);
   return container;
 }
@@ -499,7 +559,7 @@ function renderNavbar() {
   const brandEl = h('a', {
     className: 'nav-brand',
     href: langURL(currentLang(), '/'),
-    ...(currentLang().prefix ? {} : { onclick: (e) => { e.preventDefault(); navigate('home'); } }),
+    onclick: (e) => { e.preventDefault(); navigate('home'); },
   }, '🧱 BrickPlan');
 
   const actions = [];
@@ -507,12 +567,12 @@ function renderNavbar() {
   // Upload button — shows login modal if not logged in
   if (state.user?.id) {
     actions.push(h('button', { className: 'btn btn-ghost', onclick: () => navigate('notifications') },
-      '🔔 通知',
+      tr('🔔 通知', '🔔 Notifications'),
       state.notificationUnreadCount > 0 ? h('span', { className: 'nav-dot' }, String(Math.min(state.notificationUnreadCount, 99))) : null,
     ));
-    actions.push(h('button', { className: 'btn btn-ghost', onclick: () => navigate('upload') }, '📤 上传图纸'));
+    actions.push(h('button', { className: 'btn btn-ghost', onclick: () => navigate('upload') }, tr('📤 上传图纸', '📤 Upload')));
   } else {
-    actions.push(h('button', { className: 'btn btn-ghost', onclick: () => showModal('login') }, '📤 上传图纸'));
+    actions.push(h('button', { className: 'btn btn-ghost', onclick: () => showModal('login') }, tr('📤 上传图纸', '📤 Upload')));
   }
 
   // User avatar / name
@@ -521,22 +581,23 @@ function renderNavbar() {
     actions.push(h('img', {
       className: 'user-avatar',
       src: avatarUrl,
-      alt: state.user.username || '用户',
-      title: '个人主页',
+      alt: state.user.username || tr('用户', 'User'),
+      title: tr('个人主页', 'Profile'),
       onclick: () => navigate('user', { id: state.user.id }),
     }));
   } else {
-    actions.push(h('button', { className: 'btn btn-primary btn-sm', onclick: () => showModal('login') }, '登录'));
-    actions.push(h('button', { className: 'btn btn-ghost btn-sm', onclick: () => showModal('register') }, '注册'));
+    actions.push(h('button', { className: 'btn btn-primary btn-sm', onclick: () => showModal('login') }, tr('登录', 'Sign in')));
+    actions.push(h('button', { className: 'btn btn-ghost btn-sm', onclick: () => showModal('register') }, tr('注册', 'Sign up')));
   }
 
   const lang = currentLang();
   // Labels AND hrefs follow the language list, so adding a language needs no
-  // change here. On a prefixed language the link is a plain <a> (full page load)
-  // because the SPA only implements the default-language pages.
+  // change here. about/faq/privacy on a prefixed language stay server-rendered,
+  // so those links are plain <a> full page loads; every other page hydrates in
+  // the SPA just like its default-language twin.
   const navLink = (path, page) => h('a', {
     href: langURL(lang, path),
-    ...(lang.prefix ? {} : { onclick: (e) => { e.preventDefault(); navigate(page); } }),
+    ...(isSsrOnlyPath(langURL(lang, path)) ? {} : { onclick: (e) => { e.preventDefault(); navigate(page); } }),
     className: 'nav-link',
   }, navLabel(lang, path));
 
@@ -599,23 +660,29 @@ function showReportModal(blueprintId) {
   const overlay = h('div', { className: 'modal-overlay', onclick: (e) => { if (e.target === overlay) hideModal(); } },
     h('div', { className: 'modal' },
       h('button', { className: 'close', onclick: hideModal, style: { float: 'right' } }, '✕'),
-      h('h2', {}, '🚩 举报内容'),
-      h('p', { style: { color: 'var(--text-sec)', fontWeight: 600, marginBottom: '16px', fontSize: '0.9rem' } }, '请选择举报原因：'),
+      h('h2', {}, tr('🚩 举报内容', '🚩 Report content')),
+      h('p', { style: { color: 'var(--text-sec)', fontWeight: 600, marginBottom: '16px', fontSize: '0.9rem' } }, tr('请选择举报原因：', 'Choose a reason:')),
       h('div', { id: 'report-error' }),
       h('div', { className: 'form-group' },
         ...['inappropriate', 'copyright', 'incomplete', 'spam', 'other'].map(r =>
           h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', cursor: 'pointer', fontWeight: 600 } },
             h('input', { type: 'radio', name: 'report-reason', value: r }),
-            { inappropriate: '内容不当', copyright: '版权问题', incomplete: '图纸不完整', spam: '垃圾广告', other: '其他' }[r],
+            {
+              inappropriate: tr('内容不当', 'Inappropriate content'),
+              copyright: tr('版权问题', 'Copyright issue'),
+              incomplete: tr('图纸不完整', 'Incomplete blueprint'),
+              spam: tr('垃圾广告', 'Spam'),
+              other: tr('其他', 'Other'),
+            }[r],
           )
         ),
         h('input', { type: 'radio', name: 'report-reason', value: 'other', style: { display: 'none' }, id: 'report-reason-other-hidden' }),
       ),
       h('div', { className: 'form-group' },
-        h('label', {}, '补充说明（可选）'),
+        h('label', {}, tr('补充说明（可选）', 'Additional details (optional)')),
         h('textarea', {
           id: 'report-detail',
-          placeholder: '请补充更多细节...',
+          placeholder: tr('请补充更多细节...', 'Add any details that help us review this...'),
           rows: 3,
           style: { width: '100%', padding: '10px', borderRadius: '8px', border: '2px solid #e5e5e5', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical', background: '#f5f5f7', boxSizing: 'border-box' },
         }),
@@ -624,7 +691,7 @@ function showReportModal(blueprintId) {
         className: 'btn btn-primary btn-lg',
         style: { width: '100%', marginTop: '8px' },
         onclick: handleReportSubmit,
-      }, '提交举报'),
+      }, tr('提交举报', 'Submit report')),
     ),
   );
   document.body.appendChild(overlay);
@@ -634,7 +701,7 @@ async function handleReportSubmit() {
   const errEl = $id('report-error');
   const reasonRadio = document.querySelector('input[name="report-reason"]:checked');
   if (!reasonRadio) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">请选择举报原因</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('请选择举报原因', 'Please choose a reason')}</div>`;
     return;
   }
   const reason = reasonRadio.value;
@@ -643,28 +710,28 @@ async function handleReportSubmit() {
   try {
     await api.createReport(_reportTargetId, reason, detail);
     hideModal();
-    showToast('举报已提交，感谢您的反馈！', 'success');
+    showToast(tr('举报已提交，感谢您的反馈！', 'Report submitted. Thanks for the feedback!'), 'success');
     // Update the report button to "已举报"
     const reportStatusEl = $id('report-status');
     if (reportStatusEl) {
       reportStatusEl.innerHTML = '';
       reportStatusEl.appendChild(
-        h('span', { style: { color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' } }, '✅ 已举报')
+        h('span', { style: { color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' } }, tr('✅ 已举报', '✅ Reported'))
       );
     }
   } catch (e) {
     if (e.message && e.message.includes('already reported')) {
       hideModal();
-      showToast('您已经举报过该内容', 'error');
+      showToast(tr('您已经举报过该内容', 'You have already reported this item'), 'error');
       const reportStatusEl = $id('report-status');
       if (reportStatusEl) {
         reportStatusEl.innerHTML = '';
         reportStatusEl.appendChild(
-          h('span', { style: { color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' } }, '✅ 已举报')
+          h('span', { style: { color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' } }, tr('✅ 已举报', '✅ Reported'))
         );
       }
     } else {
-      if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message || '举报提交失败'}</div>`;
+      if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('举报提交失败', 'Could not submit the report. Please try again.'))}</div>`;
     }
   }
 }
@@ -676,24 +743,24 @@ function renderModal() {
   const overlay = h('div', { className: 'modal-overlay', onclick: (e) => { if (e.target === overlay) hideModal(); } },
     h('div', { className: 'modal' },
       h('button', { className: 'close', onclick: hideModal, style: { float: 'right' } }, '✕'),
-      h('h2', {}, isLogin ? '🔑 登录 BrickPlan' : '🧱 注册 BrickPlan'),
+      h('h2', {}, isLogin ? tr('🔑 登录 BrickPlan', '🔑 Sign in to BrickPlan') : tr('🧱 注册 BrickPlan', '🧱 Create a BrickPlan account')),
       h('div', { id: 'modal-error' }),
       h('div', { className: 'form-group' },
-        isLogin ? null : h('label', { className: 'form-label' }, '用户名'),
-        ...(isLogin ? [] : [h('input', { type: 'text', id: 'modal-username', className: 'form-input', placeholder: '你的用户名' })]),
+        isLogin ? null : h('label', { className: 'form-label' }, tr('用户名', 'Username')),
+        ...(isLogin ? [] : [h('input', { type: 'text', id: 'modal-username', className: 'form-input', placeholder: tr('你的用户名', 'Your username') })]),
       ),
       h('div', { className: 'form-group' },
-        h('label', { className: 'form-label' }, '邮箱'),
+        h('label', { className: 'form-label' }, tr('邮箱', 'Email')),
         h('input', { type: 'email', id: 'modal-email', className: 'form-input', placeholder: 'your@email.com' }),
       ),
       h('div', { className: 'form-group' },
-        h('label', { className: 'form-label' }, '密码'),
-        h('input', { type: 'password', id: 'modal-password', className: 'form-input', placeholder: '至少6位密码' }),
+        h('label', { className: 'form-label' }, tr('密码', 'Password')),
+        h('input', { type: 'password', id: 'modal-password', className: 'form-input', placeholder: tr('至少6位密码', 'At least 6 characters') }),
       ),
       ...(isLogin ? [] : [
         h('div', { style: { marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' } },
           h('input', { type: 'checkbox', id: 'modal-privacy', checked: true }),
-          h('span', {}, '我已阅读并同意 ', h('a', { href: '/privacy', style: { color: 'var(--accent)', fontWeight: 700 } }, '隐私策略')),
+          h('span', {}, `${tr('我已阅读并同意 ', 'I have read and agree to the ')}`, h('a', { href: langURL(currentLang(), '/privacy'), style: { color: 'var(--accent)', fontWeight: 700 } }, tr('隐私策略', 'Privacy Policy'))),
         ),
       ]),
       h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } },
@@ -701,16 +768,16 @@ function renderModal() {
           className: `btn ${isLogin ? 'btn-primary' : 'btn-primary'} btn-lg`,
           style: { flex: 1 },
           onclick: isLogin ? handleLogin : handleRegister,
-        }, isLogin ? '登录' : '注册'),
+        }, isLogin ? tr('登录', 'Sign in') : tr('注册', 'Sign up')),
       ),
       h('div', {
         style: { textAlign: 'center', marginTop: '16px', fontSize: '0.85rem', fontWeight: 600 },
       },
-        isLogin ? '还没有账号？' : '已有账号？',
+        isLogin ? tr('还没有账号？', 'No account yet?') : tr('已有账号？', 'Already have an account?'),
         h('button', {
           style: { background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', fontFamily: 'inherit', textDecoration: 'underline' },
           onclick: () => { modalMode = isLogin ? 'register' : 'login'; renderModal(); },
-        }, isLogin ? '去注册' : '去登录'),
+        }, isLogin ? tr('去注册', 'Sign up') : tr('去登录', 'Sign in')),
       ),
     ),
   );
@@ -721,14 +788,14 @@ async function handleLogin() {
   const email = $id('modal-email')?.value.trim();
   const password = $id('modal-password')?.value.trim();
   const errEl = $id('modal-error');
-  if (!email || !password) { errEl.innerHTML = '<div class="msg msg-error">请填写邮箱和密码</div>'; return; }
+  if (!email || !password) { errEl.innerHTML = `<div class="msg msg-error">${tr('请填写邮箱和密码', 'Please enter your email and password.')}</div>`; return; }
   try {
     const data = await api.login(email, password);
     state.user = data.user;
     hideModal();
     render();
   } catch (e) {
-    errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('登录失败', 'Sign-in failed.'))}</div>`;
   }
 }
 
@@ -737,17 +804,17 @@ async function handleRegister() {
   const email = $id('modal-email')?.value.trim();
   const password = $id('modal-password')?.value.trim();
   const errEl = $id('modal-error');
-  if (!username || !email || !password) { errEl.innerHTML = '<div class="msg msg-error">请填写所有字段</div>'; return; }
-  if (password.length < 6) { errEl.innerHTML = '<div class="msg msg-error">密码至少6位</div>'; return; }
+  if (!username || !email || !password) { errEl.innerHTML = `<div class="msg msg-error">${tr('请填写所有字段', 'Please fill in all fields.')}</div>`; return; }
+  if (password.length < 6) { errEl.innerHTML = `<div class="msg msg-error">${tr('密码至少6位', 'Password must be at least 6 characters.')}</div>`; return; }
   const privacyAccepted = $id('modal-privacy')?.checked;
-  if (!privacyAccepted) { errEl.innerHTML = '<div class="msg msg-error">请先阅读并同意隐私策略</div>'; return; }
+  if (!privacyAccepted) { errEl.innerHTML = `<div class="msg msg-error">${tr('请先阅读并同意隐私策略', 'Please read and accept the Privacy Policy first.')}</div>`; return; }
   try {
     const data = await api.register(username, email, password);
     state.user = data.user;
     hideModal();
     render();
   } catch (e) {
-    errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('注册失败', 'Sign-up failed.'))}</div>`;
   }
 }
 
@@ -985,8 +1052,8 @@ function renderErrorPage(code, message, detail) {
   const icons = { 404: '🔍', 500: '💥' };
   const titles = { 404: '404', 500: '500' };
   const messages = {
-    404: '你要找的图纸可能被拆掉了...',
-    500: '服务器出了点问题，积木塔倒了！',
+    404: tr('你要找的图纸可能被拆掉了...', 'The page you are looking for may have been taken apart...'),
+    500: tr('服务器出了点问题，积木塔倒了！', 'Something went wrong on our side — the brick tower fell over!'),
   };
 
   container.innerHTML = '';
@@ -995,9 +1062,9 @@ function renderErrorPage(code, message, detail) {
   page.innerHTML = `
     <div class="error-icon">${icons[code] || '❓'}</div>
     <h1>${titles[code] || code}</h1>
-    <p>${message || messages[code] || '未知错误'}</p>
+    <p>${message || messages[code] || tr('未知错误', 'Unknown error')}</p>
     ${detail ? `<p class="error-detail">${detail}</p>` : ''}
-    <button class="btn btn-primary" onclick="location.href='/'">🧱 返回首页</button>
+    <button class="btn btn-primary" onclick="location.href='${langURL(currentLang(), '/')}'">🧱 ${tr('返回首页', 'Back to home')}</button>
   `;
   container.appendChild(page);
 }
@@ -1040,7 +1107,7 @@ function renderHomeSlider(items) {
     const emoji = emojis[bp.category] || '🧱';
     track.appendChild(h('a', {
       className: 'home-slide',
-      href: `/detail/${bp.id}`,
+      href: buildPath('detail', { id: bp.id }),
       onclick: (e) => { e.preventDefault(); navigate('detail', { id: bp.id }); },
     },
       cover
@@ -1057,10 +1124,10 @@ function renderHomeSlider(items) {
           })
         : h('div', { className: 'home-slide-noimg' }, emoji),
       h('div', { className: 'home-slide-overlay' },
-        h('span', { className: 'home-slide-cat' }, `${emoji} ${bp.category || '积木'}`),
+        h('span', { className: 'home-slide-cat' }, `${emoji} ${categoryLabel(bp.category) || tr('积木', 'Bricks')}`),
         h('h3', { className: 'home-slide-title' }, bp.title),
         h('p', { className: 'home-slide-meta' },
-          h('span', {}, bp.author?.username || '匿名'),
+          h('span', {}, bp.author?.username || tr('匿名', 'Anonymous')),
           h('span', {}, `👁 ${bp.view_count || 0}`),
           h('span', {}, `⭐ ${bp.favorite_count || 0}`),
         ),
@@ -1071,15 +1138,15 @@ function renderHomeSlider(items) {
   items.forEach((_, i) => {
     dotsWrap.appendChild(h('button', {
       className: 'home-slider-dot' + (i === 0 ? ' active' : ''),
-      'aria-label': `第 ${i + 1} 张`,
+      'aria-label': tr(`第 ${i + 1} 张`, `Slide ${i + 1}`),
       onclick: () => { go(i); restart(); },
     }));
   });
 
   root.appendChild(track);
   if (count > 1) {
-    root.appendChild(h('button', { className: 'home-slider-arrow prev', 'aria-label': '上一张', onclick: () => { go(idx - 1); restart(); } }, '‹'));
-    root.appendChild(h('button', { className: 'home-slider-arrow next', 'aria-label': '下一张', onclick: () => { go(idx + 1); restart(); } }, '›'));
+    root.appendChild(h('button', { className: 'home-slider-arrow prev', 'aria-label': tr('上一张', 'Previous slide'), onclick: () => { go(idx - 1); restart(); } }, '‹'));
+    root.appendChild(h('button', { className: 'home-slider-arrow next', 'aria-label': tr('下一张', 'Next slide'), onclick: () => { go(idx + 1); restart(); } }, '›'));
     root.appendChild(dotsWrap);
 
     start();
@@ -1099,7 +1166,7 @@ function renderHome() {
   container.appendChild(
     h('section', { className: 'hero' },
       h('h1', {}, '🧱 BrickPlan'),
-      h('p', {}, '发现和分享乐高MOC创意的积木图纸社区'),
+      h('p', {}, tr('发现和分享乐高MOC创意的积木图纸社区', 'Discover and share LEGO MOC blueprints with builders worldwide')),
     ),
   );
 
@@ -1129,7 +1196,7 @@ function renderHome() {
               state.explore.category = cat; state.explore.page = 1; state.explore.q = ''; navigate('explore');
             }
           },
-        }, `${emojis[cat]} ${cat}`),
+        }, `${emojis[cat]} ${cat === '全部' ? tr('全部', 'All') : categoryLabel(cat)}`),
       ),
     ),
   );
@@ -1137,8 +1204,8 @@ function renderHome() {
   // ③ 最新作品 section (was 热门推荐)
   mainWrap.appendChild(
     h('div', { className: 'section-header' },
-      h('h2', { className: 'section-title' }, '🆕 最新作品'),
-      h('button', { className: 'btn btn-ghost', onclick: () => navigate('explore') }, '查看全部 →'),
+      h('h2', { className: 'section-title' }, tr('🆕 最新作品', '🆕 Latest blueprints')),
+      h('button', { className: 'btn btn-ghost', onclick: () => navigate('explore') }, tr('查看全部 →', 'View all →')),
     ),
   );
   mainWrap.appendChild(
@@ -1151,8 +1218,8 @@ function renderHome() {
   // （SEO 引荐来源）。真正的爬虫入口在 SSR noscript 镜像里，这里服务用户。
   mainWrap.appendChild(
     h('div', { className: 'section-header' },
-      h('h2', { className: 'section-title' }, '📝 最新博客'),
-      h('button', { className: 'btn btn-ghost', onclick: () => navigate('blog') }, '查看全部 →'),
+      h('h2', { className: 'section-title' }, tr('📝 最新博客', '📝 Latest articles')),
+      h('button', { className: 'btn btn-ghost', onclick: () => navigate('blog') }, tr('查看全部 →', 'View all →')),
     ),
   );
   mainWrap.appendChild(
@@ -1164,7 +1231,7 @@ function renderHome() {
   // ④ Platform stats — single row, at the very end of the homepage content.
   mainWrap.appendChild(
     h('div', { id: 'home-stats', className: 'stats-bar stats-bar-end' },
-      ...['图纸作品', '创作者', '总浏览', '总收藏'].map(label =>
+      ...[tr('图纸作品', 'Blueprints'), tr('创作者', 'Creators'), tr('总浏览', 'Views'), tr('总收藏', 'Favorites')].map(label =>
         h('div', { className: 'stat-item' },
           h('div', { className: 'stat-value' }, '...'),
           h('div', { className: 'stat-label' }, label),
@@ -1177,13 +1244,13 @@ function renderHome() {
   mainWrap.appendChild(
     h('footer', { className: 'footer' },
       h('div', { style: { fontWeight: 800, fontSize: '1.3rem', marginBottom: '4px' } }, 'BrickPlan'),
-      h('div', {}, '© 2026 BrickPlan 积木图纸分享社区',
+      h('div', {}, tr('© 2026 BrickPlan 积木图纸分享社区', '© 2026 BrickPlan — brick blueprint community'),
         h('span', {}, ' · '),
-        h('a', { href: '/blog', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '博客'),
+        h('a', { href: buildPath('blog'), style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, tr('博客', 'Blog')),
         h('span', {}, ' · '),
-        h('a', { href: '/about', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '关于我们'),
+        h('a', { href: langURL(currentLang(), '/about'), style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, tr('关于我们', 'About us')),
         h('span', {}, ' · '),
-        h('a', { href: '/privacy', style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, '隐私策略'),
+        h('a', { href: langURL(currentLang(), '/privacy'), style: { color: 'var(--text-sec)', textDecoration: 'underline' } }, tr('隐私策略', 'Privacy Policy')),
       ),
     ),
   );
@@ -1196,7 +1263,7 @@ function renderHome() {
     if (!el) return;
     const items = (data && data.items) || [];
     if (!items.length) {
-      el.innerHTML = '<p class="loading">暂无文章 <a href="/blog">进入博客</a></p>';
+      el.innerHTML = `<p class="loading">${tr('暂无文章', 'No articles yet')} <a href="${buildPath('blog')}">${tr('进入博客', 'Visit the blog')}</a></p>`;
       return;
     }
     el.innerHTML = '';
@@ -1204,17 +1271,17 @@ function renderHome() {
       el.appendChild(
         h('a', {
           className: 'home-blog-card',
-          href: `/blog/${p.slug}`,
+          href: buildPath('blog-detail', { slug: p.slug }),
           onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: p.slug }); },
         },
           h('div', { className: 'home-blog-title' }, p.title),
-          h('div', { className: 'home-blog-meta' }, `${p.date} · ${p.category || '博客'}`),
+          h('div', { className: 'home-blog-meta' }, `${p.date} · ${p.category || tr('博客', 'Blog')}`),
         ),
       );
     });
   }).catch(() => {
     const el = $id('home-blog');
-    if (el) el.innerHTML = '<p class="loading">加载失败 <a href="/blog">直接访问博客</a></p>';
+    if (el) el.innerHTML = `<p class="loading">${tr('加载失败', 'Failed to load')} <a href="${buildPath('blog')}">${tr('直接访问博客', 'Open the blog')}</a></p>`;
   });
 
 
@@ -1226,7 +1293,7 @@ function renderHome() {
       const items = data.latest || [];
       grid.innerHTML = '';
       if (!items.length) {
-        grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>还没有图纸，快来上传第一个吧！</p></div>';
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>${tr('还没有图纸，快来上传第一个吧！', 'No blueprints yet — be the first to upload one!')}</p></div>`;
       } else {
         items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
       }
@@ -1243,10 +1310,10 @@ function renderHome() {
       };
       el.innerHTML = '';
       [
-        [fmt(s.total_blueprints), '图纸作品'],
-        [fmt(s.total_users), '创作者'],
-        [fmt(s.total_views), '总浏览'],
-        [fmt(s.total_favorites), '总收藏'],
+        [fmt(s.total_blueprints), tr('图纸作品', 'Blueprints')],
+        [fmt(s.total_users), tr('创作者', 'Creators')],
+        [fmt(s.total_views), tr('总浏览', 'Views')],
+        [fmt(s.total_favorites), tr('总收藏', 'Favorites')],
       ].forEach(([num, label]) => {
         el.appendChild(h('div', { className: 'stat-item' },
           h('div', { className: 'stat-value' }, num),
@@ -1256,11 +1323,11 @@ function renderHome() {
     }
   }).catch(() => {
     const grid = $id('home-latest');
-    if (grid) grid.innerHTML = '<div class="error-block" style="grid-column:1/-1"><div class="error-icon">🔌</div><p>加载失败，请检查后端服务</p><button class="btn btn-primary btn-sm" onclick="window._retryHome?.()">🔄 重试</button></div>';
+    if (grid) grid.innerHTML = `<div class="error-block" style="grid-column:1/-1"><div class="error-icon">🔌</div><p>${tr('加载失败，请检查后端服务', 'Failed to load. Please try again.')}</p><button class="btn btn-primary btn-sm" onclick="window._retryHome?.()">🔄 ${tr('重试', 'Retry')}</button></div>`;
     const slider = $id('home-slider');
     if (slider) slider.style.display = 'none';
     window._retryHome = () => navigate('home');
-    showToast('加载首页内容失败', 'error');
+    showToast(tr('加载首页内容失败', 'Failed to load the homepage'), 'error');
   });
 }
 
@@ -1274,29 +1341,29 @@ function renderExplore() {
     h('div', { className: 'main' },
       // Page header
       h('div', { className: 'page-header' },
-        h('h1', {}, '🔍 发现图纸'),
-        h('p', {}, '浏览社区中的积木创作，发现精彩作品'),
+        h('h1', {}, tr('🔍 发现图纸', '🔍 Explore blueprints')),
+        h('p', {}, tr('浏览社区中的积木创作，发现精彩作品', 'Browse brick builds from the community and find your next project')),
       ),
 
       // Filter bar
       h('div', { className: 'filter-bar' },
         h('div', { className: 'filter-group' },
-          h('input', { type: 'text', id: 'explore-search', className: 'form-input', value: state.explore.q, placeholder: '🔍 搜索关键词...',
+          h('input', { type: 'text', id: 'explore-search', className: 'form-input', value: state.explore.q, placeholder: tr('🔍 搜索关键词...', '🔍 Search blueprints...'),
             onkeydown: (e) => { if (e.key === 'Enter') { state.explore.q = e.target.value; state.explore.category = $id('explore-category')?.value || ''; state.explore.sort = $id('explore-sort')?.value || 'new'; state.explore.page = 1; loadExploreResults(); } },
           }),
         ),
         h('div', { className: 'filter-group' },
           h('select', { id: 'explore-category', className: 'form-select' },
-            ...[
-              ['', '全部分类'], ['建筑', '建筑'], ['车辆', '车辆'], ['机甲', '机甲'],
-              ['奇幻', '奇幻'], ['科幻', '科幻'], ['场景', '场景'],
-            ].map(([v, t]) => h('option', { value: v, ...(state.explore.category === v ? { selected: '' } : {}) }, t)),
+            // Category VALUES stay Chinese (that is what the API stores); only
+            // the label is translated, or filtering would silently return 0.
+            ...categoryOptions(true)
+              .map(([v, t]) => h('option', { value: v, ...(state.explore.category === v ? { selected: '' } : {}) }, t)),
           ),
         ),
         h('div', { className: 'filter-group' },
           h('select', { id: 'explore-sort', className: 'form-select' },
-            h('option', { value: 'new', ...(state.explore.sort === 'new' ? { selected: '' } : {}) }, '🆕 最新'),
-            h('option', { value: 'popular', ...(state.explore.sort === 'popular' ? { selected: '' } : {}) }, '🔥 最热门'),
+            h('option', { value: 'new', ...(state.explore.sort === 'new' ? { selected: '' } : {}) }, tr('🆕 最新', '🆕 Newest')),
+            h('option', { value: 'popular', ...(state.explore.sort === 'popular' ? { selected: '' } : {}) }, tr('🔥 最热门', '🔥 Most popular')),
           ),
         ),
         h('button', {
@@ -1308,20 +1375,20 @@ function renderExplore() {
             state.explore.page = 1;
             loadExploreResults();
           },
-        }, '筛选'),
+        }, tr('筛选', 'Filter')),
       ),
 
       // Hot tags
       h('div', { id: 'explore-tags', className: 'tags-section' },
-        h('span', { className: 'tags-title' }, '🏷️ 热门标签'),
+        h('span', { className: 'tags-title' }, tr('🏷️ 热门标签', '🏷️ Popular tags')),
         h('div', { id: 'explore-tags-list', style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } },
-          h('span', { style: { color: 'var(--text-sec)', fontSize: '0.8rem' } }, '加载中...'),
+          h('span', { style: { color: 'var(--text-sec)', fontSize: '0.8rem' } }, tr('加载中...', 'Loading...')),
         ),
       ),
 
       // Result count
       h('div', { className: 'result-info' },
-        h('span', { id: 'explore-count', className: 'result-count' }, '加载中...'),
+        h('span', { id: 'explore-count', className: 'result-count' }, tr('加载中...', 'Loading...')),
       ),
 
       // Card grid
@@ -1353,12 +1420,12 @@ async function loadExploreResults() {
       sort: state.explore.sort,
     });
 
-    if (countEl) countEl.textContent = `共找到 ${data.total} 个作品`;
+    if (countEl) countEl.textContent = tr(`共找到 ${data.total} 个作品`, `${data.total} blueprints found`);
 
     if (resultsEl) {
       resultsEl.innerHTML = '';
       if (!data.items?.length) {
-        resultsEl.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>没有找到匹配的图纸</p></div>';
+        resultsEl.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><p>${tr('没有找到匹配的图纸', 'No blueprints match your filters')}</p></div>`;
       } else {
         data.items.forEach(bp => resultsEl.appendChild(renderBlueprintCard(bp)));
       }
@@ -1374,7 +1441,7 @@ async function loadExploreResults() {
         disabled: state.explore.page <= 1,
         style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
         onclick: () => { state.explore.page--; loadExploreResults(); },
-      }, '‹ 上一页'));
+      }, tr('‹ 上一页', '‹ Previous')));
 
       for (let i = 1; i <= Math.min(totalPages, 7); i++) {
         pagEl.appendChild(h('button', {
@@ -1396,17 +1463,17 @@ async function loadExploreResults() {
         disabled: state.explore.page >= totalPages,
         style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
         onclick: () => { state.explore.page++; loadExploreResults(); },
-      }, '下一页 ›'));
+      }, tr('下一页 ›', 'Next ›')));
     }
   } catch (e) {
     if (resultsEl) resultsEl.innerHTML = `<div class="error-block" style="grid-column:1/-1">
       <div class="error-icon">🔌</div>
-      <p>加载失败：${e.message}</p>
-      <button class="btn btn-primary btn-sm retry-btn" onclick="window._retryExplore?.()">🔄 重试</button>
+      <p>${tr('加载失败', 'Failed to load')}: ${errorMessage(e, '')}</p>
+      <button class="btn btn-primary btn-sm retry-btn" onclick="window._retryExplore?.()">🔄 ${tr('重试', 'Retry')}</button>
     </div>`;
     window._retryExplore = loadExploreResults;
     if (countEl) countEl.textContent = '';
-    showToast('加载图纸列表失败，请检查网络连接', 'error');
+    showToast(tr('加载图纸列表失败，请检查网络连接', 'Failed to load blueprints. Please check your connection.'), 'error');
   }
 }
 
@@ -1417,7 +1484,7 @@ async function loadExploreTags() {
     if (!tagsListEl) return;
     tagsListEl.innerHTML = '';
     if (!tags || !tags.length) {
-      tagsListEl.appendChild(h('span', { style: { color: 'var(--text-sec)', fontSize: '0.8rem' } }, '暂无标签'));
+      tagsListEl.appendChild(h('span', { style: { color: 'var(--text-sec)', fontSize: '0.8rem' } }, tr('暂无标签', 'No tags yet')));
       return;
     }
     tags.forEach(t => {
@@ -1438,7 +1505,7 @@ async function loadExploreTags() {
     });
   } catch {
     const tagsListEl = $id('explore-tags-list');
-    if (tagsListEl) tagsListEl.innerHTML = '<span style="color:var(--text-sec);font-size:0.8rem">加载标签失败</span>';
+    if (tagsListEl) tagsListEl.innerHTML = `<span style="color:var(--text-sec);font-size:0.8rem">${tr('加载标签失败', 'Failed to load tags')}</span>`;
   }
 }
 
@@ -1453,13 +1520,13 @@ function renderDetail() {
         id: 'flash-banner',
         style: { background: '#22c55e', color: 'white', padding: '12px 20px', borderRadius: '8px', textAlign: 'center', fontSize: '1rem', fontWeight: 700, marginBottom: '16px', opacity: '1', transition: 'opacity 0.5s' },
       }, state.flashMessage) : null,
-      h('a', { className: 'back-link', href: '/', onclick: (e) => { e.preventDefault(); history.back(); } }, '← 返回列表'),
+      h('a', { className: 'back-link', href: buildPath('explore'), onclick: (e) => { e.preventDefault(); history.back(); } }, tr('← 返回列表', '← Back to list')),
       h('div', { id: 'detail-content', className: 'loading' },
         h('div', { className: 'spinner' }),
-        h('p', { style: { marginTop: '12px' } }, '加载图纸详情...'),
+        h('p', { style: { marginTop: '12px' } }, tr('加载图纸详情...', 'Loading blueprint...')),
       ),
       h('section', { id: 'detail-related', className: 'detail-related' },
-        h('h2', { style: { marginBottom: '16px' } }, '相关作品'),
+        h('h2', { style: { marginBottom: '16px' } }, tr('相关作品', 'Related blueprints')),
         h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
       ),
     ),
@@ -1488,7 +1555,7 @@ async function loadRelated(id) {
     if (!el) return;
     el.innerHTML = '';
     if (!data.items || data.items.length === 0) { el.style.display = 'none'; return; }
-    el.appendChild(h('h2', { style: { marginBottom: '16px' } }, '相关作品'));
+    el.appendChild(h('h2', { style: { marginBottom: '16px' } }, tr('相关作品', 'Related blueprints')));
     const grid = h('div', { className: 'card-grid' });
     data.items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
     el.appendChild(grid);
@@ -1506,63 +1573,62 @@ async function loadDetail(id) {
     const bp = await api.getBlueprint(id);
 
     // ── Dynamic SEO: update title, OG tags, and inject JSON-LD ──
-    document.title = `${bp.title} — BrickPlan`;
-    setMeta('og:title', bp.title);
-    const plainDesc = stripMarkdown(bp.description || 'BrickPlan 积木图纸分享社区');
-    setMeta('og:description', plainDesc);
-    setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
-    setMeta('og:url', `${window.location.origin}/detail/${bp.id}`);
-    setMeta('og:type', 'article');
-    setMetaName('description', plainDesc.substring(0, 160));
+    // On the first render of an English page headLocked is true and the SSR
+    // <head> stays untouched (it already describes this exact URL). After an
+    // in-app navigation we own the head again and rewrite it in English.
+    if (!headLocked) {
+      document.title = `${bp.title} — BrickPlan`;
+      setMeta('og:title', bp.title);
+      const plainDesc = stripMarkdown(bp.description || tr('BrickPlan 积木图纸分享社区', 'BrickPlan blueprint community'));
+      setMeta('og:description', plainDesc);
+      setMeta('og:image', getCoverImage(bp.images) || '/og-default.png');
+      setMeta('og:url', isEnglishPath() ? `${window.location.origin}${location.pathname}` : `${window.location.origin}/detail/${bp.id}`);
+      setMeta('og:type', 'article');
+      setMetaName('description', plainDesc.substring(0, 160));
 
-    // Inject JSON-LD structured data
-    document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
-    const coverImg = getCoverImage(bp.images) || '';
-    const ldScripts = [
-      {
-        '@context': 'https://schema.org',
-        '@type': 'CreativeWork',
-        name: bp.title,
-        description: bp.description || '',
-        image: coverImg,
-        author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
-        datePublished: bp.created_at || undefined,
-      },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'Product',
-        name: bp.title,
-        description: bp.description || '',
-        image: coverImg,
-        brand: { '@type': 'Brand', name: bp.brand || 'BrickPlan' },
-        offers: {
-          '@type': 'Offer',
-          price: '0',
-          priceCurrency: 'CNY',
-          availability: 'https://schema.org/InStock',
-          url: `${window.location.origin}/detail/${bp.id}`,
+      // Inject JSON-LD structured data
+      const coverImg = getCoverImage(bp.images) || '';
+      const ldScripts = [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'CreativeWork',
+          name: bp.title,
+          description: bp.description || '',
+          image: coverImg,
+          author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
+          datePublished: bp.created_at || undefined,
         },
-      },
-    ];
-    if (bp.category) {
-      ldScripts[1].category = bp.category;
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: bp.title,
+          description: bp.description || '',
+          image: coverImg,
+          brand: { '@type': 'Brand', name: bp.brand || 'BrickPlan' },
+          offers: {
+            '@type': 'Offer',
+            price: '0',
+            priceCurrency: 'CNY',
+            availability: 'https://schema.org/InStock',
+            url: isEnglishPath() ? `${window.location.origin}${location.pathname}` : `${window.location.origin}/detail/${bp.id}`,
+          },
+        },
+      ];
+      if (bp.category) {
+        ldScripts[1].category = bp.category;
+      }
+      if (bp.product_code) {
+        // mpn = the manufacturer's set/model number people actually search for.
+        ldScripts[1].mpn = bp.product_code;
+      }
+      if (bp.piece_count != null) {
+        ldScripts[1].additionalProperty = { '@type': 'PropertyValue', name: tr('零件数', 'Piece count'), value: bp.piece_count };
+      }
+      if (bp.difficulty != null) {
+        ldScripts[1].aggregateRating = { '@type': 'AggregateRating', ratingValue: bp.difficulty, bestRating: 5, worstRating: 1, ratingCount: 1 };
+      }
+      injectJsonLd(ldScripts);
     }
-    if (bp.product_code) {
-      // mpn = the manufacturer's set/model number people actually search for.
-      ldScripts[1].mpn = bp.product_code;
-    }
-    if (bp.piece_count != null) {
-      ldScripts[1].additionalProperty = { '@type': 'PropertyValue', name: '零件数', value: bp.piece_count };
-    }
-    if (bp.difficulty != null) {
-      ldScripts[1].aggregateRating = { '@type': 'AggregateRating', ratingValue: bp.difficulty, bestRating: 5, worstRating: 1, ratingCount: 1 };
-    }
-    ldScripts.forEach(ld => {
-      const s = document.createElement('script');
-      s.type = 'application/ld+json';
-      s.textContent = JSON.stringify(ld, null, 2);
-      document.head.appendChild(s);
-    });
 
     const stars = [];
     for (let i = 1; i <= 5; i++) {
@@ -1573,7 +1639,7 @@ async function loadDetail(id) {
       className: 'tag',
       style: { marginRight: '6px', cursor: 'pointer' },
       onclick: () => navigate('explore', { tag: t }),
-      title: `查看所有 "${t}" 标签的图纸`,
+      title: tr(`查看所有 "${t}" 标签的图纸`, `View all blueprints tagged "${t}"`),
     }, t));
 
     const handleFavorite = async () => {
@@ -1768,7 +1834,7 @@ async function loadDetail(id) {
           h('div', { className: 'info-card' },
             h('h1', { className: 'card-title', style: { fontSize: '1.5rem', marginBottom: '12px' } }, bp.title),
             (state.user?.id && bp.author?.id === state.user.id) ? h('div', { style: { marginBottom: '12px' } },
-              h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.preventDefault(); navigate('edit', { id: bp.id }); } }, '✏️ 编辑'),
+              h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.preventDefault(); navigate('edit', { id: bp.id }); } }, tr('✏️ 编辑', '✏️ Edit')),
             ) : null,
             bp.author ? h('div', { className: 'author-row',
               onclick: () => navigate('user', { id: bp.author.id }),
@@ -1776,33 +1842,36 @@ async function loadDetail(id) {
               h('img', { src: bp.author.avatar_url || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author.username || 'anon')}`, alt: '' }),
               h('div', {},
                 h('div', { className: 'author-name' }, bp.author.username),
-                bp.created_at ? h('div', { className: 'author-date' }, `${new Date(bp.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })} 发布`) : null,
+                bp.created_at ? h('div', { className: 'author-date' }, tr(
+                  `${new Date(bp.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })} 发布`,
+                  `Published ${new Date(bp.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`,
+                )) : null,
               ),
             ) : null,
             h('div', { className: 'info-meta' },
               ...[
                 h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '难度'),
+                  h('span', { className: 'meta-label' }, tr('难度', 'Difficulty')),
                   h('span', { className: 'meta-value', style: { color: diff.color } }, `${diff.stars} ${diff.label}`),
                 ),
                 bp.piece_count ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '零件数'),
+                  h('span', { className: 'meta-label' }, tr('零件数', 'Pieces')),
                   h('span', { className: 'meta-value' }, String(bp.piece_count)),
                 ) : null,
                 bp.dimensions ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '尺寸'),
+                  h('span', { className: 'meta-label' }, tr('尺寸', 'Dimensions')),
                   h('span', { className: 'meta-value' }, bp.dimensions),
                 ) : null,
                 bp.category ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '分类'),
-                  h('span', { className: 'meta-value' }, bp.category),
+                  h('span', { className: 'meta-label' }, tr('分类', 'Category')),
+                  h('span', { className: 'meta-value' }, categoryLabel(bp.category)),
                 ) : null,
                 bp.brand ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '品牌'),
+                  h('span', { className: 'meta-label' }, tr('品牌', 'Brand')),
                   h('span', { className: 'meta-value' }, bp.brand),
                 ) : null,
                 bp.product_code ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, '编号'),
+                  h('span', { className: 'meta-label' }, tr('编号', 'Set no.')),
                   h('span', { className: 'meta-value' }, bp.product_code),
                 ) : null,
               ].filter(Boolean),
@@ -1823,7 +1892,7 @@ async function loadDetail(id) {
                       bp.like_count = (bp.like_count || 0) + 1;
                     }
                     loadDetail(id);
-                  } catch (e) { showToast(e.message, 'error'); }
+                  } catch (e) { showToast(errorMessage(e), 'error'); }
                 },
               },
                 h('span', { className: 'stat-icon' }, bp.is_liked ? '❤️' : '🤍'),
@@ -1842,7 +1911,10 @@ async function loadDetail(id) {
               ),
             ),
             bp.created_at ? h('div', { style: { fontSize: '0.8rem', color: 'var(--text-sec)', marginTop: '12px' } },
-              `发布于 ${new Date(bp.created_at).toLocaleDateString('zh-CN')}`,
+              tr(
+                `发布于 ${new Date(bp.created_at).toLocaleDateString('zh-CN')}`,
+                `Published ${new Date(bp.created_at).toLocaleDateString('en-US')}`,
+              ),
             ) : null,
           ),
           // ── Parts List (PRD-07) ──
@@ -1863,19 +1935,19 @@ async function loadDetail(id) {
               );
 
               const totalRow = pl.total != null ? h('tr', { className: 'parts-total' },
-                h('td', {}, '总计'),
+                h('td', {}, tr('总计', 'Total')),
                 h('td', { style: { textAlign: 'center', fontWeight: 800 } }, String(pl.total)),
                 h('td', {}),
               ) : null;
 
               return h('div', { className: 'parts-section' },
-                h('h3', {}, `🧩 零件清单 (共 ${pl.parts.length} 种)`),
+                h('h3', {}, tr(`🧩 零件清单 (共 ${pl.parts.length} 种)`, `🧩 Parts list (${pl.parts.length} kinds)`)),
                 h('table', { className: 'parts-table' },
                   h('thead', {},
                     h('tr', {},
-                      h('th', {}, '零件名'),
-                      h('th', { style: { textAlign: 'center' } }, '数量'),
-                      h('th', {}, '颜色'),
+                      h('th', {}, tr('零件名', 'Part')),
+                      h('th', { style: { textAlign: 'center' } }, tr('数量', 'Qty')),
+                      h('th', {}, tr('颜色', 'Color')),
                     ),
                   ),
                   h('tbody', {},
@@ -1889,20 +1961,20 @@ async function loadDetail(id) {
           // ── Description inside sidebar (markdown rendered) ──
           ...(bp.description ? [
             h('div', { className: 'desc-card' },
-              h('h3', {}, '📝 图纸介绍'),
+              h('h3', {}, tr('📝 图纸介绍', '📝 About this blueprint')),
               h('div', { className: 'markdown-body', innerHTML: marked.parse(bp.description) }),
             ),
           ] : []),
           // ── Tags inside sidebar ──
           ...(tags.length ? [
             h('div', { style: { marginBottom: '16px' } },
-              h('h3', { style: { fontWeight: 700, marginBottom: '8px' } }, '🏷️ 标签'),
+              h('h3', { style: { fontWeight: 700, marginBottom: '8px' } }, tr('🏷️ 标签', '🏷️ Tags')),
               h('div', {}, ...tags),
             ),
           ] : []),
           // ── Comments inside sidebar ──
           h('div', { className: 'comments-card' },
-            h('h3', {}, '💬 评论'),
+            h('h3', {}, tr('💬 评论', '💬 Comments')),
             h('div', { id: 'detail-comments' },
               h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
             ),
@@ -1915,19 +1987,19 @@ async function loadDetail(id) {
     const renderComment = (c) => h('div', { className: `comment${c.parent_id ? ' comment-reply' : ''}` },
       h('div', { className: 'comment-header' },
         h('div', { className: 'comment-avatar' }, (c.user?.username || '?')[0].toUpperCase()),
-        h('div', { className: 'comment-author' }, c.user?.username || '匿名'),
+        h('div', { className: 'comment-author' }, c.user?.username || tr('匿名', 'Anonymous')),
         c.is_pinned ? h('span', {
           style: { marginLeft: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent, #2563eb)', background: 'var(--bg-sec, #f1f5f9)', borderRadius: '4px', padding: '1px 6px' },
-        }, '📌 置顶') : null,
+        }, tr('📌 置顶', '📌 Pinned')) : null,
         c.created_at ? h('div', { className: 'comment-time' },
-          new Date(c.created_at).toLocaleDateString('zh-CN'),
+          new Date(c.created_at).toLocaleDateString(tr('zh-CN', 'en-US')),
         ) : null,
       ),
       h('div', { className: 'comment-text' }, c.content),
       state.user?.id ? h('button', {
         className: 'comment-reply-btn',
-        onclick: () => showReplyBox(c.id, c.user?.username || '匿名'),
-      }, '回复') : null,
+        onclick: () => showReplyBox(c.id, c.user?.username || tr('匿名', 'Anonymous')),
+      }, tr('回复', 'Reply')) : null,
     );
 
     const showReplyBox = (parentId, username) => {
@@ -1937,15 +2009,15 @@ async function loadDetail(id) {
         h('input', {
           type: 'text',
           className: 'comment-input',
-          placeholder: `回复 ${username}...`,
+          placeholder: tr(`回复 ${username}...`, `Reply to ${username}...`),
           onkeydown: async (e) => {
             if (e.key === 'Enter') {
               await submitReply(parentId, e.target);
             }
           },
         }),
-        h('button', { className: 'btn btn-primary btn-sm', onclick: async (e) => submitReply(parentId, e.target.previousElementSibling) }, '发送'),
-        h('button', { className: 'btn btn-ghost btn-sm', onclick: () => replyBox.remove() }, '取消'),
+        h('button', { className: 'btn btn-primary btn-sm', onclick: async (e) => submitReply(parentId, e.target.previousElementSibling) }, tr('发送', 'Send')),
+        h('button', { className: 'btn btn-ghost btn-sm', onclick: () => replyBox.remove() }, tr('取消', 'Cancel')),
       );
       const commentsEl = $id('detail-comments');
       const target = commentsEl?.querySelector(`[data-comment-id="${parentId}"]`);
@@ -1963,9 +2035,9 @@ async function loadDetail(id) {
         node.dataset.commentId = newComment.id;
         if (target) target.insertAdjacentElement('afterend', node);
         input.closest('.reply-input-row')?.remove();
-        showToast('回复已发布', 'success');
+        showToast(tr('回复已发布', 'Reply posted'), 'success');
       } catch (e) {
-        alert('回复失败: ' + (e.message || '请稍后重试'));
+        alert(tr('回复失败: ', 'Reply failed: ') + errorMessage(e, tr('请稍后重试', 'Please try again later.')));
       }
     };
 
@@ -1977,7 +2049,7 @@ async function loadDetail(id) {
         if (!comments.length) {
           commentsEl.appendChild(
             h('div', { className: 'empty', style: { padding: '24px' } },
-              h('p', {}, '暂无评论，抢个沙发吧！'),
+              h('p', {}, tr('暂无评论，抢个沙发吧！', 'No comments yet — start the conversation!')),
             ),
           );
         } else {
@@ -1999,7 +2071,7 @@ async function loadDetail(id) {
             type: 'text',
             id: 'comment-input',
             className: 'comment-input',
-            placeholder: '写下你的评论...',
+            placeholder: tr('写下你的评论...', 'Write a comment...'),
           }),
           h('button', {
             className: 'btn btn-primary btn-sm',
@@ -2009,7 +2081,7 @@ async function loadDetail(id) {
               if (!content) return;
               const btn = input.nextElementSibling;
               btn.disabled = true;
-              btn.textContent = '发表中...';
+              btn.textContent = tr('发表中...', 'Posting...');
               try {
                 const newComment = await api.createComment(id, content);
                 // Prepend new comment to the list
@@ -2022,13 +2094,13 @@ async function loadDetail(id) {
                 commentsEl.insertBefore(node, commentsEl.firstChild);
                 input.value = '';
               } catch (e) {
-                alert('发表失败: ' + (e.message || '请稍后重试'));
+                alert(tr('发表失败: ', 'Could not post the comment: ') + errorMessage(e, tr('请稍后重试', 'Please try again later.')));
               } finally {
                 btn.disabled = false;
-                btn.textContent = '🚀 发表评论';
+                btn.textContent = tr('🚀 发表评论', '🚀 Post comment');
               }
             },
-          }, '🚀 发表评论'),
+          }, tr('🚀 发表评论', '🚀 Post comment')),
         );
         commentsContainer.appendChild(inputRow);
       } else {
@@ -2041,7 +2113,7 @@ async function loadDetail(id) {
           h('button', {
             className: 'btn btn-primary',
             onclick: () => showModal('login'),
-          }, '🔑 登录后发表评论'),
+          }, tr('🔑 登录后发表评论', '🔑 Sign in to comment')),
         );
         commentsContainer.appendChild(loginPrompt);
       }
@@ -2053,18 +2125,18 @@ async function loadDetail(id) {
             className: 'report-link',
             style: { background: 'none', border: 'none', fontSize: '11px', color: 'var(--text-sec)', cursor: 'pointer', fontFamily: 'inherit' },
             onclick: () => showReportModal(id),
-          }, '⚠ 举报不合适的内容'),
+          }, tr('⚠ 举报不合适的内容', '⚠ Report inappropriate content')),
         ),
       );
     }
   } catch (e) {
     contentEl.innerHTML = `<div class="error-block">
       <div class="error-icon">😵</div>
-      <p>${e.message}</p>
-      <button class="btn btn-primary btn-sm retry-btn" onclick="window._retryDetail?.()">🔄 重试</button>
+      <p>${errorMessage(e, tr('加载失败', 'Failed to load'))}</p>
+      <button class="btn btn-primary btn-sm retry-btn" onclick="window._retryDetail?.()">🔄 ${tr('重试', 'Retry')}</button>
     </div>`;
     window._retryDetail = () => loadDetail(id);
-    showToast('加载图纸详情失败', 'error');
+    showToast(tr('加载图纸详情失败', 'Failed to load the blueprint'), 'error');
   }
 }
 
@@ -2086,13 +2158,13 @@ async function renderNotifications() {
     container.appendChild(
       h('div', { className: 'main', style: { maxWidth: '760px' } },
         h('div', { className: 'page-header' },
-          h('h1', {}, '🔔 站内通知'),
-          h('p', {}, '登录后查看评论、回复、点赞和收藏提醒'),
+          h('h1', {}, tr('🔔 站内通知', '🔔 Notifications')),
+          h('p', {}, tr('登录后查看评论、回复、点赞和收藏提醒', 'Sign in to see comments, replies, likes and favorites')),
         ),
         h('div', { className: 'empty', style: { padding: '32px' } },
           h('div', { className: 'empty-icon' }, '🔐'),
-          h('p', {}, '请先登录后查看通知'),
-          h('button', { className: 'btn btn-primary', onclick: () => showModal('login') }, '去登录'),
+          h('p', {}, tr('请先登录后查看通知', 'Please sign in to view your notifications')),
+          h('button', { className: 'btn btn-primary', onclick: () => showModal('login') }, tr('去登录', 'Sign in')),
         ),
       ),
     );
@@ -2101,8 +2173,8 @@ async function renderNotifications() {
   container.appendChild(
     h('div', { className: 'main', style: { maxWidth: '760px' } },
       h('div', { className: 'page-header' },
-        h('h1', {}, '🔔 站内通知'),
-        h('p', {}, '评论、回复、点赞和收藏都会在这里提醒你'),
+        h('h1', {}, tr('🔔 站内通知', '🔔 Notifications')),
+        h('p', {}, tr('评论、回复、点赞和收藏都会在这里提醒你', 'Comments, replies, likes and favorites all show up here')),
       ),
       h('div', { id: 'notifications-list', className: 'notifications-card' },
         h('div', { className: 'loading' }, h('div', { className: 'spinner' })),
@@ -2119,7 +2191,7 @@ async function renderNotifications() {
     if (!items.length) {
       listEl.appendChild(h('div', { className: 'empty', style: { padding: '32px' } },
         h('div', { className: 'empty-icon' }, '📭'),
-        h('p', {}, '暂无通知'),
+        h('p', {}, tr('暂无通知', 'No notifications yet')),
       ));
     } else {
       items.forEach(item => listEl.appendChild(renderNotificationItem(item)));
@@ -2131,31 +2203,36 @@ async function renderNotifications() {
     }
   } catch (e) {
     const listEl = $id('notifications-list');
-    if (listEl) listEl.innerHTML = `<div class="error-block"><p>加载通知失败：${e.message}</p></div>`;
+    if (listEl) listEl.innerHTML = `<div class="error-block"><p>${tr('加载通知失败', 'Failed to load notifications')}: ${errorMessage(e, '')}</p></div>`;
   }
 }
 
 function renderNotificationItem(item) {
-  const actor = item.actor?.username || '有人';
-  const title = item.payload?.blueprint_title || '你的作品';
-  const messageMap = {
+  const actor = item.actor?.username || tr('有人', 'Someone');
+  const title = item.payload?.blueprint_title || tr('你的作品', 'your blueprint');
+  const messageMap = isEnglishPath() ? {
+    comment: `${actor} commented on "${title}"`,
+    comment_reply: `${actor} replied to your comment`,
+    like: `${actor} liked "${title}"`,
+    favorite: `${actor} favorited "${title}"`,
+  } : {
     comment: `${actor} 评论了《${title}》`,
     comment_reply: `${actor} 回复了你的评论`,
     like: `${actor} 点赞了《${title}》`,
     favorite: `${actor} 收藏了《${title}》`,
   };
-  const message = messageMap[item.type] || `${actor} 有新的互动`;
+  const message = messageMap[item.type] || tr(`${actor} 有新的互动`, `${actor} interacted with you`);
   const excerpt = item.payload?.comment_excerpt;
   return h('div', { className: `notification-item${item.is_read ? '' : ' unread'}` },
     h('div', { className: 'notification-main' },
       h('div', { className: 'notification-title' }, message),
       excerpt ? h('div', { className: 'notification-excerpt' }, excerpt) : null,
-      h('div', { className: 'notification-time' }, item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : ''),
+      h('div', { className: 'notification-time' }, item.created_at ? new Date(item.created_at).toLocaleString(tr('zh-CN', 'en-US')) : ''),
     ),
     item.blueprint_id ? h('button', {
       className: 'btn btn-ghost btn-sm',
       onclick: () => navigate('detail', { id: item.blueprint_id }),
-    }, '查看') : null,
+    }, tr('查看', 'View')) : null,
   );
 }
 
@@ -2170,33 +2247,33 @@ function renderUpload() {
   const container = $id('page-upload');
   container.innerHTML = '';
 
-  const categories = ['建筑', '车辆', '机甲', '奇幻', '科幻', '场景'];
+  const categories = CATEGORIES;
 
   container.appendChild(
     h('div', { className: 'main' },
       h('div', { className: 'form-card' },
-        h('h1', {}, '📤 上传图纸'),
-        h('p', { className: 'subtitle' }, '分享你的积木创作'),
+        h('h1', {}, tr('📤 上传图纸', '📤 Upload blueprint')),
+        h('p', { className: 'subtitle' }, tr('分享你的积木创作', 'Share your brick build')),
         h('div', { id: 'upload-error' }),
         h('div', { id: 'upload-success' }),
 
         // Title
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '标题 *'),
-          h('input', { type: 'text', id: 'upload-title', className: 'form-input', placeholder: '给你的作品起个名字' }),
+          h('label', { className: 'form-label' }, tr('标题 *', 'Title *')),
+          h('input', { type: 'text', id: 'upload-title', className: 'form-input', placeholder: tr('给你的作品起个名字', 'Give your build a name') }),
         ),
 
         // Files upload
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '图片 / PDF'),
+          h('label', { className: 'form-label' }, tr('图片 / PDF', 'Images / PDF')),
           h('div', {
             id: 'upload-images-area',
             className: 'upload-area',
             onclick: () => document.getElementById('upload-file-input')?.click(),
           },
             h('div', { className: 'icon' }, '🖼️'),
-            h('div', { className: 'text' }, h('strong', {}, '点击选择图片或PDF')),
-            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩'),
+            h('div', { className: 'text' }, h('strong', {}, tr('点击选择图片或PDF', 'Click to choose images or PDFs'))),
+            h('div', { className: 'hint' }, tr('支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩', 'JPG / PNG / WebP / PDF, ≤20MB, compressed automatically')),
           ),
           h('input', {
             type: 'file', id: 'upload-file-input',
@@ -2210,24 +2287,24 @@ function renderUpload() {
 
         // Description
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '描述'),
-          h('textarea', { id: 'upload-desc', className: 'form-textarea', placeholder: '描述你的作品...' }),
+          h('label', { className: 'form-label' }, tr('描述', 'Description')),
+          h('textarea', { id: 'upload-desc', className: 'form-textarea', placeholder: tr('描述你的作品...', 'Describe your build...') }),
         ),
 
         // Category + Difficulty (2-col)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '分类'),
+            h('label', { className: 'form-label' }, tr('分类', 'Category')),
             h('select', { id: 'upload-category', className: 'form-select' },
-              h('option', { value: '' }, '选择分类'),
-              ...categories.map(c => h('option', { value: c }, c)),
+              h('option', { value: '' }, tr('选择分类', 'Choose a category')),
+              ...categories.map(c => h('option', { value: c }, categoryLabel(c))),
             ),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '难度 (1-5)'),
+            h('label', { className: 'form-label' }, tr('难度 (1-5)', 'Difficulty (1-5)')),
             h('select', { id: 'upload-difficulty', className: 'form-select' },
-              h('option', { value: '' }, '选择难度'),
-              ...[1, 2, 3, 4, 5].map(n => h('option', { value: String(n) }, '⭐'.repeat(n))),
+              h('option', { value: '' }, tr('选择难度', 'Choose difficulty')),
+              ...[1, 2, 3, 4, 5].map(n => h('option', { value: String(n) }, `${'⭐'.repeat(n)} ${difficultyLabel(n)}`)),
             ),
           ),
         ),
@@ -2235,33 +2312,33 @@ function renderUpload() {
         // Brand + Product code (2-col)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '品牌'),
+            h('label', { className: 'form-label' }, tr('品牌', 'Brand')),
             h('select', { id: 'upload-brand', className: 'form-select' },
-              h('option', { value: '' }, '选择品牌'),
+              h('option', { value: '' }, tr('选择品牌', 'Choose a brand')),
               ...BRANDS.map(b => h('option', { value: b }, b)),
             ),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '型号'),
-            h('input', { type: 'text', id: 'upload-product-code', className: 'form-input', placeholder: '例如: 42115' }),
+            h('label', { className: 'form-label' }, tr('型号', 'Set number')),
+            h('input', { type: 'text', id: 'upload-product-code', className: 'form-input', placeholder: tr('例如: 42115', 'e.g. 42115') }),
           ),
         ),
 
         // Piece count + Dimensions (2-col)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '零件数'),
-            h('input', { type: 'text', id: 'upload-pieces', className: 'form-input', placeholder: '例如: 1500' }),
+            h('label', { className: 'form-label' }, tr('零件数', 'Piece count')),
+            h('input', { type: 'text', id: 'upload-pieces', className: 'form-input', placeholder: tr('例如: 1500', 'e.g. 1500') }),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '尺寸'),
-            h('input', { type: 'text', id: 'upload-dimensions', className: 'form-input', placeholder: '例如: 30x20x15 cm' }),
+            h('label', { className: 'form-label' }, tr('尺寸', 'Dimensions')),
+            h('input', { type: 'text', id: 'upload-dimensions', className: 'form-input', placeholder: 'e.g. 30x20x15 cm' }),
           ),
         ),
 
         // Tags
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '🏷️ 标签'),
+          h('label', { className: 'form-label' }, tr('🏷️ 标签', '🏷️ Tags')),
           h('div', { id: 'upload-tags-chips', style: {
             display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px',
             minHeight: '0px',
@@ -2270,7 +2347,7 @@ function renderUpload() {
             h('input', {
               type: 'text', id: 'upload-tag-input',
               className: 'form-input',
-              placeholder: '输入标签名，回车添加...',
+              placeholder: tr('输入标签名，回车添加...', 'Type a tag and press Enter...'),
               style: { flex: 1 },
               onkeydown: (e) => {
                 if (e.key === 'Enter') {
@@ -2279,10 +2356,10 @@ function renderUpload() {
                 }
               },
             }),
-            h('button', { className: 'btn btn-ghost btn-sm', onclick: addUploadTag }, '➕ 添加'),
+            h('button', { className: 'btn btn-ghost btn-sm', onclick: addUploadTag }, tr('➕ 添加', '➕ Add')),
           ),
           h('p', { style: { fontSize: '0.75rem', color: 'var(--text-sec)', marginTop: '4px' } },
-            '💡 按回车或点击「添加」按钮添加标签'),
+            tr('💡 按回车或点击「添加」按钮添加标签', '💡 Press Enter or click Add to attach a tag')),
         ),
 
         // Publish checkbox — hidden, always published
@@ -2294,11 +2371,11 @@ function renderUpload() {
             className: 'btn btn-primary btn-lg',
             style: { flex: 1 },
             onclick: handleUpload,
-          }, '📤 上传图纸'),
+          }, tr('📤 上传图纸', '📤 Upload blueprint')),
           h('button', {
             className: 'btn btn-ghost',
             onclick: () => navigate('home'),
-          }, '取消'),
+          }, tr('取消', 'Cancel')),
         ),
       ),
     ),
@@ -2428,7 +2505,7 @@ function renderImagePreviews() {
           fontSize: '14px', cursor: 'pointer', fontWeight: 'bold',
           border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
         },
-        title: '设为封面',
+        title: tr('设为封面', 'Set as cover'),
         onclick: (ev2) => {
           ev2.stopPropagation();
           _coverIndex = idx;
@@ -2474,7 +2551,7 @@ function renderImagePreviews() {
       };
       wrapper.appendChild(h('span', {
         style: { ...arrowStyle, top: '2px', borderRadius: '6px 6px 0 0' },
-        title: '上移',
+        title: tr('上移', 'Move up'),
         onclick: (ev2) => {
           ev2.stopPropagation();
           if (idx <= 0) return;
@@ -2486,7 +2563,7 @@ function renderImagePreviews() {
       }, '▲'));
       wrapper.appendChild(h('span', {
         style: { ...arrowStyle, bottom: '2px', borderRadius: '0 0 6px 6px' },
-        title: '下移',
+        title: tr('下移', 'Move down'),
         onclick: (ev2) => {
           ev2.stopPropagation();
           if (idx >= _selectedFiles.length - 1) return;
@@ -2518,11 +2595,11 @@ async function handleUpload() {
   const product_code = $id('upload-product-code')?.value.trim();
   const is_published = true; // always published
 
-  if (!title) { if (errEl) errEl.innerHTML = '<div class="msg msg-error">请输入标题</div>'; return; }
+  if (!title) { if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('请输入标题', 'Please enter a title.')}</div>`; return; }
 
   try {
     // 1. Create blueprint
-    if (okEl) okEl.innerHTML = '<div class="msg" style="color:var(--accent)">创建图纸中...</div>';
+    if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">${tr('创建图纸中...', 'Creating the blueprint...')}</div>`;
     const data = await api.createBlueprint({
       title, description: description || undefined,
       category: category || undefined, difficulty,
@@ -2535,11 +2612,11 @@ async function handleUpload() {
 
     // 2. Upload images if any
     if (_selectedFiles.length > 0) {
-      if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">上传图片中 (0/${_selectedFiles.length})...</div>`;
+      if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">${tr(`上传图片中 (0/${_selectedFiles.length})...`, `Uploading files (0/${_selectedFiles.length})...`)}</div>`;
       for (let i = 0; i < _selectedFiles.length; i++) {
         try {
           await api.uploadBlueprintImage(data.id, _selectedFiles[i]);
-          if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">上传图片中 (${i + 1}/${_selectedFiles.length})...</div>`;
+          if (okEl) okEl.innerHTML = `<div class="msg" style="color:var(--accent)">${tr(`上传图片中 (${i + 1}/${_selectedFiles.length})...`, `Uploading files (${i + 1}/${_selectedFiles.length})...`)}</div>`;
         } catch (imgErr) {
           console.warn(`Image ${i + 1} upload failed:`, imgErr);
         }
@@ -2574,11 +2651,11 @@ async function handleUpload() {
 
     _selectedFiles = [];
     _selectedTags = [];
-    if (okEl) okEl.innerHTML = '<div class="msg msg-success">🎉 上传成功！</div>';
-    state.flashMessage = '🎉 发布成功！可在个人主页管理你的作品';
+    if (okEl) okEl.innerHTML = `<div class="msg msg-success">${tr('🎉 上传成功！', '🎉 Upload complete!')}</div>`;
+    state.flashMessage = tr('🎉 发布成功！可在个人主页管理你的作品', '🎉 Published! You can manage it from your profile.');
     setTimeout(() => navigate('detail', { id: data.id }), 800);
   } catch (e) {
-    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('上传失败', 'Upload failed.'))}</div>`;
   }
 }
 
@@ -2611,13 +2688,13 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
             style: { background: `linear-gradient(135deg, ${bg}, ${bg2})` },
           }, emoji),
       h('span', { className: 'card-diff', style: { background: diff.bg } }, `${diff.stars} ${diff.label}`),
-      bp.piece_count ? h('span', { className: 'card-parts' }, `🧩 ${bp.piece_count}片`) : null,
+      bp.piece_count ? h('span', { className: 'card-parts' }, tr(`🧩 ${bp.piece_count}片`, `🧩 ${bp.piece_count} pcs`)) : null,
     ),
     h('div', { className: 'card-body' },
       h('div', { className: 'card-title' }, bp.title),
       h('div', { className: 'card-author' },
         h('img', { src: authorAvatar, alt: '', loading: 'lazy', decoding: 'async' }),
-        h('span', {}, bp.author?.username || '匿名'),
+        h('span', {}, bp.author?.username || tr('匿名', 'Anonymous')),
       ),
       h('div', { className: 'card-stats' },
         h('span', {}, `👁 ${bp.view_count || 0}`),
@@ -2630,16 +2707,16 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
   // Card actions for own profile
   if (isOwnProfile) {
     card.appendChild(h('div', { className: 'card-actions' },
-      h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.stopPropagation(); navigate('edit', { id: bp.id }); } }, '✏️ 编辑'),
+      h('button', { className: 'btn btn-ghost btn-sm', onclick: (e) => { e.stopPropagation(); navigate('edit', { id: bp.id }); } }, tr('✏️ 编辑', '✏️ Edit')),
       h('button', { className: 'btn btn-ghost btn-sm', style: { color: '#ef4444' }, onclick: async (e) => {
         e.stopPropagation();
-        if (!confirm(`确定删除「${bp.title}」吗？此操作不可恢复。`)) return;
+        if (!confirm(tr(`确定删除「${bp.title}」吗？此操作不可恢复。`, `Delete "${bp.title}"? This cannot be undone.`))) return;
         try {
           await api.deleteBlueprint(bp.id);
-          showToast('已删除', 'success');
+          showToast(tr('已删除', 'Deleted'), 'success');
           setTimeout(() => renderUserProfile(), 500);
-        } catch (err) { showToast(err.message, 'error'); }
-      } }, '🗑️ 删除'),
+        } catch (err) { showToast(errorMessage(err), 'error'); }
+      } }, tr('🗑️ 删除', '🗑️ Delete')),
     ));
   }
 
@@ -2655,10 +2732,10 @@ async function renderUserProfile() {
   container.innerHTML = '';
   const userId = state.userProfile.id;
   if (!userId) {
-    container.innerHTML = '<div style="text-align:center;padding:80px 20px"><p style="font-size:3rem;margin-bottom:16px">🧱</p><p style="font-size:1.1rem;color:var(--text-sec);margin-bottom:24px">未指定用户</p><button class="btn btn-primary" onclick="location.href=\'/\'">返回首页</button></div>';
+    container.innerHTML = `<div style="text-align:center;padding:80px 20px"><p style="font-size:3rem;margin-bottom:16px">🧱</p><p style="font-size:1.1rem;color:var(--text-sec);margin-bottom:24px">${tr('未指定用户', 'No user specified')}</p><button class="btn btn-primary" onclick="location.href='${langURL(currentLang(), '/')}'">${tr('返回首页', 'Back to home')}</button></div>`;
     return;
   }
-  container.appendChild(h('p', {}, 'Loading...'));
+  container.appendChild(h('p', {}, tr('Loading...', 'Loading...')));
   try {
     const profile = await api.getUserProfile(userId);
     state.userProfile = { ...state.userProfile, id: profile.id, username: profile.username };
@@ -2666,7 +2743,7 @@ async function renderUserProfile() {
       ? await api.getUserFavorites(profile.id, { page: state.userProfile.page })
       : await api.getUserBlueprints(profile.id, { page: state.userProfile.page });
     container.innerHTML = '';
-    const dateStr = profile.created_at ? new Date(profile.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }) : '';
+    const dateStr = profile.created_at ? new Date(profile.created_at).toLocaleDateString(tr('zh-CN', 'en-US'), { year: 'numeric', month: 'long' }) : '';
     const avatarUrl = profile.avatar_url;
     const avatarEl = avatarUrl
       ? h('img', { src: avatarUrl, className: 'profile-avatar' })
@@ -2682,15 +2759,15 @@ async function renderUserProfile() {
           h('div', { className: 'profile-name' }, profile.username),
           profile.bio ? h('div', { className: 'profile-bio' }, profile.bio) : null,
           h('div', { className: 'profile-meta' },
-            dateStr ? h('span', {}, `📅 ${dateStr} 加入`) : null,
-            h('span', {}, `📐 ${profile.blueprint_count || 0} 作品`),
-            h('span', {}, `⭐ ${profile.favorite_count || 0} 收藏`),
+            dateStr ? h('span', {}, tr(`📅 ${dateStr} 加入`, `📅 Joined ${dateStr}`)) : null,
+            h('span', {}, tr(`📐 ${profile.blueprint_count || 0} 作品`, `📐 ${profile.blueprint_count || 0} blueprints`)),
+            h('span', {}, tr(`⭐ ${profile.favorite_count || 0} 收藏`, `⭐ ${profile.favorite_count || 0} favorites`)),
           ),
         ),
         isOwnProfile ? h('div', { className: 'profile-actions' },
-          h('button', { className: 'btn btn-ghost btn-sm', onclick: () => openSettings(profile) }, '✏️ 编辑资料'),
-          h('button', { className: 'btn btn-primary btn-sm', onclick: () => navigate('upload') }, '📤 上传作品'),
-          h('button', { className: 'btn btn-danger btn-sm', onclick: handleLogout }, '🚪 退出登录'),
+          h('button', { className: 'btn btn-ghost btn-sm', onclick: () => openSettings(profile) }, tr('✏️ 编辑资料', '✏️ Edit profile')),
+          h('button', { className: 'btn btn-primary btn-sm', onclick: () => navigate('upload') }, tr('📤 上传作品', '📤 Upload blueprint')),
+          h('button', { className: 'btn btn-danger btn-sm', onclick: handleLogout }, tr('🚪 退出登录', '🚪 Sign out')),
         ) : null,
       ),
 
@@ -2698,22 +2775,22 @@ async function renderUserProfile() {
       h('div', { className: 'stats-row' },
         h('div', { className: 'stat-box' },
           h('div', { className: 'stat-value' }, String(profile.blueprint_count || 0)),
-          h('div', { className: 'stat-label' }, '作品'),
+          h('div', { className: 'stat-label' }, tr('作品', 'Blueprints')),
         ),
         h('div', { className: 'stat-box' },
           h('div', { className: 'stat-value' }, String(profile.favorite_count || 0)),
-          h('div', { className: 'stat-label' }, '收藏'),
+          h('div', { className: 'stat-label' }, tr('收藏', 'Favorites')),
         ),
         h('div', { className: 'stat-box' },
           h('div', { className: 'stat-value' }, String(profile.total_views || 0)),
-          h('div', { className: 'stat-label' }, '浏览量'),
+          h('div', { className: 'stat-label' }, tr('浏览量', 'Views')),
         ),
       ),
 
       // Tabs
       h('div', { className: 'tabs' },
-        h('button', { className: `tab-btn${state.userProfile.tab === 'blueprints' ? ' active' : ''}`, onclick: () => { state.userProfile.tab = 'blueprints'; state.userProfile.page = 1; renderUserProfile(); } }, '我的作品'),
-        h('button', { className: `tab-btn${state.userProfile.tab === 'favorites' ? ' active' : ''}`, onclick: () => { state.userProfile.tab = 'favorites'; state.userProfile.page = 1; renderUserProfile(); } }, '我的收藏'),
+        h('button', { className: `tab-btn${state.userProfile.tab === 'blueprints' ? ' active' : ''}`, onclick: () => { state.userProfile.tab = 'blueprints'; state.userProfile.page = 1; renderUserProfile(); } }, tr('我的作品', 'Blueprints')),
+        h('button', { className: `tab-btn${state.userProfile.tab === 'favorites' ? ' active' : ''}`, onclick: () => { state.userProfile.tab = 'favorites'; state.userProfile.page = 1; renderUserProfile(); } }, tr('我的收藏', 'Favorites')),
       ),
 
       // Card grid
@@ -2721,13 +2798,13 @@ async function renderUserProfile() {
         ? h('div', { className: 'card-grid' },
             ...items.items.map(bp => renderBlueprintCard(bp, isOwnProfile)),
           )
-        : h('div', { className: 'empty', style: { padding: '40px', textAlign: 'center' } }, h('p', {}, '暂无作品')),
+        : h('div', { className: 'empty', style: { padding: '40px', textAlign: 'center' } }, h('p', {}, tr('暂无作品', 'No blueprints yet'))),
 
       // Pagination
       items.total > 12 ? h('div', { className: 'pagination', style: { justifyContent: 'center' } },
         ...Array.from({ length: Math.ceil(items.total / 12) }, (_, i) => h('button', { className: `page-btn${state.userProfile.page === i+1 ? ' active' : ''}`, onclick: () => { state.userProfile.page = i+1; renderUserProfile(); } }, String(i+1)))) : null,
     ));
-  } catch (e) { container.innerHTML = '<div class="empty"><p>加载失败: '+e.message+'</p><button class="btn btn-primary btn-sm" onclick="location.reload()">重试</button></div>'; }
+  } catch (e) { container.innerHTML = `<div class="empty"><p>${tr('加载失败', 'Failed to load')}: ${errorMessage(e, '')}</p><button class="btn btn-primary btn-sm" onclick="location.reload()">${tr('重试', 'Retry')}</button></div>`; }
 }
 
 // ═══════════════════════════════════════════
@@ -2760,16 +2837,16 @@ function openAvatarPicker(profile) {
 
     pickerEl.appendChild(
       h('button', { className: 'close', onclick: () => closeAvatarPicker(profile), style: { float: 'right' } }, '✕'),
-      h('h2', {}, '🎨 选择头像'),
+      h('h2', {}, tr('🎨 选择头像', '🎨 Choose an avatar')),
       h('div', { className: 'avatar-picker-tabs' },
         h('button', {
           className: `avatar-picker-tab${_avatarPickerTab === 'presets' ? ' active' : ''}`,
           onclick: () => { _avatarPickerTab = 'presets'; _selectedAvatarUrl = null; renderPickerContent(); },
-        }, '预设头像'),
+        }, tr('预设头像', 'Presets')),
         h('button', {
           className: `avatar-picker-tab${_avatarPickerTab === 'upload' ? ' active' : ''}`,
           onclick: () => { _avatarPickerTab = 'upload'; _selectedAvatarUrl = null; renderPickerContent(); },
-        }, '上传图片'),
+        }, tr('上传图片', 'Upload image')),
       ),
     );
 
@@ -2793,12 +2870,12 @@ function openAvatarPicker(profile) {
           grid.appendChild(img);
         });
       }).catch(() => {
-        grid.innerHTML = '<p style="grid-column:1/-1;text-align:center">加载预设头像失败</p>';
+        grid.innerHTML = `<p style="grid-column:1/-1;text-align:center">${tr('加载预设头像失败', 'Failed to load preset avatars')}</p>`;
       });
 
       pickerEl.appendChild(
         h('div', { className: 'avatar-picker-actions' },
-          h('button', { className: 'btn btn-white', onclick: () => closeAvatarPicker(profile) }, '取消'),
+          h('button', { className: 'btn btn-white', onclick: () => closeAvatarPicker(profile) }, tr('取消', 'Cancel')),
           h('button', {
             className: 'btn btn-primary',
             onclick: async () => {
@@ -2806,21 +2883,21 @@ function openAvatarPicker(profile) {
               try {
                 await api.updateProfile({ avatar_url: _selectedAvatarUrl });
                 closeAvatarPicker(profile);
-                showToast('头像已更新', 'success');
+                showToast(tr('头像已更新', 'Avatar updated'), 'success');
                 profile.avatar_url = _selectedAvatarUrl;
                 _syncUserAvatar(_selectedAvatarUrl);
                 openSettings(profile);
               } catch (e) {
-                showToast(e.message, 'error');
+                showToast(errorMessage(e), 'error');
               }
             },
-          }, '确认'),
+          }, tr('确认', 'Confirm')),
         ),
       );
     } else {
       // Upload tab
       const uploadDiv = h('div', { className: 'avatar-picker-upload' },
-        h('p', { style: { marginBottom: '12px', color: 'var(--text-sec)' } }, '选择图片文件上传（支持 jpg/png/webp/gif，最大 2MB）'),
+        h('p', { style: { marginBottom: '12px', color: 'var(--text-sec)' } }, tr('选择图片文件上传（支持 jpg/png/webp/gif，最大 2MB）', 'Choose an image to upload (jpg/png/webp/gif, up to 2MB)')),
         h('input', {
           type: 'file',
           id: 'avatar-picker-file-input',
@@ -2830,28 +2907,28 @@ function openAvatarPicker(profile) {
             const file = e.target.files?.[0];
             if (!file) return;
             if (file.size > 2 * 1024 * 1024) {
-              showToast('文件不能超过 2MB', 'error');
+              showToast(tr('文件不能超过 2MB', 'The file must be 2MB or smaller'), 'error');
               return;
             }
             try {
               const result = await api.uploadAvatar(file);
               closeAvatarPicker(profile);
-              showToast('头像已更新', 'success');
+              showToast(tr('头像已更新', 'Avatar updated'), 'success');
               profile.avatar_url = result.avatar_url;
               _syncUserAvatar(result.avatar_url);
               openSettings(profile);
             } catch (e) {
-              showToast(e.message, 'error');
+              showToast(errorMessage(e), 'error');
             }
           },
         }),
-        h('button', { className: 'btn btn-primary', onclick: () => document.getElementById('avatar-picker-file-input')?.click() }, '📁 选择文件'),
+        h('button', { className: 'btn btn-primary', onclick: () => document.getElementById('avatar-picker-file-input')?.click() }, tr('📁 选择文件', '📁 Choose file')),
       );
       pickerEl.appendChild(uploadDiv);
 
       pickerEl.appendChild(
         h('div', { className: 'avatar-picker-actions' },
-          h('button', { className: 'btn btn-white', onclick: () => closeAvatarPicker(profile) }, '取消'),
+          h('button', { className: 'btn btn-white', onclick: () => closeAvatarPicker(profile) }, tr('取消', 'Cancel')),
         ),
       );
     }
@@ -2894,16 +2971,16 @@ function openSettings(profile) {
 
     contentEl.appendChild(
       h('button', { className: 'close', onclick: closeSettings, style: { float: 'right' } }, '✕'),
-      h('h2', {}, '⚙️ 账号设置'),
+      h('h2', {}, tr('⚙️ 账号设置', '⚙️ Account settings')),
       h('div', { className: 'settings-tabs' },
         h('button', {
           className: `settings-tab${_settingsTab === 'profile' ? ' active' : ''}`,
           onclick: () => { _settingsTab = 'profile'; renderSettingsContent(); },
-        }, '个人资料'),
+        }, tr('个人资料', 'Profile')),
         h('button', {
           className: `settings-tab${_settingsTab === 'password' ? ' active' : ''}`,
           onclick: () => { _settingsTab = 'password'; renderSettingsContent(); },
-        }, '修改密码'),
+        }, tr('修改密码', 'Password')),
       ),
       h('div', { id: 'settings-error' }),
     );
@@ -2916,8 +2993,8 @@ function openSettings(profile) {
           ? h('img', { src: avatarPreviewUrl, style: { width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #e5e5e5' } })
           : h('div', { style: { width: '80px', height: '80px', borderRadius: '50%', background: 'var(--accent)', fontSize: '2rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #e5e5e5' } }, (profile.username || '?')[0].toUpperCase()),
         h('div', { style: { marginTop: '8px', display: 'flex', gap: '16px', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700 } },
-          h('span', { style: { color: 'var(--text-sec)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); openAvatarPicker(profile); } }, '🎨 预设'),
-          h('span', { style: { color: 'var(--accent)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); document.getElementById('settings-avatar-input')?.click(); } }, '📁 本地上传'),
+          h('span', { style: { color: 'var(--text-sec)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); openAvatarPicker(profile); } }, tr('🎨 预设', '🎨 Presets')),
+          h('span', { style: { color: 'var(--accent)', cursor: 'pointer' }, onclick: (e) => { e.stopPropagation(); document.getElementById('settings-avatar-input')?.click(); } }, tr('📁 本地上传', '📁 Upload')),
         ),
         h('input', {
           type: 'file',
@@ -2934,22 +3011,22 @@ function openSettings(profile) {
         h('div', { className: 'settings-form' },
           avatarPreview,
           h('div', { className: 'form-group' },
-            h('label', {}, '昵称'),
-            h('input', { type: 'text', id: 'settings-username', value: profile.username || '', placeholder: '你的用户名' }),
+            h('label', {}, tr('昵称', 'Display name')),
+            h('input', { type: 'text', id: 'settings-username', value: profile.username || '', placeholder: tr('你的用户名', 'Your username') }),
           ),
           h('div', { className: 'form-group' },
-            h('label', {}, '个人简介'),
-            h('textarea', { id: 'settings-bio', rows: 3, placeholder: '介绍一下自己...', style: { width: '100%', resize: 'vertical' } }, profile.bio || ''),
+            h('label', {}, tr('个人简介', 'Bio')),
+            h('textarea', { id: 'settings-bio', rows: 3, placeholder: tr('介绍一下自己...', 'Tell the community about yourself...'), style: { width: '100%', resize: 'vertical' } }, profile.bio || ''),
           ),
           h('div', { className: 'form-group' },
-            h('label', {}, '邮箱（不可更改）'),
+            h('label', {}, tr('邮箱（不可更改）', 'Email (cannot be changed)')),
             h('input', { type: 'text', value: profile.email || '', disabled: true, style: { opacity: '0.6' } }),
           ),
           h('button', {
             className: 'btn btn-primary btn-lg',
             style: { width: '100%', marginTop: '8px' },
             onclick: handleSaveSettings,
-          }, '💾 保存'),
+          }, tr('💾 保存', '💾 Save')),
         ),
       );
     } else {
@@ -2957,22 +3034,22 @@ function openSettings(profile) {
       contentEl.appendChild(
         h('div', { className: 'settings-form' },
           h('div', { className: 'form-group' },
-            h('label', {}, '当前密码'),
-            h('input', { type: 'password', id: 'settings-current-password', placeholder: '输入当前密码' }),
+            h('label', {}, tr('当前密码', 'Current password')),
+            h('input', { type: 'password', id: 'settings-current-password', placeholder: tr('输入当前密码', 'Enter your current password') }),
           ),
           h('div', { className: 'form-group' },
-            h('label', {}, '新密码'),
-            h('input', { type: 'password', id: 'settings-new-password', placeholder: '至少6位' }),
+            h('label', {}, tr('新密码', 'New password')),
+            h('input', { type: 'password', id: 'settings-new-password', placeholder: tr('至少6位', 'At least 6 characters') }),
           ),
           h('div', { className: 'form-group' },
-            h('label', {}, '确认新密码'),
-            h('input', { type: 'password', id: 'settings-confirm-password', placeholder: '再次输入新密码' }),
+            h('label', {}, tr('确认新密码', 'Confirm new password')),
+            h('input', { type: 'password', id: 'settings-confirm-password', placeholder: tr('再次输入新密码', 'Enter the new password again') }),
           ),
           h('button', {
             className: 'btn btn-primary btn-lg',
             style: { width: '100%', marginTop: '8px' },
             onclick: handleChangePassword,
-          }, '🔒 修改密码'),
+          }, tr('🔒 修改密码', '🔒 Change password')),
         ),
       );
     }
@@ -3007,7 +3084,7 @@ async function handleSaveSettings() {
   const bio = document.getElementById('settings-bio')?.value.trim();
 
   if (!username) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">昵称不能为空</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('昵称不能为空', 'Display name cannot be empty')}</div>`;
     return;
   }
 
@@ -3020,11 +3097,11 @@ async function handleSaveSettings() {
     } catch { /* ignore */ }
     closeSettings();
     renderNavbarIntoDOM();
-    showToast('资料已更新', 'success');
+    showToast(tr('资料已更新', 'Profile updated'), 'success');
     // Refresh the profile page without changing the stable user id route
     renderUserProfile();
   } catch (e) {
-    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('保存失败', 'Could not save your profile.'))}</div>`;
   }
 }
 
@@ -3037,7 +3114,7 @@ async function handleAvatarUpload(e) {
 
   // Validate size client-side
   if (file.size > 2 * 1024 * 1024) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">文件不能超过 2MB</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('文件不能超过 2MB', 'The file must be 2MB or smaller')}</div>`;
     return;
   }
 
@@ -3053,7 +3130,7 @@ async function handleAvatarUpload(e) {
       preview.appendChild(img);
       const label = document.createElement('p');
       label.style.cssText = 'margin-top:8px;font-size:0.8rem;font-weight:700;color:var(--text-sec)';
-      label.textContent = '点击更换头像';
+      label.textContent = tr('点击更换头像', 'Click to change your avatar');
       preview.appendChild(label);
       const input = document.getElementById('settings-avatar-input');
       if (input) {
@@ -3072,11 +3149,11 @@ async function handleAvatarUpload(e) {
       } catch { /* ignore */ }
       renderNavbarIntoDOM();
     }
-    showToast('头像已更新', 'success');
+    showToast(tr('头像已更新', 'Avatar updated'), 'success');
     // Re-render the profile behind the scenes
     setTimeout(() => renderUserProfile(), 300);
   } catch (e) {
-    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('头像上传失败', 'Avatar upload failed.'))}</div>`;
   }
 }
 
@@ -3089,24 +3166,24 @@ async function handleChangePassword() {
   const confirm = document.getElementById('settings-confirm-password')?.value;
 
   if (!current || !newPw || !confirm) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">请填写所有密码字段</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('请填写所有密码字段', 'Please fill in all password fields.')}</div>`;
     return;
   }
   if (newPw.length < 6) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">新密码至少6位</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('新密码至少6位', 'The new password must be at least 6 characters.')}</div>`;
     return;
   }
   if (newPw !== confirm) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">两次输入的新密码不一致</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('两次输入的新密码不一致', 'The new passwords do not match.')}</div>`;
     return;
   }
 
   try {
     await api.changePassword(current, newPw);
     closeSettings();
-    showToast('密码已修改', 'success');
+    showToast(tr('密码已修改', 'Password changed'), 'success');
   } catch (e) {
-    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('修改失败', 'Could not change your password.'))}</div>`;
   }
 }
 
@@ -3114,14 +3191,14 @@ async function handleChangePassword() {
 // Delete Blueprint
 // ═══════════════════════════════════════════
 async function handleDeleteBlueprint(bp) {
-  if (!confirm(`确定要删除「${bp.title}」吗？此操作不可撤销！`)) return;
+  if (!confirm(tr(`确定要删除「${bp.title}」吗？此操作不可撤销！`, `Delete "${bp.title}"? This cannot be undone.`))) return;
 
   try {
     await api.deleteBlueprint(bp.id);
-    showToast('图纸已删除', 'success');
+    showToast(tr('图纸已删除', 'Blueprint deleted'), 'success');
     renderUserProfile();
   } catch (e) {
-    showToast(`删除失败: ${e.message}`, 'error');
+    showToast(`${tr('删除失败', 'Delete failed')}: ${errorMessage(e, '')}`, 'error');
   }
 }
 
@@ -3137,7 +3214,7 @@ function renderEditImages() {
   container.innerHTML = '';
 
   if (_editImages.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-sec);font-size:0.8rem;">暂无图片</p>';
+    container.innerHTML = `<p style="color:var(--text-sec);font-size:0.8rem;">${tr('暂无图片', 'No images yet')}</p>`;
     return;
   }
 
@@ -3164,7 +3241,7 @@ function renderEditImages() {
         },
       },
         h('div', { style: { fontSize: '2.5rem', marginBottom: '4px' } }, '📄'),
-        h('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' } }, 'PDF 文件'),
+        h('div', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' } }, tr('PDF 文件', 'PDF file')),
       ));
     } else {
       item.appendChild(h('img', {
@@ -3177,20 +3254,20 @@ function renderEditImages() {
       if (idx === _editCoverIdx) {
         item.appendChild(h('span', {
           className: 'cover-badge',
-          title: '当前封面',
+          title: tr('当前封面', 'Current cover'),
           onclick: (ev2) => { ev2.stopPropagation(); },
-        }, '封面'));
+        }, tr('封面', 'Cover')));
       } else {
         item.appendChild(h('span', {
           className: 'cover-badge',
           style: { opacity: '0.5', cursor: 'pointer' },
-          title: '设为封面',
+          title: tr('设为封面', 'Set as cover'),
           onclick: (ev2) => {
             ev2.stopPropagation();
             _editCoverIdx = idx;
             renderEditImages();
           },
-        }, '封面'));
+        }, tr('封面', 'Cover')));
       }
     }
 
@@ -3205,7 +3282,7 @@ function renderEditImages() {
       item.appendChild(h('span', {
         className: 'sort-arrow sort-arrow-up',
         style: { ...arrowStyle, top: '2px', borderRadius: '6px 6px 0 0', opacity: idx === 0 ? 0.35 : 1 },
-        title: '上移',
+        title: tr('上移', 'Move up'),
         onclick: (ev2) => {
           ev2.stopPropagation();
           moveImage(idx, idx - 1);
@@ -3214,7 +3291,7 @@ function renderEditImages() {
       item.appendChild(h('span', {
         className: 'sort-arrow sort-arrow-down',
         style: { ...arrowStyle, bottom: '2px', borderRadius: '0 0 6px 6px', opacity: idx === _editImages.length - 1 ? 0.35 : 1 },
-        title: '下移',
+        title: tr('下移', 'Move down'),
         onclick: (ev2) => {
           ev2.stopPropagation();
           moveImage(idx, idx + 1);
@@ -3225,10 +3302,10 @@ function renderEditImages() {
     // Delete button (top-right)
     item.appendChild(h('span', {
       className: 'remove-btn',
-      title: '删除图片',
+      title: tr('删除图片', 'Delete image'),
       onclick: async (ev2) => {
         ev2.stopPropagation();
-        if (!confirm('确定删除这张图片吗？')) return;
+        if (!confirm(tr('确定删除这张图片吗？', 'Delete this image?'))) return;
         try {
           await api.deleteBlueprintImage(_editImages[idx].blueprint_id || img.blueprint_id || state.editId, img.id);
           _editImages = _editImages.filter((_, i) => i !== idx);
@@ -3243,9 +3320,9 @@ function renderEditImages() {
             }
           }
           renderEditImages();
-          showToast('图片已删除', 'success');
+          showToast(tr('图片已删除', 'Image deleted'), 'success');
         } catch (e) {
-          showToast('删除失败: ' + e.message, 'error');
+          showToast(tr('删除失败', 'Delete failed') + ': ' + errorMessage(e, ''), 'error');
         }
       },
     }, '×'));
@@ -3275,8 +3352,8 @@ async function loadEditPage(id) {
       h('div', { className: 'main' },
         h('div', { className: 'form-card', style: { textAlign: 'center', padding: '60px 20px' } },
           h('p', { style: { fontSize: '3rem', marginBottom: '16px' } }, '🧱'),
-          h('p', { style: { fontSize: '1.1rem', color: 'var(--text-sec)', marginBottom: '24px' } }, '加载失败: ' + e.message),
-          h('button', { className: 'btn btn-primary', onclick: () => navigate('home') }, '返回首页'),
+          h('p', { style: { fontSize: '1.1rem', color: 'var(--text-sec)', marginBottom: '24px' } }, `${tr('加载失败', 'Failed to load')}: ${errorMessage(e, '')}`),
+          h('button', { className: 'btn btn-primary', onclick: () => navigate('home') }, tr('返回首页', 'Back to home')),
         ),
       ),
     );
@@ -3288,7 +3365,7 @@ async function loadEditPage(id) {
   _editCoverIdx = getCoverIndex(_editImages);
   _editTags = [...(bp.tags || [])];
 
-  const categories = ['建筑', '车辆', '机甲', '奇幻', '科幻', '场景'];
+  const categories = CATEGORIES;
 
   // Keep a brand the visitor typed before it was in the curated list selectable.
   const editBrand = bp.brand || '';
@@ -3334,35 +3411,36 @@ async function loadEditPage(id) {
     h('div', { className: 'main' },
       h('div', { className: 'form-card' },
         h('h1', {}, '\u270f\ufe0f 编辑图纸'),
-        h('p', { className: 'subtitle' }, '修改你的积木创作信息'),
+        h('p', { className: 'subtitle' }, tr('修改你的积木创作信息', 'Update your build details')),
         h('div', { id: 'edit-bp-error' }),
 
         // Title
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '标题'),
-          h('input', { type: 'text', id: 'edit-bp-title', className: 'form-input', value: bp.title || '', placeholder: '图纸标题' }),
+          h('label', { className: 'form-label' }, tr('标题', 'Title')),
+          h('input', { type: 'text', id: 'edit-bp-title', className: 'form-input', value: bp.title || '', placeholder: tr('图纸标题', 'Blueprint title') }),
         ),
 
         // Description
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '描述'),
-          h('textarea', { id: 'edit-bp-desc', className: 'form-textarea', placeholder: '描述你的作品...' }, bp.description || ''),
+          h('label', { className: 'form-label' }, tr('描述', 'Description')),
+          h('textarea', { id: 'edit-bp-desc', className: 'form-textarea', placeholder: tr('描述你的作品...', 'Describe your build...') }, bp.description || ''),
         ),
 
         // Category + Difficulty (form-row)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '分类'),
+            h('label', { className: 'form-label' }, tr('分类', 'Category')),
             h('select', { id: 'edit-bp-category', className: 'form-select' },
-              h('option', { value: '' }, '选择分类'),
-              ...categories.map(c => h('option', { value: c, ...(bp.category === c ? { selected: '' } : {}) }, c)),
+              h('option', { value: '' }, tr('选择分类', 'Choose a category')),
+              ...categories.map(c => h('option', { value: c, ...(bp.category === c ? { selected: '' } : {}) }, categoryLabel(c))),
             ),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '难度 (1-5)'),
+            h('label', { className: 'form-label' }, tr('难度 (1-5)', 'Difficulty (1-5)')),
             h('select', { id: 'edit-bp-difficulty', className: 'form-select' },
-              h('option', { value: '' }, '选择难度'),
-              ...[1, 2, 3, 4, 5].map(n => h('option', { value: String(n), ...(bp.difficulty === n ? { selected: '' } : {}) }, '\u2b50'.repeat(n))),
+              h('option', { value: '' }, tr('选择难度', 'Choose difficulty')),
+              ...[1, 2, 3, 4, 5].map(n => h('option', { value: String(n), ...(bp.difficulty === n ? { selected: '' } : {}) }, `${
+                '\u2b50'.repeat(n)} ${difficultyLabel(n)}`)),
             ),
           ),
         ),
@@ -3370,38 +3448,38 @@ async function loadEditPage(id) {
         // Brand + Product code (form-row)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '品牌'),
+            h('label', { className: 'form-label' }, tr('品牌', 'Brand')),
             h('select', { id: 'edit-bp-brand', className: 'form-select' },
-              h('option', { value: '' }, '选择品牌'),
+              h('option', { value: '' }, tr('选择品牌', 'Choose a brand')),
               ...editBrandOptions.map(b => h('option', { value: b, ...(editBrand === b ? { selected: '' } : {}) }, b)),
             ),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '型号'),
-            h('input', { type: 'text', id: 'edit-bp-product-code', className: 'form-input', value: bp.product_code || '', placeholder: '例如: 42115' }),
+            h('label', { className: 'form-label' }, tr('型号', 'Set number')),
+            h('input', { type: 'text', id: 'edit-bp-product-code', className: 'form-input', value: bp.product_code || '', placeholder: tr('例如: 42115', 'e.g. 42115') }),
           ),
         ),
 
         // Piece count + Dimensions (form-row)
         h('div', { className: 'form-row' },
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '零件数'),
-            h('input', { type: 'text', id: 'edit-bp-pieces', className: 'form-input', value: bp.piece_count || '', placeholder: '例如: 250' }),
+            h('label', { className: 'form-label' }, tr('零件数', 'Piece count')),
+            h('input', { type: 'text', id: 'edit-bp-pieces', className: 'form-input', value: bp.piece_count || '', placeholder: tr('例如: 250', 'e.g. 250') }),
           ),
           h('div', { className: 'form-group' },
-            h('label', { className: 'form-label' }, '尺寸'),
-            h('input', { type: 'text', id: 'edit-bp-dimensions', className: 'form-input', value: bp.dimensions || '', placeholder: '例如: 30x20x15 cm' }),
+            h('label', { className: 'form-label' }, tr('尺寸', 'Dimensions')),
+            h('input', { type: 'text', id: 'edit-bp-dimensions', className: 'form-input', value: bp.dimensions || '', placeholder: 'e.g. 30x20x15 cm' }),
           ),
         ),
 
         // Tags
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '\ud83c\udff7\ufe0f 标签'),
+          h('label', { className: 'form-label' }, tr('🏷️ 标签', '🏷️ Tags')),
           h('div', { id: 'edit-tags-chips', style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', minHeight: '0px' } }),
           h('div', { style: { display: 'flex', gap: '8px' } },
             h('input', {
               type: 'text', id: 'edit-tag-input', className: 'form-input',
-              placeholder: '输入标签名，回车添加...',
+              placeholder: tr('输入标签名，回车添加...', 'Type a tag and press Enter...'),
               style: { flex: 1 },
               onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); addEditTag(); } },
             }),
@@ -3411,14 +3489,14 @@ async function loadEditPage(id) {
 
         // File management
         h('div', { className: 'form-group' },
-          h('label', { className: 'form-label' }, '🖼️ 文件管理 (点击⭐设为封面，▲▼排序)'),
+          h('label', { className: 'form-label' }, tr('🖼️ 文件管理 (点击⭐设为封面，▲▼排序)', '🖼️ Files (click ⭐ to set the cover, ▲▼ to reorder)')),
           h('div', {
             className: 'upload-area',
             onclick: () => document.getElementById('edit-file-input')?.click(),
           },
             h('div', { className: 'icon' }, '🖼️'),
-            h('div', { className: 'text' }, h('strong', {}, '点击添加图片或PDF')),
-            h('div', { className: 'hint' }, '支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩'),
+            h('div', { className: 'text' }, h('strong', {}, tr('点击添加图片或PDF', 'Click to add images or PDFs'))),
+            h('div', { className: 'hint' }, tr('支持 JPG / PNG / WebP / PDF，≤20MB，自动压缩', 'JPG / PNG / WebP / PDF, ≤20MB, compressed automatically')),
           ),
           h('input', {
             type: 'file', id: 'edit-file-input',
@@ -3445,9 +3523,9 @@ async function loadEditPage(id) {
               }
               renderEditImages();
               const msg = [];
-              if (success > 0) msg.push(`${success} 个上传成功`);
-              if (fail > 0) msg.push(`${fail} 个失败`);
-              showToast(msg.join('，'), fail > 0 ? 'error' : 'success');
+              if (success > 0) msg.push(tr(`${success} 个上传成功`, `${success} uploaded`));
+              if (fail > 0) msg.push(tr(`${fail} 个失败`, `${fail} failed`));
+              showToast(msg.join(tr('，', ', ')), fail > 0 ? 'error' : 'success');
               // Reset input
               ev.target.value = '';
             },
@@ -3460,7 +3538,7 @@ async function loadEditPage(id) {
           className: 'btn btn-primary btn-lg',
           style: { width: '100%', marginTop: '16px' },
           onclick: () => handleSaveEditBlueprint(id),
-        }, '\ud83d\udcbe 保存修改'),
+        }, tr('💾 保存修改', '💾 Save changes')),
       ),
     ),
   );
@@ -3494,7 +3572,7 @@ async function handleSaveEditBlueprint(id) {
   const product_code = document.getElementById('edit-bp-product-code')?.value.trim() || '';
 
   if (!title) {
-    if (errEl) errEl.innerHTML = '<div class="msg msg-error">标题不能为空</div>';
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${tr('标题不能为空', 'Title cannot be empty')}</div>`;
     return;
   }
 
@@ -3535,10 +3613,10 @@ async function handleSaveEditBlueprint(id) {
       }
     }
 
-    showToast('图纸已更新', 'success');
+    showToast(tr('图纸已更新', 'Blueprint updated'), 'success');
     navigate('user', { id: state.user?.id });
   } catch (e) {
-    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${e.message}</div>`;
+    if (errEl) errEl.innerHTML = `<div class="msg msg-error">${errorMessage(e, tr('保存失败', 'Could not save the blueprint.'))}</div>`;
   }
 }
 
@@ -3894,7 +3972,7 @@ async function renderAdminPage() {
             disabled: page <= 1,
             style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
             onclick: () => { page--; buildUI(); },
-          }, '‹ 上一页'));
+          }, tr('‹ 上一页', '‹ Previous')));
           for (let i = 1; i <= Math.min(totalPages, 7); i++) {
             pagEl.appendChild(h('button', {
               className: `page-btn${i === page ? ' active' : ''}`,
@@ -3910,7 +3988,7 @@ async function renderAdminPage() {
             disabled: page >= totalPages,
             style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
             onclick: () => { page++; buildUI(); },
-          }, '下一页 ›'));
+          }, tr('下一页 ›', 'Next ›')));
         } else if (pagEl) {
           pagEl.innerHTML = '';
         }
@@ -4161,7 +4239,7 @@ async function renderAdminPage() {
           disabled: page <= 1,
           style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
           onclick: () => { page--; buildUI(); },
-        }, '‹ 上一页'));
+        }, tr('‹ 上一页', '‹ Previous')));
         for (let i = 1; i <= Math.min(totalPages, 7); i++) {
           pagEl.appendChild(h('button', {
             className: `page-btn${i === page ? ' active' : ''}`,
@@ -4177,7 +4255,7 @@ async function renderAdminPage() {
           disabled: page >= totalPages,
           style: { width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' },
           onclick: () => { page++; buildUI(); },
-        }, '下一页 ›'));
+        }, tr('下一页 ›', 'Next ›')));
       } else if (pagEl) {
         pagEl.innerHTML = '';
       }
@@ -4415,8 +4493,8 @@ function updateBlogMore(el) {
     disabled: _blogLoading,
     onclick: () => loadMoreBlog(),
   }, _blogLoading
-    ? '加载中…'
-    : `加载更多（已显示 ${_blogItems} / ${_blogTotal} 篇）`));
+    ? tr('加载中…', 'Loading…')
+    : tr(`加载更多（已显示 ${_blogItems} / ${_blogTotal} 篇）`, `Load more (${_blogItems} / ${_blogTotal} shown)`)));
 }
 
 async function loadMoreBlog() {
@@ -4468,8 +4546,8 @@ async function renderBlogList() {
 
   const main = h('div', { className: 'main' },
     h('div', { className: 'blog-list' },
-      h('h1', {}, '📖 BrickPlan 博客'),
-      h('p', { className: 'blog-subtitle' }, '积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容'),
+      h('h1', {}, tr('📖 BrickPlan 博客', '📖 BrickPlan Blog')),
+      h('p', { className: 'blog-subtitle' }, tr('积木 MOC 入门指南、零件知识、品牌推荐、搭建教程等精彩内容', 'Beginner guides, parts knowledge, brand comparisons and building tutorials for brick MOC builders')),
       h('div', { id: 'blog-content', className: 'loading' },
         h('div', { className: 'spinner' }),
       ),
@@ -4490,7 +4568,7 @@ async function renderBlogList() {
           filterBar.appendChild(h('button', {
             className: !filter.category && !filter.tag ? 'active' : '',
             onclick: () => navigate('blog'),
-          }, '全部'));
+          }, tr('全部', 'All')));
           data.categories.forEach(cat => {
             filterBar.appendChild(h('button', {
               className: filter.category === cat ? 'active' : '',
@@ -4502,7 +4580,7 @@ async function renderBlogList() {
         if (!data.items || data.items.length === 0) {
           el.appendChild(h('div', { className: 'empty' },
             h('div', { className: 'empty-icon' }, '📭'),
-            h('p', {}, '暂无文章'),
+            h('p', {}, tr('暂无文章', 'No articles yet')),
           ));
           return;
         }
@@ -4519,7 +4597,7 @@ async function renderBlogList() {
       el.innerHTML = '';
       el.appendChild(h('div', { className: 'error-block' },
         h('div', { className: 'error-icon' }, '🔌'),
-        h('p', {}, '加载失败，请检查后端服务'),
+        h('p', {}, tr('加载失败，请检查后端服务', 'Failed to load. Please try again.')),
       ));
     }
   }
@@ -4535,7 +4613,7 @@ async function renderBlogDetail() {
 
   container.appendChild(h('div', { className: 'main' },
     h('div', { className: 'blog-detail' },
-      h('a', { className: 'back-link', href: '/blog', onclick: (e) => { e.preventDefault(); navigate('blog'); } }, '← 返回博客'),
+      h('a', { className: 'back-link', href: buildPath('blog'), onclick: (e) => { e.preventDefault(); navigate('blog'); } }, tr('← 返回博客', '← Back to blog')),
       h('div', { id: 'blog-detail-content', className: 'loading' },
         h('div', { className: 'spinner' }),
       ),
@@ -4549,21 +4627,24 @@ async function renderBlogDetail() {
     el.innerHTML = '';
     el.className = '';
 
-    // SEO: update title and meta
-    document.title = `${post.title} - BrickPlan 博客`;
-    const plainDesc = stripMarkdown(post.description || post.title);
-    setMeta('og:title', post.title);
-    setMeta('og:description', plainDesc);
-    setMeta('og:url', `${window.location.origin}/blog/${slug}`);
-    setMeta('og:type', 'article');
-    setMetaName('description', plainDesc.substring(0, 160));
+    // SEO: update title and meta. First render of an SSR page keeps the
+    // server's <head> (headLocked); after in-app navigation we own it again.
+    if (!headLocked) {
+      document.title = tr(`${post.title} - BrickPlan 博客`, `${post.title} - BrickPlan Blog`);
+      const plainDesc = stripMarkdown(post.description || post.title);
+      setMeta('og:title', post.title);
+      setMeta('og:description', plainDesc);
+      setMeta('og:url', `${window.location.origin}${location.pathname}`);
+      setMeta('og:type', 'article');
+      setMetaName('description', plainDesc.substring(0, 160));
+    }
 
     // Header
     el.appendChild(h('div', { className: 'blog-header' },
       h('h1', {}, post.title),
       h('div', { className: 'blog-meta' },
         h('span', {}, post.date),
-        post.author ? h('span', {}, `作者：${post.author}`) : null,
+        post.author ? h('span', {}, tr(`作者：${post.author}`, `By ${post.author}`)) : null,
         post.category ? h('span', { className: 'blog-category' }, post.category) : null,
       ),
     ));
@@ -4590,16 +4671,16 @@ async function renderBlogDetail() {
       const nav = h('div', { className: 'blog-nav' });
       if (post.prev_slug) {
         nav.appendChild(h('div', { className: 'nav-prev' },
-          h('div', { className: 'nav-label' }, '上一篇'),
-          h('a', { href: `/blog/${post.prev_slug}`, onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.prev_slug }); } }, post.prev_title),
+          h('div', { className: 'nav-label' }, tr('上一篇', 'Previous')),
+          h('a', { href: buildPath('blog-detail', { slug: post.prev_slug }), onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.prev_slug }); } }, post.prev_title),
         ));
       } else {
         nav.appendChild(h('div', {}));
       }
       if (post.next_slug) {
         nav.appendChild(h('div', { className: 'nav-next', style: { textAlign: 'right' } },
-          h('div', { className: 'nav-label' }, '下一篇'),
-          h('a', { href: `/blog/${post.next_slug}`, onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.next_slug }); } }, post.next_title),
+          h('div', { className: 'nav-label' }, tr('下一篇', 'Next')),
+          h('a', { href: buildPath('blog-detail', { slug: post.next_slug }), onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: post.next_slug }); } }, post.next_title),
         ));
       }
       el.appendChild(nav);
@@ -4608,10 +4689,10 @@ async function renderBlogDetail() {
     // Related posts ("你可能还喜欢")
     if (post.related && post.related.length > 0) {
       const relSection = h('section', { className: 'blog-related', style: { marginTop: '40px', padding: '24px', background: 'var(--bg-card, #f9fafb)', borderRadius: '12px' } },
-        h('h2', { style: { fontSize: '1.25rem', marginBottom: '16px' } }, '你可能还喜欢'),
+        h('h2', { style: { fontSize: '1.25rem', marginBottom: '16px' } }, tr('你可能还喜欢', 'You may also like')),
         h('div', { className: 'blog-related-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' } },
           ...post.related.map(rp => h('a', {
-            href: `/blog/${rp.slug}`,
+            href: buildPath('blog-detail', { slug: rp.slug }),
             onclick: (e) => { e.preventDefault(); navigate('blog-detail', { slug: rp.slug }); },
             className: 'blog-related-card',
             style: { display: 'block', padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--border, #e5e7eb)', transition: 'box-shadow 0.2s' },
@@ -4653,7 +4734,7 @@ async function renderBlogDetail() {
         publisher: { '@id': `${window.location.origin}/#organization` },
         mainEntityOfPage: { '@type': 'WebPage', '@id': window.location.href },
         url: window.location.href,
-        inLanguage: 'zh-CN',
+        inLanguage: tr('zh-CN', 'en'),
       },
     ];
     if (post.tags && post.tags.length) {
@@ -4685,8 +4766,8 @@ async function renderBlogDetail() {
       el.innerHTML = '';
       el.appendChild(h('div', { className: 'error-block' },
         h('div', { className: 'error-icon' }, '📄'),
-        h('p', {}, e.message || '文章不存在'),
-        h('button', { className: 'btn btn-primary btn-sm', onclick: () => navigate('blog') }, '返回博客列表'),
+        h('p', {}, errorMessage(e, tr('文章不存在', 'Article not found.'))),
+        h('button', { className: 'btn btn-primary btn-sm', onclick: () => navigate('blog') }, tr('返回博客列表', 'Back to the blog')),
       ));
     }
   }
@@ -4696,12 +4777,20 @@ async function renderBlogDetail() {
 // GEO / structured data helpers
 // ═══════════════════════════════════════════
 
-// injectJsonLd replaces all injected JSON-LD blocks with the given ones.
+// injectJsonLd replaces the page's JSON-LD blocks with the given ones.
+//
+// On the first render of an English page it does nothing: the SSR nodes are the
+// authoritative structured data for the URL the crawler fetched, and deleting
+// them was the single biggest SEO regression risk of hydrating /en/*. Once the
+// user navigates in-app the SSR nodes describe the previous URL, so they are
+// replaced by fresh, language-correct blocks.
 function injectJsonLd(blocks) {
+  if (headLocked) return;
   document.querySelectorAll('script[type="application/ld+json"]').forEach(el => el.remove());
   blocks.filter(Boolean).forEach(ld => {
     const s = document.createElement('script');
     s.type = 'application/ld+json';
+    s.setAttribute('data-spa-ld', '1');
     s.textContent = JSON.stringify(ld, null, 2);
     document.head.appendChild(s);
   });
@@ -4709,47 +4798,57 @@ function injectJsonLd(blocks) {
 
 // organizationJsonLd / websiteJsonLd mirror siteJSONLD() in
 // backend-go/internal/ssr/jsonld.go — both layers must stay in sync.
+function injectSiteJsonLd() {
+  injectJsonLd([organizationJsonLd(), websiteJsonLd()]);
+}
+
 function organizationJsonLd() {
   const origin = window.location.origin;
+  const en = isEnglishPath();
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     '@id': `${origin}/#organization`,
     name: 'BrickPlan',
-    alternateName: '积木图纸社区',
+    alternateName: en ? 'Brick building blueprint community' : '积木图纸社区',
     url: origin,
-    description: 'BrickPlan 是面向积木/MOC 爱好者的图纸分享社区，收录乐高及国产积木（双鹰、宇星、高砖、森宝、奇积等）的 MOC 图纸、零件知识、搭建教程与作品评测。',
-    slogan: '发现和分享积木 MOC 图纸',
+    description: en
+      ? 'BrickPlan is a blueprint-sharing community for brick and MOC builders, covering LEGO and Chinese brick brands such as Double Eagle, Mould King, Gobricks, SEMBO and Qiji.'
+      : 'BrickPlan 是面向积木/MOC 爱好者的图纸分享社区，收录乐高及国产积木（双鹰、宇星、高砖、森宝、奇积等）的 MOC 图纸、零件知识、搭建教程与作品评测。',
+    slogan: en ? 'Discover and share brick MOC blueprints' : '发现和分享积木 MOC 图纸',
     logo: { '@type': 'ImageObject', url: `${origin}/og-default.png`, width: 1200, height: 630 },
     image: `${origin}/og-default.png`,
-    inLanguage: 'zh-CN',
+    inLanguage: en ? 'en' : 'zh-CN',
     areaServed: { '@type': 'Country', name: 'China' },
-    knowsAbout: ['积木图纸', 'MOC', '乐高 MOC', '积木搭建教程', '积木零件', '国产积木品牌'],
+    knowsAbout: en
+      ? ['MOC blueprints', 'LEGO MOC', 'brick building tutorials', 'brick parts', 'Chinese brick brands']
+      : ['积木图纸', 'MOC', '乐高 MOC', '积木搭建教程', '积木零件', '国产积木品牌'],
     contactPoint: [{
       '@type': 'ContactPoint',
       contactType: 'customer support',
       email: 'ghostjeky@hotmail.com',
-      url: `${origin}/about`,
-      availableLanguage: ['zh-CN'],
+      url: en ? `${origin}/en/about` : `${origin}/about`,
+      availableLanguage: en ? ['en', 'zh-CN'] : ['zh-CN'],
     }],
   };
 }
 
 function websiteJsonLd() {
   const origin = window.location.origin;
+  const en = isEnglishPath();
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     '@id': `${origin}/#website`,
     url: origin,
     name: 'BrickPlan',
-    alternateName: '积木图纸社区',
-    description: '积木/MOC 图纸分享社区',
-    inLanguage: 'zh-CN',
+    alternateName: en ? 'Brick building blueprint community' : '积木图纸社区',
+    description: en ? 'Brick building and MOC blueprint community' : '积木/MOC 图纸分享社区',
+    inLanguage: en ? 'en' : 'zh-CN',
     publisher: { '@id': `${origin}/#organization` },
     potentialAction: {
       '@type': 'SearchAction',
-      target: { '@type': 'EntryPoint', urlTemplate: `${origin}/explore?q={search_term_string}` },
+      target: { '@type': 'EntryPoint', urlTemplate: `${origin}${en ? '/en/explore' : '/explore'}?q={search_term_string}` },
       'query-input': 'required name=search_term_string',
     },
   };
@@ -5011,8 +5110,8 @@ function renderAboutPage() {
 }
 
 function render() {
-  // The English shell and the English blog are rendered by the server in
-  // English; hydrating them here would swap in Chinese UI (see isSsrOnlyPath).
+  // about/faq/privacy in English are final SSR documents (see isSsrOnlyPath);
+  // every other page — CN or EN — is rendered by the SPA.
   if (isSsrOnlyPath(location.pathname)) return;
   const app = document.getElementById('app');
 
@@ -5036,6 +5135,11 @@ function render() {
     const el = document.getElementById(`page-${p}`);
     if (el) el.className = `page${state.page === p ? ' active' : ''}`;
   });
+
+  // After the first in-app navigation on an English page, restore the
+  // site-wide entities in the page language. Page renderers that have their own
+  // structured data (detail/blog) replace these a moment later.
+  if (!headLocked && isEnglishPath()) injectSiteJsonLd();
 
   // Render page content
   switch (state.page) {

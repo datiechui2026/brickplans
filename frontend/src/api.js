@@ -460,6 +460,16 @@ export async function adminReorderFeatured(items) {
 // Paginated: the blog has 1500+ posts, so the listing fetches one page at a
 // time (page_size defaults to the server's 24). `withTags` is opt-in because the
 // full tag list is ~2500 entries / 46 KB and the list view doesn't use it.
+// uiLang mirrors the URL-prefix rule the SSR pass uses. Blog content exists in
+// two language trees, and the API selector is ?lang=en (default zh), so every
+// blog call must carry the language of the page it will render into — otherwise
+// the English blog would silently show Chinese articles.
+function uiLang() {
+  if (typeof location === 'undefined') return '';
+  const p = location.pathname;
+  return p === '/en' || p.startsWith('/en/') ? 'en' : '';
+}
+
 export async function getBlogPosts({ category = '', tag = '', page = 1, pageSize = 0, withTags = false } = {}) {
   const params = new URLSearchParams();
   if (category) params.set('category', category);
@@ -467,12 +477,14 @@ export async function getBlogPosts({ category = '', tag = '', page = 1, pageSize
   if (page && page > 1) params.set('page', page);
   if (pageSize) params.set('page_size', pageSize);
   if (withTags) params.set('with_tags', '1');
+  if (uiLang()) params.set('lang', uiLang());
   const qs = params.toString();
   return request(`/api/blog${qs ? '?' + qs : ''}`);
 }
 
 export async function getBlogPost(slug) {
-  return request(`/api/blog/${slug}`);
+  const lang = uiLang();
+  return request(`/api/blog/${slug}${lang ? '?lang=' + lang : ''}`);
 }
 
 // Restore session on load if the user was logged in (refresh cookie is httpOnly).
