@@ -116,6 +116,8 @@ The frontend is a history-routed SPA (`/detail/{id}`, `/explore`, `/tags/{name}`
 
 `sitemap.xml` (`handler/seo.go`) lists real URLs (home/explore/categories/tags/detail with lastmod+priority). `frontend/public/robots.txt` explicitly allows AI crawlers (GPTBot/ClaudeBot/PerplexityBot/Google-Extended/CCBot) and guards private API paths. `frontend/public/llms.txt` is the GEO content brief for LLMs. nginx serves static assets directly and proxies everything else to the backend for SSR (see `brickplans-nginx.conf`). Detail pages include a "相关作品" section (`GET /api/blueprints/{id}/related`) for internal links. Config: `PUBLIC_URL` (canonical), `FRONTEND_DIST` (manifest location).
 
+**English blog tree**: `backend-go/content/en/blog/` mirrors the Chinese corpus by slug. The same slug in both trees is what makes `/blog/<slug>` and `/en/blog/<slug>` a real hreflang pair and puts the English URL into `sitemap-en.xml` (automatic — no code change per post). Missing EN files fall back to the Chinese post with canonical to `/blog/<slug>`, no hreflang, and no sitemap entry. `scripts/en_rewrite.py` generates the tree (`--stats`, `--verify`, `--limit N`); see `docs/en-content-pipeline.md`.
+
 ## WeChat Mini Program (`miniprogram/`)
 
 A **browse-only** WeChat Mini Program (home / explore / detail / user / privacy) that talks to the **same Go backend**. Pages are the standard `.js/.wxml/.wxss/.json` quartet; `utils/api.js` is the only API client and mirrors the web's endpoints.
