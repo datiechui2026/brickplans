@@ -1,0 +1,18 @@
+[Unit]
+Description=brickplan.cn: release the next 100 English articles into the sitemap exposure ledger
+Documentation=https://brickplan.cn
+# Runs once a day; no ordering dependency on the backend (the ledger is re-read
+# on the next sitemap request, so no restart is needed after a release).
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/project/brickplans
+# Keep the ledger OUTSIDE the git tree: `git checkout -f <tag>` on deploy would
+# otherwise rewind the rollout to whatever the tag shipped.
+Environment=EXPOSURE_LEDGER_PATH=/home/ubuntu/project/brickplans/shared/sitemap-exposure.txt
+ExecStart=/usr/bin/python3 scripts/brickplan_en_sitemap_release.py
+# Nothing to do on the second run of the day → exit 0 quietly.
+TimeoutStartSec=300
+StandardOutput=append:/var/log/brickplan-en-release.log
+StandardError=append:/var/log/brickplan-en-release.log

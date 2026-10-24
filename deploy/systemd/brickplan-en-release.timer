@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily release of 100 English articles into the sitemap exposure ledger
+
+[Timer]
+# 00:15 UTC = 08:15 Beijing. Off the hour on purpose: every cron-driven job in
+# the world wakes up at :00, and the box has 1.9G RAM.
+OnCalendar=*-*-* 00:15:00 UTC
+# If the box was down at 00:15, catch up on the next boot rather than skipping
+# a day (the script is idempotent per UTC day, so a catch-up run cannot
+# double-release).
+Persistent=true
+Unit=brickplan-en-release.service
+
+[Install]
+WantedBy=timers.target

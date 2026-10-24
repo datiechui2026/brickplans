@@ -97,10 +97,13 @@ def last_release_date(headers):
         if not m:
             continue
         try:
-            stamp = dt.datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+            # strptime, not fromisoformat: the production box runs Python 3.6
+            # (Alibaba Cloud Linux 3 system python), where fromisoformat does
+            # not exist yet. This script must run there from a systemd timer.
+            stamp = dt.datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%SZ")
         except ValueError:
             continue
-        day = stamp.astimezone(dt.timezone.utc).date()
+        day = stamp.date()
         if newest is None or day > newest:
             newest = day
     return newest
