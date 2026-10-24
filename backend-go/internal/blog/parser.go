@@ -20,21 +20,24 @@ import (
 func parsePost(slug, raw string) (*Post, error) {
 	post := &Post{Slug: slug}
 
-	// Split frontmatter and body
+	// Split frontmatter and body. Both LF and CRLF are accepted: content files
+	// are LF in git, but a Windows checkout (core.autocrlf) turns them into
+	// CRLF, and a parser that only recognises "---\n" would silently load zero
+	// posts there (every file fails the missing-title check).
 	var frontmatter, body string
-	if strings.HasPrefix(raw, "---\n") {
-		end := strings.Index(raw[4:], "\n---\n")
-		if end < 0 {
-			end = strings.Index(raw[4:], "\n---\r\n")
-		}
-		if end < 0 {
-			// Maybe ends with --- at EOF without trailing newline
-			end = strings.Index(raw[4:], "\n---")
-		}
-		if end >= 0 {
-			frontmatter = raw[4 : 4+end]
-			bodyStart := 4 + end + 4 // skip "\n---"
-			if bodyStart < len(raw) && (raw[bodyStart] == '\n' || raw[bodyStart] == '\r') {
+	prefix := ""
+	if strings.HasPrefix(raw, "---\r\n") {
+		prefix = "---\r\n"
+	} else if strings.HasPrefix(raw, "---\n") {
+		prefix = "---\n"
+	}
+	if prefix != "" {
+		rest := raw[len(prefix):]
+		// The closing delimiter is a line containing only "---".
+		if end := strings.Index(rest, "\n---"); end >= 0 {
+			frontmatter = rest[:end]
+			bodyStart := len(prefix) + end + 4 // just past "\n---"
+			if bodyStart < len(raw) && raw[bodyStart] == '\r' {
 				bodyStart++
 			}
 			if bodyStart < len(raw) && raw[bodyStart] == '\n' {
