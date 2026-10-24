@@ -961,21 +961,24 @@ func TestEnglishHubSitemapListsStaticPages(t *testing.T) {
 
 // TestArticleOgImageUsesBodyImage covers the illustration rollout: once a post
 
-// TestEnglishPagesCarrySsrShell is the regression test for the 2026-10-15 P0:
-// the SPA skips hydration for every /en/* path (frontend isSsrOnlyPath), so
-// those SSR bodies are the final rendered pages. Before the fix they carried no
-// class main.css could match (no .page/.main/.blog-list), so the English pages
-// rendered as unstyled text pinned to the top-left corner of the viewport.
+// TestEnglishPagesCarrySsrShell is the regression test for the 2026-10-15 P0.
+// Every /en/* body is server-rendered and is what non-JS crawlers (and humans
+// before the SPA boots) see. Before the fix the bodies carried no class main.css
+// could match (no .page/.main), so the pages rendered as unstyled text pinned to
+// the top-left corner of the viewport. The SPA hydrates the same URLs but the
+// SSR markup must keep standing on its own.
 func TestEnglishPagesCarrySsrShell(t *testing.T) {
 	r, _ := setupSitemapTest(t, 20, 5)
+	base := `<div class="page active"><div class="main">`
 	shell := map[string]string{
-		"/en/":              `<div class="page active"><div class="main"><div class="blog-list">`,
+		// Home/explore use the CN layout (no page-specific inner class).
+		"/en/":              base,
+		"/en/explore":       base,
 		"/en/blog":          `<div class="page active"><div class="main"><div class="blog-list">`,
 		"/en/blog/sm-parts": `<div class="page active"><div class="main"><div class="blog-detail">`,
 		"/en/about":         `<div class="page active"><div class="main"><div class="blog-detail">`,
 		"/en/faq":           `<div class="page active"><div class="main"><div class="blog-detail">`,
 		"/en/privacy":       `<div class="page active"><div class="main"><div class="blog-detail">`,
-		"/en/explore":       `<div class="page active"><div class="main"><div class="blog-detail">`,
 	}
 	for path, want := range shell {
 		code, body := getHTML(t, r, path)

@@ -54,13 +54,23 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/en/about", h.AboutEN)
 	r.GET("/en/faq", h.FAQEN)
 	r.GET("/en/privacy", h.PrivacyEN)
+	// English UI counterparts of the bilingual product pages. detail/user/tags
+	// canonicalise to the Chinese originals (they serve the same Chinese content
+	// with an English chrome); the utility pages are noindex.
+	r.GET("/en/detail/:id", h.DetailEN)
+	r.GET("/en/tags/:name", h.TagEN)
+	r.GET("/en/user/:id", h.UserEN)
+	r.GET("/en/upload", h.SimpleEN("Upload blueprint", "Share your brick/MOC blueprint with the BrickPlan community."))
+	r.GET("/en/edit/:id", h.SimpleEN("Edit blueprint", "Edit your brick blueprint on BrickPlan."))
+	r.GET("/en/notifications", h.SimpleEN("Notifications", "Your BrickPlan activity notifications."))
+	r.GET("/en/admin", h.SimpleEN("Admin", "BrickPlan admin console."))
 }
 
-func (h *Handler) Home(c *gin.Context) {
-	// Featured (admin-curated, falls back to latest) feeds the slideshow;
-	// latest feeds the "最新作品" grid. Mirror what the SPA renders so
-	// crawlers see the same internal links as users.
-	var featured []db.Blueprint
+// homeBlueprints returns the featured (admin-curated, falling back to latest)
+// and latest blueprint lists used by both home pages. Keeping the query in one
+// place is what stops the Chinese and English homes from showing different
+// "latest" sets.
+func (h *Handler) homeBlueprints() (featured, latest []db.Blueprint) {
 	var fb []db.FeaturedBlueprint
 	h.gdb.Order("sort_order ASC, created_at ASC").Limit(8).Find(&fb)
 	if len(fb) > 0 {
@@ -83,9 +93,15 @@ func (h *Handler) Home(c *gin.Context) {
 	if len(featured) == 0 {
 		h.gdb.Where("is_published = ?", true).Order("created_at DESC").Limit(8).Find(&featured)
 	}
-
-	var latest []db.Blueprint
 	h.gdb.Where("is_published = ?", true).Order("created_at DESC").Limit(10).Find(&latest)
+	return featured, latest
+}
+
+func (h *Handler) Home(c *gin.Context) {
+	// Featured (admin-curated, falls back to latest) feeds the slideshow;
+	// latest feeds the "最新作品" grid. Mirror what the SPA renders so
+	// crawlers see the same internal links as users.
+	featured, latest := h.homeBlueprints()
 
 	// Latest blog posts. The homepage is the highest-authority indexed page on
 	// the site; linking articles from here is what gives ~1000 blog URLs a

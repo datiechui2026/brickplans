@@ -16,11 +16,10 @@ func esc(s string) string { return html.EscapeString(s) }
 // equivalent page — <div class="page active"><div class="main"><div class="class">…
 //
 // Why it exists: template.html drops the SSR body straight into <div id="app">,
-// so for any page the SPA does NOT hydrate that body IS the visible page (today
-// every /en/* page, see frontend/main.js isSsrOnlyPath). The class names are the
-// only contract the stylesheet has — without .page/.main/.blog-list the rules in
-// main.css/styles/main.css never match and the content renders unstyled and
-// un-centred at the top-left of the viewport (P0, 2026-10-15).
+// so on an EN page (which the SPA hydrates after boot) the body is what the user
+// and non-JS crawlers see first. The class names are the only contract the
+// stylesheet has — without .page/.main the rules in main.css never match and the
+// content renders unstyled at the top-left of the viewport (P0, 2026-10-15).
 //
 // class is always one of our own literals ("blog-list", "blog-detail"), never
 // request data.
@@ -78,13 +77,114 @@ func coverURL(imgs []db.BlueprintImage, public string) string {
 	return public + "/og-default.png"
 }
 
+// ── 语言化正文标签 ─────────────────────────────────────────────────────────
+//
+// The Chinese strings below are byte-for-byte what detailNoscript/listNoscript/
+// homeNoscript emitted before this table existed (the EN work must not change a
+// single Chinese page). Every label ends with its separator so the call sites
+// stay `<li>{{label}}{{value}}</li>` for both languages.
+
+type bodyLabels struct {
+	Author      string
+	Category    string
+	Difficulty  string
+	Parts       string
+	Dimensions  string
+	Brand       string
+	SetNumber   string
+	Views       string
+	Likes       string
+	Tags        string
+	Related     string
+	NoItems     string
+	PartUnit    string
+	TagSep      string
+	CatOpen     string
+	CatClose    string
+	HomeTitle   string
+	HomeLead    string
+	Featured    string
+	Latest      string
+	LatestPosts string
+	AllBuilds   string
+	AllPosts    string
+	FAQTitle    string
+}
+
+func bodyLabelsFor(lang string) bodyLabels {
+	if lang == "en" {
+		return bodyLabels{
+			Author:      "Author: ",
+			Category:    "Category: ",
+			Difficulty:  "Difficulty: ",
+			Parts:       "Parts: ",
+			Dimensions:  "Dimensions: ",
+			Brand:       "Brand: ",
+			SetNumber:   "Set number: ",
+			Views:       "Views: ",
+			Likes:       "Likes: ",
+			Tags:        "Tags: ",
+			Related:     "Related builds",
+			NoItems:     "No blueprints yet.",
+			PartUnit:    " parts",
+			TagSep:      ", ",
+			CatOpen:     " (",
+			CatClose:    ")",
+			HomeTitle:   "BrickPlan — MOC Blueprints & Building Guides",
+			HomeLead:    "Discover and share LEGO MOC creations — architecture, vehicles, mecha, fantasy, sci-fi and scenery blueprints.",
+			Featured:    "Featured builds",
+			Latest:      "Latest builds",
+			LatestPosts: "Latest articles",
+			AllBuilds:   "Browse all builds",
+			AllPosts:    "Read all articles",
+			FAQTitle:    "Frequently asked questions",
+		}
+	}
+	return bodyLabels{
+		Author:      "作者：",
+		Category:    "分类：",
+		Difficulty:  "难度：",
+		Parts:       "零件数：",
+		Dimensions:  "尺寸：",
+		Brand:       "品牌：",
+		SetNumber:   "编号：",
+		Views:       "浏览：",
+		Likes:       "点赞：",
+		Tags:        "标签：",
+		Related:     "相关作品",
+		NoItems:     "暂无作品。",
+		PartUnit:    " 零件",
+		TagSep:      "、",
+		CatOpen:     "（",
+		CatClose:    "）",
+		HomeTitle:   "BrickPlan — 积木图纸分享社区",
+		HomeLead:    "发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。",
+		Featured:    "推荐作品",
+		Latest:      "最新作品",
+		LatestPosts: "最新博客",
+		AllBuilds:   "浏览全部作品",
+		AllPosts:    "查看全部博客文章",
+		FAQTitle:    "常见问题",
+	}
+}
+
+// langPath builds a site path inside a language tree. Chinese ("") returns the
+// path unchanged, which is what keeps every already-indexed Chinese URL stable.
+func langPath(lang, path string) string { return langFor(lang).URL(path) }
+
 // detailNoscript renders a simplified, crawlable article body.
 func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
+	return detailNoscriptFor("zh", bp, cover, public, related)
+}
+
+func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, related []db.Blueprint) template.HTML {
+	l := bodyLabelsFor(lang)
 	var b strings.Builder
 	b.WriteString(`<article>`)
 	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bp.Title)))
 	if bp.Author != nil {
-		b.WriteString(fmt.Sprintf(`<p>作者：<a href="%s/user/%s">%s</a></p>`, public, esc(bp.Author.ID), esc(bp.Author.Username)))
+		b.WriteString(fmt.Sprintf(`<p>%s<a href="%s">%s</a></p>`, l.Author,
+			public+langPath(lang, "/user/"+bp.Author.ID), esc(bp.Author.Username)))
 	}
 	if bp.Description != nil && *bp.Description != "" {
 		b.WriteString(string(mdToHTML(*bp.Description)))
@@ -94,36 +194,39 @@ func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Bluepri
 	}
 	b.WriteString("<ul>")
 	if bp.Category != nil {
-		b.WriteString(fmt.Sprintf("<li>分类：%s</li>", esc(*bp.Category)))
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Category, esc(*bp.Category)))
 	}
 	if bp.Difficulty != nil {
-		b.WriteString(fmt.Sprintf("<li>难度：%d / 5</li>", *bp.Difficulty))
+		b.WriteString(fmt.Sprintf("<li>%s%d / 5</li>", l.Difficulty, *bp.Difficulty))
 	}
 	if bp.PieceCount != nil {
-		b.WriteString(fmt.Sprintf("<li>零件数：%d</li>", *bp.PieceCount))
+		b.WriteString(fmt.Sprintf("<li>%s%d</li>", l.Parts, *bp.PieceCount))
 	}
 	if bp.Dimensions != nil {
-		b.WriteString(fmt.Sprintf("<li>尺寸：%s</li>", esc(*bp.Dimensions)))
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Dimensions, esc(*bp.Dimensions)))
 	}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
-		b.WriteString(fmt.Sprintf("<li>品牌：%s</li>", esc(strings.TrimSpace(*bp.Brand))))
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Brand, esc(strings.TrimSpace(*bp.Brand))))
 	}
 	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
-		b.WriteString(fmt.Sprintf("<li>编号：%s</li>", esc(strings.TrimSpace(*bp.ProductCode))))
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.SetNumber, esc(strings.TrimSpace(*bp.ProductCode))))
 	}
-	b.WriteString(fmt.Sprintf("<li>浏览：%d</li>", bp.ViewCount))
-	b.WriteString(fmt.Sprintf("<li>点赞：%d</li>", bp.LikeCount))
+	b.WriteString(fmt.Sprintf("<li>%s%d</li>", l.Views, bp.ViewCount))
+	b.WriteString(fmt.Sprintf("<li>%s%d</li>", l.Likes, bp.LikeCount))
 	b.WriteString("</ul>")
 	if len(bp.Tags) > 0 {
-		b.WriteString("<p>标签：")
-		for i, bt := range bp.Tags {
+		b.WriteString(fmt.Sprintf("<p>%s", l.Tags))
+		first := true
+		for _, bt := range bp.Tags {
 			if bt.Tag == nil {
 				continue
 			}
-			if i > 0 {
-				b.WriteString("、")
+			if !first {
+				b.WriteString(l.TagSep)
 			}
-			b.WriteString(fmt.Sprintf(`<a href="%s/tags/%s">%s</a>`, public, esc(bt.Tag.Name), esc(bt.Tag.Name)))
+			first = false
+			b.WriteString(fmt.Sprintf(`<a href="%s">%s</a>`,
+				public+langPath(lang, "/tags/"+bt.Tag.Name), esc(bt.Tag.Name)))
 		}
 		b.WriteString("</p>")
 	}
@@ -131,11 +234,12 @@ func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Bluepri
 
 	// Related blueprints section (SEO internal links)
 	if len(related) > 0 {
-		b.WriteString(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>相关作品</h2><ul>`)
+		b.WriteString(fmt.Sprintf(`<section style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd"><h2>%s</h2><ul>`, esc(l.Related)))
 		for _, r := range related {
-			b.WriteString(fmt.Sprintf(`<li><a href="%s/detail/%s">%s</a>`, public, r.ID, esc(r.Title)))
+			b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
+				public+langPath(lang, "/detail/"+r.ID), esc(r.Title)))
 			if r.Category != nil {
-				b.WriteString(fmt.Sprintf("（%s）", esc(*r.Category)))
+				b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(*r.Category), l.CatClose))
 			}
 			b.WriteString("</li>")
 		}
@@ -147,18 +251,24 @@ func detailNoscript(bp *db.Blueprint, cover, public string, related []db.Bluepri
 
 // listNoscript renders a simple list of blueprint cards for explore/tag/user pages.
 func listNoscript(bps []db.Blueprint, public string) template.HTML {
+	return listNoscriptFor("zh", bps, public)
+}
+
+func listNoscriptFor(lang string, bps []db.Blueprint, public string) template.HTML {
+	l := bodyLabelsFor(lang)
 	if len(bps) == 0 {
-		return template.HTML("<p>暂无作品。</p>")
+		return template.HTML("<p>" + esc(l.NoItems) + "</p>")
 	}
 	var b strings.Builder
 	b.WriteString("<ul>")
 	for _, bp := range bps {
-		b.WriteString(fmt.Sprintf(`<li><a href="%s/detail/%s">%s</a>`, public, bp.ID, esc(bp.Title)))
+		b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
+			public+langPath(lang, "/detail/"+bp.ID), esc(bp.Title)))
 		if bp.Category != nil {
-			b.WriteString(fmt.Sprintf("（%s）", esc(*bp.Category)))
+			b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(*bp.Category), l.CatClose))
 		}
 		if bp.PieceCount != nil {
-			b.WriteString(fmt.Sprintf(" · %d 零件", *bp.PieceCount))
+			b.WriteString(fmt.Sprintf(" · %d%s", *bp.PieceCount, l.PartUnit))
 		}
 		b.WriteString("</li>")
 	}
@@ -167,35 +277,50 @@ func listNoscript(bps []db.Blueprint, public string) template.HTML {
 }
 
 func homeNoscript(featured, latest []db.Blueprint, posts []blog.Post, public string) template.HTML {
+	return homeBodyFor("zh", featured, latest, posts, public, "")
+}
+
+// homeBodyFor is the crawlable home body in one language. postBase is the blog
+// tree prefix ("/blog" or "/en/blog") so the article links point into the same
+// language the page is written in.
+func homeBodyFor(lang string, featured, latest []db.Blueprint, posts []blog.Post, public, postBase string) template.HTML {
+	l := bodyLabelsFor(lang)
+	if postBase == "" {
+		postBase = langPath(lang, "/blog")
+	}
 	var b strings.Builder
-	b.WriteString(`<h1>BrickPlan — 积木图纸分享社区</h1>`)
-	b.WriteString("<p>发现和分享乐高 MOC 创意作品。浏览建筑、车辆、机甲、奇幻、科幻、场景等各类积木图纸。</p>")
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(l.HomeTitle)))
+	b.WriteString(fmt.Sprintf("<p>%s</p>", esc(l.HomeLead)))
 	if len(featured) > 0 {
-		b.WriteString("<h2>推荐作品</h2>")
-		b.WriteString(string(listNoscript(featured, public)))
+		b.WriteString(fmt.Sprintf("<h2>%s</h2>", esc(l.Featured)))
+		b.WriteString(string(listNoscriptFor(lang, featured, public)))
 	}
 	if len(latest) > 0 {
-		b.WriteString("<h2>最新作品</h2>")
-		b.WriteString(string(listNoscript(latest, public)))
+		b.WriteString(fmt.Sprintf("<h2>%s</h2>", esc(l.Latest)))
+		b.WriteString(string(listNoscriptFor(lang, latest, public)))
 	}
-	b.WriteString(fmt.Sprintf(`<p><a href="%s/explore">浏览全部作品</a></p>`, public))
+	b.WriteString(fmt.Sprintf(`<p><a href="%s">%s</a></p>`, public+langPath(lang, "/explore"), esc(l.AllBuilds)))
 	// 最新博客：首页是本站权重最高的已收录页，这里直接给文章页提供引荐来源。
 	// 之前首页 0 个 /blog/ 链接，是 GSC「已发现-尚未编入索引」的主因之一。
 	if len(posts) > 0 {
-		b.WriteString("<h2>最新博客</h2><ul>")
+		b.WriteString(fmt.Sprintf("<h2>%s</h2><ul>", esc(l.LatestPosts)))
 		for _, p := range posts {
-			b.WriteString(fmt.Sprintf(`<li><a href="%s/blog/%s">%s</a> <small>%s</small> <span>%s</span></li>`,
-				public, esc(p.Slug), esc(p.Title), p.Date.Format("2006-01-02"), esc(p.Category)))
+			b.WriteString(fmt.Sprintf(`<li><a href="%s/%s">%s</a> <small>%s</small> <span>%s</span></li>`,
+				public+postBase, esc(p.Slug), esc(p.Title), p.Date.Format("2006-01-02"), esc(p.Category)))
 		}
 		b.WriteString("</ul>")
-		b.WriteString(fmt.Sprintf(`<p><a href="%s/blog">查看全部博客文章</a></p>`, public))
+		b.WriteString(fmt.Sprintf(`<p><a href="%s">%s</a></p>`, public+postBase, esc(l.AllPosts)))
 	}
 	return template.HTML(b.String())
 }
 
 func faqNoscript(qa []QA) template.HTML {
+	return faqNoscriptFor("zh", qa)
+}
+
+func faqNoscriptFor(lang string, qa []QA) template.HTML {
 	var b strings.Builder
-	b.WriteString("<h1>常见问题</h1>")
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", esc(bodyLabelsFor(lang).FAQTitle)))
 	for _, item := range qa {
 		b.WriteString(fmt.Sprintf("<h2>%s</h2>", esc(item.Q)))
 		b.WriteString(fmt.Sprintf("<p>%s</p>", esc(item.A)))

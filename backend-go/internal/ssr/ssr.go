@@ -58,6 +58,20 @@ type PageData struct {
 	// translated counterpart": the template then emits only a self-referencing
 	// zh-CN + x-default pair, which is what every Chinese page had before.
 	Alternates []AltLink
+	// NoHreflang suppresses even that default pair. Used by English UI pages whose
+	// body is the same Chinese content as a canonical Chinese URL (e.g.
+	// /en/detail/:id): they are UI variants, not translations, so they must not
+	// claim a language alternate. Declaring hreflang there is what Google calls a
+	// false language cluster and can get the whole cluster ignored.
+	NoHreflang bool
+	// Noindex emits <meta name="robots" content="noindex,follow">. Used for
+	// private/utility pages (upload, edit, notifications, admin) that should never
+	// enter the index but may still pass link equity.
+	Noindex bool
+	// BodyWrap forces the .page/.main container skeleton even when BodyClass is
+	// empty. EN pages need it (they are seen before the SPA boots), while Chinese
+	// pages keep BodyClass="" so their SSR markup stays byte-identical.
+	BodyWrap bool
 }
 
 // AltLink is one <link rel="alternate" hreflang=...> entry.
@@ -137,8 +151,10 @@ func (r *Renderer) Render(c *gin.Context, data PageData) {
 		data.HTMLLang = lang.HTMLLang
 	}
 	data.SiteNav = navHTML(lang, r.switchTargets(c, lang))
-	// Opt-in container skeleton for pages the SPA never hydrates (see BodyClass).
-	if data.BodyClass != "" {
+	// Opt-in container skeleton. BodyClass gives the SSR body the same inner class
+	// the SPA would build; BodyWrap alone is enough for pages whose content does
+	// not need a page-specific class (the EN home/explore/detail bodies).
+	if data.BodyClass != "" || data.BodyWrap {
 		data.Noscript = wrapBody(data.BodyClass, data.Noscript)
 	}
 	// Static pages (home, /explore, /blog, /about, /faq, /privacy) exist in every
@@ -230,8 +246,13 @@ func (r *Renderer) switchTargets(c *gin.Context, current Lang) map[string]string
 			} else {
 				targets[l.Code] = l.URL("/blog")
 			}
+		case strings.HasPrefix(neutral, "/detail/"),
+			strings.HasPrefix(neutral, "/user/"),
+			strings.HasPrefix(neutral, "/tags/"):
+			// UI counterparts exist in both trees. These are not hreflang
+			// alternates (the body language is the same) — only a switcher target.
+			targets[l.Code] = l.URL(neutral)
 		default:
-			// /detail/<id>, /tags/…, /user/… — no counterpart tree exists.
 			targets[l.Code] = l.URL("/blog")
 		}
 	}
