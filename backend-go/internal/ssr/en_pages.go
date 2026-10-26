@@ -317,8 +317,8 @@ func (h *Handler) DetailEN(c *gin.Context) {
 	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
 
 	jsonld := h.siteJSONLD()
+	// G-2：详情页只有 CreativeWork 一个主实体（原先这里还并列一个 Product + Offer）。
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "en"))
-	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "en"))
 	jsonld = append(jsonld, breadcrumbJSONLDFor(category, titleEN, h.cfg.PublicURL, "en"))
 
 	// Translated rows are alternates of the Chinese original: self-canonical and

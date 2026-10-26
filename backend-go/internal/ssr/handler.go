@@ -169,8 +169,8 @@ func (h *Handler) Detail(c *gin.Context) {
 	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
 
 	jsonld := h.siteJSONLD()
+	// G-2：详情页只有 CreativeWork 一个主实体，不再并列输出 Product/Offer。
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
-	jsonld = append(jsonld, productJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
 	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
 
 	// The Chinese page is the original, but once the row has a real English

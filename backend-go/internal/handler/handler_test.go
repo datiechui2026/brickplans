@@ -444,12 +444,13 @@ func TestBrandAndProductCodeRoundTrip(t *testing.T) {
 		t.Fatalf("product_code not trimmed: %q", got["product_code"])
 	}
 
-	// SSR must expose the attributes and the Product mpn for SEO.
+	// SSR must expose the attributes and the CreativeWork identifier for SEO
+	// （G-2：主实体不再是 Product，mpn 是 Product 专属字段，已换成 identifier）。
 	req := httptest.NewRequest("GET", "/detail/"+bpID, nil)
 	sw := httptest.NewRecorder()
 	r.ServeHTTP(sw, req)
 	body := sw.Body.String()
-	for _, want := range []string{"品牌：森宝", "编号：10236", `"mpn":"10236"`} {
+	for _, want := range []string{"品牌：森宝", "编号：10236", `"identifier":"10236"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("SSR body missing %q", want)
 		}

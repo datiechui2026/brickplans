@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"net/url"
 	"strings"
 
@@ -91,189 +92,128 @@ func (h *Handler) siteJSONLD() []template.JS {
 	return []template.JS{mustJSON(org), mustJSON(website)}
 }
 
+// minRatingCount 是输出 AggregateRating 的最低评分条数（工单 SEO-20261026-03 G-1）。
+// 结构化数据里的评分必须是真实用户评分：1 条评分就声明一个均值，等于主动告诉
+// Google 和 AI 搜索「这条内容只有 1 票、得分 2 分」，比不输出更糟；条数太少也
+// 不构成聚合。因此 <3 条一律不输出整个节点。
+const minRatingCount = 3
+
+// ratingNode 按 G-1 的规则生成 AggregateRating：条数 <3 或均值 <=0 返回 nil，
+// 调用方拿到 nil 就不写进 map —— 整个节点消失。均值保留一位小数。
+func ratingNode(ratingCount int, ratingValue float64) map[string]interface{} {
+	if ratingCount < minRatingCount || ratingValue <= 0 {
+		return nil
+	}
+	return map[string]interface{}{
+		"@type":       "AggregateRating",
+		"ratingValue": math.Round(ratingValue*10) / 10,
+		"bestRating":  5,
+		"worstRating": 1,
+		"ratingCount": ratingCount,
+	}
+}
+
+// detailURLFor 返回对应语言树下的详情页地址。中文 /detail/<id>、英文
+// /en/detail/<id>；两棵树的 canonical 各自独立，JSON-LD 的 url/@id 必须与页面
+// 所在语言树一致，否则等于给搜索引擎一个指向另一棵树的 @id。
+func detailURLFor(public, lang, id string) string {
+	if lang == "en" {
+		return public + "/en/detail/" + id
+	}
+	return public + "/detail/" + id
+}
+
+// genreLabel 让英文树的 genre 用英文。/en 界面的类目译表就是 categoryEN，
+// 两处各写一套迟早跑偏（这条路径上确实出现过「英文页 genre 是『奇幻』」）。
+func genreLabel(category, lang string) string {
+	if lang == "en" {
+		return categoryLabelEN(category)
+	}
+	return category
+}
+
+// blueprintProps 收集图纸的物理属性（颗粒数 / 难度）。这两个值以前分别塞进
+// material 和 contentRating —— contentRating 在 schema.org 里表示内容分级
+// （PG-13 那类），写「难度 3/5」属于又一处误用；改成 additionalProperty 的
+// PropertyValue，语义与前端的「图纸信息」表一致。
+func blueprintProps(bp *db.Blueprint, lang string) []map[string]interface{} {
+	props := []map[string]interface{}{}
+	if bp.PieceCount != nil {
+		name := "零件数"
+		if lang == "en" {
+			name = "Piece count"
+		}
+		props = append(props, map[string]interface{}{"@type": "PropertyValue", "name": name, "value": *bp.PieceCount})
+	}
+	if bp.Difficulty != nil {
+		name := "难度"
+		if lang == "en" {
+			name = "Difficulty"
+		}
+		props = append(props, map[string]interface{}{"@type": "PropertyValue", "name": name, "value": fmt.Sprintf("%d/5", *bp.Difficulty)})
+	}
+	return props
+}
+
+// creativeWorkJSONLD 是详情页的主实体（工单 G-2）：页面描述的是一份「积木搭建
+// 图纸/说明书」——CreativeWork，不是可售商品。原先同一页面还并列输出
+// Product + Offer{price:"0", priceCurrency:"CNY"}，但我们没有售价、没有购物车，
+// 虚假 Offer 属于结构化数据政策风险，已整体删除；商品化的 sku / mpn / brand /
+// offers 也换成 CreativeWork 的 identifier / creator。aggregateRating 走 G-1 的
+// ratingNode 闸门（无真实评分就不输出）。BreadcrumbList 与 ImageObject 由调用
+// 方另行追加，本函数不碰。
 func creativeWorkJSONLD(bp *db.Blueprint, cover, public, lang string) template.JS {
+	u := detailURLFor(public, lang, bp.ID)
+	inLang := "zh-CN"
+	if lang == "en" {
+		inLang = "en"
+	}
 	m := map[string]interface{}{
-		"@context":      "https://schema.org",
-		"@type":         "CreativeWork",
-		"name":          bp.TitleIn(lang),
-		"description":   derefStr(bp.DescriptionIn(lang)),
-		"image":         cover,
-		"url":           public + "/detail/" + bp.ID,
-		"datePublished": bp.CreatedAt.Format("2006-01-02"),
-		"dateModified":  bp.UpdatedAt.Format("2006-01-02"),
-		"author":        map[string]interface{}{"@type": "Person", "name": authorName(bp.Author)},
-		"inLanguage":    "zh-CN",
+		"@context":             "https://schema.org",
+		"@type":                "CreativeWork",
+		"@id":                  u,
+		"name":                 bp.TitleIn(lang),
+		"description":          derefStr(bp.DescriptionIn(lang)),
+		"url":                  u,
+		"inLanguage":           inLang,
+		"isPartOf":             map[string]interface{}{"@type": "WebSite", "name": "BrickPlan", "url": public},
+		"author":               map[string]interface{}{"@type": "Person", "name": authorName(bp.Author)},
+		"datePublished":        bp.CreatedAt.Format("2006-01-02"),
+		"dateModified":         bp.UpdatedAt.Format("2006-01-02"),
+		"interactionStatistic": engagementStatistic(bp.ViewCount, bp.LikeCount),
 	}
-	if bp.Difficulty != nil {
-		m["contentRating"] = fmt.Sprintf("难度 %d/5", *bp.Difficulty)
-	}
-	if bp.PieceCount != nil {
-		m["material"] = fmt.Sprintf("%d 个积木零件", *bp.PieceCount)
+	if cover != "" {
+		m["image"] = cover
 	}
 	if bp.Category != nil {
-		m["genre"] = *bp.Category
+		// 英文树不能把中文类目原样塞进 genre（G-2「英文页混中文」的一部分）；
+		// categoryLabelEN 就是 /en 界面在用的同一张译表，直接复用。
+		m["genre"] = genreLabel(*bp.Category, lang)
 	}
-	tags := []string{}
-	for _, bt := range bp.Tags {
-		if bt.Tag != nil {
-			tags = append(tags, bt.Tag.Name)
-		}
+	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
+		m["identifier"] = strings.TrimSpace(*bp.ProductCode)
 	}
-	if len(tags) > 0 {
-		m["keywords"] = strings.Join(tags, ", ")
-	}
-	return mustJSON(m)
-}
-
-// creativeWorkJSONLDEN is the inLanguage=en variant emitted by /en/detail.
-// The blueprint content itself is Chinese (title/description stay in their
-// published language — translating user content in SSR would desync from the
-// catalogue), so only the machine-readable metadata switches to English.
-func creativeWorkJSONLDEN(bp *db.Blueprint, cover, public string) template.JS {
-	m := map[string]interface{}{
-		"@context":      "https://schema.org",
-		"@type":         "CreativeWork",
-		"name":          bp.TitleIn("en"),
-		"description":   derefStr(bp.DescriptionIn("en")),
-		"image":         cover,
-		"url":           public + "/en/detail/" + bp.ID,
-		"datePublished": bp.CreatedAt.Format("2006-01-02"),
-		"dateModified":  bp.UpdatedAt.Format("2006-01-02"),
-		"author":        map[string]interface{}{"@type": "Person", "name": authorName(bp.Author)},
-		"inLanguage":    "en",
-	}
-	if bp.Difficulty != nil {
-		m["contentRating"] = fmt.Sprintf("Difficulty %d/5", *bp.Difficulty)
-	}
-	if bp.PieceCount != nil {
-		m["material"] = fmt.Sprintf("%d brick pieces", *bp.PieceCount)
-	}
-	if bp.Category != nil {
-		m["genre"] = *bp.Category
-	}
-	tags := []string{}
-	for _, bt := range bp.Tags {
-		if bt.Tag != nil {
-			tags = append(tags, bt.Tag.Name)
-		}
-	}
-	if len(tags) > 0 {
-		m["keywords"] = strings.Join(tags, ", ")
-	}
-	return mustJSON(m)
-}
-
-// brandNode returns the Schema.org Brand node for a blueprint. It prefers the
-// brick brand the uploader selected (乐高/森宝/双鹰/...) and falls back to the
-// site's own name for rows uploaded before the field existed.
-func brandNode(bp *db.Blueprint) map[string]interface{} {
-	name := "BrickPlan"
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
-		name = strings.TrimSpace(*bp.Brand)
+		m["creator"] = map[string]interface{}{"@type": "Organization", "name": strings.TrimSpace(*bp.Brand)}
 	}
-	return map[string]interface{}{"@type": "Brand", "name": name}
-}
-
-// productJSONLD emits a Schema.org Product structured data for blueprint detail pages.
-// This helps search engines (especially Baidu) display rich snippets with product info.
-// The blueprint is always a free (price 0) downloadable design, so offers carries
-// price 0 and interactionStatistic exposes the real engagement counters.
-func productJSONLD(bp *db.Blueprint, cover, public, lang string) template.JS {
-	m := map[string]interface{}{
-		"@context":    "https://schema.org",
-		"@type":       "Product",
-		"name":        bp.TitleIn(lang),
-		"description": derefStr(bp.DescriptionIn(lang)),
-		"image":       cover,
-		"url":         public + "/detail/" + bp.ID,
-		"sku":         bp.ID,
-		"brand":       brandNode(bp),
-		"inLanguage":  "zh-CN",
-		"offers": map[string]interface{}{
-			"@type":         "Offer",
-			"price":         "0",
-			"priceCurrency": "CNY",
-			"availability":  "https://schema.org/InStock",
-			"url":           public + "/detail/" + bp.ID,
-			"seller":        map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public},
-		},
+	if props := blueprintProps(bp, lang); len(props) > 0 {
+		m["additionalProperty"] = props
 	}
-	if bp.Category != nil {
-		m["category"] = *bp.Category
-	}
-	// mpn (manufacturer part number) carries the real set/model number, which is
-	// what people literally search for ("乐高 42115"). sku stays the internal id.
-	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
-		m["mpn"] = strings.TrimSpace(*bp.ProductCode)
-	}
-	if bp.PieceCount != nil {
-		m["additionalProperty"] = map[string]interface{}{
-			"@type": "PropertyValue",
-			"name":  "零件数",
-			"value": *bp.PieceCount,
+	tags := []string{}
+	for _, bt := range bp.Tags {
+		if bt.Tag != nil {
+			tags = append(tags, bt.Tag.Name)
 		}
 	}
-	if bp.Difficulty != nil {
-		m["aggregateRating"] = map[string]interface{}{
-			"@type":       "AggregateRating",
-			"ratingValue": *bp.Difficulty,
-			"bestRating":  5,
-			"worstRating": 1,
-			"ratingCount": 1,
-		}
+	if len(tags) > 0 {
+		m["keywords"] = strings.Join(tags, ", ")
 	}
-	m["interactionStatistic"] = engagementStatistic(bp.ViewCount, bp.LikeCount)
-	return mustJSON(m)
-}
-
-// productJSONLDEN is the /en/detail variant of productJSONLD: English
-// machine-readable labels, /en/detail URLs, and USD offers. The visible
-// content (title/description) stays in its published language, so the JSON-LD
-// matches what the page shows.
-func productJSONLDEN(bp *db.Blueprint, cover, public string) template.JS {
-	detailURL := public + "/en/detail/" + bp.ID
-	m := map[string]interface{}{
-		"@context":    "https://schema.org",
-		"@type":       "Product",
-		"name":        bp.TitleIn("en"),
-		"description": derefStr(bp.DescriptionIn("en")),
-		"image":       cover,
-		"url":         detailURL,
-		"sku":         bp.ID,
-		"brand":       brandNode(bp),
-		"inLanguage":  "en",
-		"offers": map[string]interface{}{
-			"@type":         "Offer",
-			"price":         "0",
-			"priceCurrency": "USD",
-			"availability":  "https://schema.org/InStock",
-			"url":           detailURL,
-			"seller":        map[string]interface{}{"@type": "Organization", "name": "BrickPlan", "url": public},
-		},
+	// G-1：库内目前没有评分表（blueprints 只有 view_count / like_count），所以
+	// 这里恒为 nil、节点不输出。接上真实评分后把两个参数换成真实条数与均值，
+	// 规则本身不用再改 —— 这正是「难度当评分」那个 bug 的防线。
+	if r := ratingNode(0, 0); r != nil {
+		m["aggregateRating"] = r
 	}
-	if bp.Category != nil {
-		m["category"] = *bp.Category
-	}
-	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
-		m["mpn"] = strings.TrimSpace(*bp.ProductCode)
-	}
-	if bp.PieceCount != nil {
-		m["additionalProperty"] = map[string]interface{}{
-			"@type": "PropertyValue",
-			"name":  "Piece count",
-			"value": *bp.PieceCount,
-		}
-	}
-	if bp.Difficulty != nil {
-		m["aggregateRating"] = map[string]interface{}{
-			"@type":       "AggregateRating",
-			"ratingValue": *bp.Difficulty,
-			"bestRating":  5,
-			"worstRating": 1,
-			"ratingCount": 1,
-		}
-	}
-	m["interactionStatistic"] = engagementStatistic(bp.ViewCount, bp.LikeCount)
 	return mustJSON(m)
 }
 
@@ -294,49 +234,43 @@ func engagementStatistic(views, likes int) []map[string]interface{} {
 		},
 	}
 }
-
-// blueprintListItem maps one blueprint to the nested Product node used inside
-// ItemList. Image is deliberately omitted: list handlers do not preload images,
-// so including it would mean an N+1 query on every listing page.
+// blueprintListItem maps one blueprint to the nested CreativeWork node used
+// inside ItemList（G-2：列表项同样不是商品 —— 没有 Offer、没有 price、没有
+// sku/mpn）。Image 仍然故意不带：列表 handler 不预加载图片，带上去就是每页
+// 一次 N+1。
 func blueprintListItem(bp db.Blueprint, public, lang string) map[string]interface{} {
-	url := public + "/detail/" + bp.ID
+	u := detailURLFor(public, lang, bp.ID)
+	inLang := "zh-CN"
+	if lang == "en" {
+		inLang = "en"
+	}
 	m := map[string]interface{}{
-		"@type":       "Product",
-		"name":        bp.TitleIn(lang),
-		"url":         url,
-		"description": derefStr(bp.DescriptionIn(lang)),
-		"brand":       brandNode(&bp),
-		"offers": map[string]interface{}{
-			"@type":         "Offer",
-			"price":         "0",
-			"priceCurrency": "CNY",
-			"availability":  "https://schema.org/InStock",
-			"url":           url,
-		},
+		"@type":                "CreativeWork",
+		"@id":                  u,
+		"name":                 bp.TitleIn(lang),
+		"url":                  u,
+		"description":          derefStr(bp.DescriptionIn(lang)),
+		"inLanguage":           inLang,
+		"interactionStatistic": engagementStatistic(bp.ViewCount, bp.LikeCount),
 	}
 	if bp.Category != nil {
-		m["category"] = *bp.Category
+		// 英文树不能把中文类目原样塞进 genre（G-2「英文页混中文」的一部分）；
+		// categoryLabelEN 就是 /en 界面在用的同一张译表，直接复用。
+		m["genre"] = genreLabel(*bp.Category, lang)
 	}
 	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
-		m["mpn"] = strings.TrimSpace(*bp.ProductCode)
+		m["identifier"] = strings.TrimSpace(*bp.ProductCode)
 	}
-	if bp.Difficulty != nil {
-		m["aggregateRating"] = map[string]interface{}{
-			"@type":       "AggregateRating",
-			"ratingValue": *bp.Difficulty,
-			"bestRating":  5,
-			"worstRating": 1,
-			"ratingCount": 1,
-		}
+	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
+		m["creator"] = map[string]interface{}{"@type": "Organization", "name": strings.TrimSpace(*bp.Brand)}
 	}
-	if bp.PieceCount != nil {
-		m["additionalProperty"] = map[string]interface{}{
-			"@type": "PropertyValue",
-			"name":  "零件数",
-			"value": *bp.PieceCount,
-		}
+	if props := blueprintProps(&bp, lang); len(props) > 0 {
+		m["additionalProperty"] = props
 	}
-	m["interactionStatistic"] = engagementStatistic(bp.ViewCount, bp.LikeCount)
+	// G-1：列表项与详情页同一条规则，没有真实评分就不输出 aggregateRating。
+	if r := ratingNode(0, 0); r != nil {
+		m["aggregateRating"] = r
+	}
 	return m
 }
 
@@ -406,19 +340,11 @@ func itemListJSONLDURL(bps []db.Blueprint, public, lang string, urlFor func(id s
 	for i, bp := range bps {
 		u := urlFor(bp.ID)
 		item := blueprintListItem(bp, public, lang)
-		// Localize the nested node for the English tree: URL, Offer URL and
-		// price currency. The title/description stay in their published
-		// language (user content), matching the page's visible copy.
+		// Only the URL needs localising now: the node carries no Offer (G-2),
+		// and @id already follows the same language tree. Title/description
+		// stay in their published language, matching the visible copy.
 		item["url"] = u
-		if offer, ok := item["offers"].(map[string]interface{}); ok {
-			offer["url"] = u
-			if strings.HasPrefix(u, public+"/en/") {
-				offer["priceCurrency"] = "USD"
-			}
-		}
-		if m, ok := item["@type"].(string); ok && m == "Product" {
-			item["@id"] = u
-		}
+		item["@id"] = u
 		items = append(items, map[string]interface{}{
 			"@type":    "ListItem",
 			"position": i + 1,
