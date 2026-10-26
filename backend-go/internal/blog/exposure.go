@@ -40,6 +40,11 @@ type ExposureLedger struct {
 	slugs   map[string]struct{}
 	modTime time.Time
 	size    int64
+	// version is bumped every time the on-disk state is re-read. The sitemap
+	// snapshot compares it against the version it rendered with, so appending
+	// slugs still becomes visible on the next request now that the sitemaps are
+	// served from a cache (see handler.sitemapCache).
+	version uint64
 }
 
 // NewExposureLedger returns a ledger reading path. A nil ledger, an empty path
@@ -73,6 +78,19 @@ func (l *ExposureLedger) Active() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.exists
+}
+
+// Version is a monotonic counter bumped whenever the ledger's on-disk state is
+// re-read. Callers that cache a rendering of the ledger (the sitemap snapshot)
+// compare it against the version they last rendered with.
+func (l *ExposureLedger) Version() uint64 {
+	if l == nil || l.path == "" {
+		return 0
+	}
+	l.refresh()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.version
 }
 
 // Len is the number of slugs currently exposed (0 when the gate is inactive).
@@ -143,6 +161,12 @@ func (l *ExposureLedger) refresh() {
 	fi, err := os.Stat(l.path)
 	if err != nil {
 		l.mu.Lock()
+		// Only a real state *change* bumps the version: this branch runs on
+		// every refresh while the gate is off, and bumping there would make the
+		// sitemap snapshot rebuild on every request.
+		if !l.loaded || l.exists {
+			l.version++
+		}
 		l.loaded, l.exists, l.slugs = true, false, nil
 		l.modTime, l.size = time.Time{}, -1
 		l.mu.Unlock()
@@ -181,5 +205,6 @@ func (l *ExposureLedger) refresh() {
 	l.mu.Lock()
 	l.loaded, l.exists, l.slugs = true, true, slugs
 	l.modTime, l.size = fi.ModTime(), fi.Size()
+	l.version++
 	l.mu.Unlock()
 }

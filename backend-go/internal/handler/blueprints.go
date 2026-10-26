@@ -232,6 +232,9 @@ func (h *BlueprintsHandler) create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
 	}
+	// The sitemap snapshot must not wait for its hourly refresh to advertise a
+	// new page (see handler.InvalidateSitemaps).
+	InvalidateSitemaps()
 	if err := h.gdb.Preload("Author").First(&bp, "id = ?", bp.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
@@ -375,6 +378,7 @@ func (h *BlueprintsHandler) update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
 	}
+	InvalidateSitemaps()
 	h.gdb.Preload("Author").First(&bp, "id = ?", bp.ID)
 	c.JSON(http.StatusOK, toBlueprintOut(&bp, 0, 0, false, false))
 }
@@ -399,6 +403,7 @@ func (h *BlueprintsHandler) delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
 	}
+	InvalidateSitemaps()
 	c.Status(http.StatusNoContent)
 }
 

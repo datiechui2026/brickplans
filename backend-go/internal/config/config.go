@@ -46,6 +46,14 @@ type Config struct {
 	PublicURL        string // canonical site URL, e.g. https://brickplan.cn
 	BlogContentDir   string // path to blog markdown files (zh)
 	BlogContentDirEN string // path to English blog markdown files; empty = no English content
+
+	// Sitemap snapshot cache. The sitemaps are rendered into files under
+	// SitemapDir and served from there, so a crawler request never runs the
+	// blueprint query (~6.4k rows) and the response can carry Last-Modified /
+	// ETag / Cache-Control. Empty SitemapDir keeps the snapshot in memory only
+	// (tests, and a deliberate opt-out).
+	SitemapDir        string
+	SitemapRefreshMin int // minutes between snapshot rebuilds; 0 disables the ticker
 }
 
 func Load() *Config {
@@ -79,6 +87,8 @@ func Load() *Config {
 		PublicURL:               getenv("PUBLIC_URL", "https://brickplan.cn"),
 		BlogContentDir:          getenv("BLOG_CONTENT_DIR", "./content/blog"),
 		BlogContentDirEN:        getenv("BLOG_CONTENT_DIR_EN", "./content/en/blog"),
+		SitemapDir:              getenv("SITEMAP_DIR", "./sitemap-static"),
+		SitemapRefreshMin:       getenvInt("SITEMAP_REFRESH_MIN", 60),
 	}
 	c.validate()
 	return c

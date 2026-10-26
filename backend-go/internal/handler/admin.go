@@ -210,6 +210,7 @@ func (h *AdminHandler) publish(c *gin.Context) {
 	}
 	bp.IsPublished = true
 	h.gdb.Save(&bp)
+	InvalidateSitemaps()
 	c.JSON(http.StatusOK, gin.H{"detail": "Published"})
 }
 
@@ -222,6 +223,7 @@ func (h *AdminHandler) unpublish(c *gin.Context) {
 	}
 	bp.IsPublished = false
 	h.gdb.Save(&bp)
+	InvalidateSitemaps()
 	c.JSON(http.StatusOK, gin.H{"detail": "Unpublished"})
 }
 
@@ -233,6 +235,7 @@ func (h *AdminHandler) delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "internal error"})
 		return
 	}
+	InvalidateSitemaps()
 	c.Status(http.StatusNoContent)
 }
 
