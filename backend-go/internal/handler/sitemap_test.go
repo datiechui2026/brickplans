@@ -108,6 +108,15 @@ func setupSitemapTestWith(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []f
 // exposure tests can seed/append it the same way the deploy does.
 func setupSitemapFixture(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fixturePost) (http.Handler, *gorm.DB, string) {
 	t.Helper()
+	r, gdb, dir, _ := setupSitemapFixtureFull(t, bulkZH, bulkEN, extraZH, extraEN, nil)
+	return r, gdb, dir
+}
+
+// setupSitemapFixtureFull is setupSitemapFixture plus the config it built, so a
+// test can override fields (SitemapDir) or build a second engine over the same
+// config — which is exactly what a process restart looks like to the snapshot.
+func setupSitemapFixtureFull(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fixturePost, tweak func(*config.Config)) (http.Handler, *gorm.DB, string, *config.Config) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	zhDir := filepath.Join(t.TempDir(), "blog")
@@ -188,7 +197,10 @@ func setupSitemapFixture(t *testing.T, bulkZH, bulkEN int, extraZH, extraEN []fi
 	storage.Reset()
 	sqlDB, _ := gdb.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return router.New(cfg, gdb, ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)), gdb, filepath.Dir(enDir)
+	if tweak != nil {
+		tweak(cfg)
+	}
+	return router.New(cfg, gdb, ssr.NewRenderer(cfg.FrontendDist, cfg.PublicURL)), gdb, filepath.Dir(enDir), cfg
 }
 
 func getSitemap(t *testing.T, r http.Handler, path string) (int, string) {
