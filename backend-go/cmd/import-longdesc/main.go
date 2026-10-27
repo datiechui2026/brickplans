@@ -78,8 +78,12 @@ func main() {
 		batch    = flag.Int("batch", 100, "rows per transaction / per SELECT")
 		limit    = flag.Int("limit", 0, "apply at most N rows this run (0 = all)")
 		samples  = flag.Int("samples", 3, "how many sample diffs to print")
-		minRunes = flag.Int("min-runes", 250, "warn below this body length (never truncates, never pads)")
-		maxRunes = flag.Int("max-runes", 500, "warn above this body length (never truncates)")
+		minRunes = flag.Int("min-runes", 250, "warn below this ZH body length (never truncates, never pads)")
+		maxRunes = flag.Int("max-runes", 500, "warn above this ZH body length (never truncates)")
+		// EN is prose in a different script: 250-500 *runes* is meaningless
+		// there (a 163-word paragraph is ~1000 runes). Bounds are words.
+		minWords = flag.Int("min-words", 100, "warn below this EN word count")
+		maxWords = flag.Int("max-words", 260, "warn above this EN word count")
 	)
 	flag.Parse()
 	if *csvPath == "" {
@@ -163,9 +167,9 @@ func main() {
 				}
 			}
 			if r.EN != "" {
-				if n := utf8.RuneCountInString(r.EN); n < *minRunes {
+				if n := wordCount(r.EN); n < *minWords {
 					shortEN++
-				} else if n > *maxRunes {
+				} else if n > *maxWords {
 					longEN++
 				}
 			}
@@ -216,12 +220,18 @@ func main() {
 	fmt.Printf("missing ids      : %d\n", missing)
 	fmt.Printf("failed           : %d\n", failed)
 	fmt.Printf("zh len out of [%d,%d]: short=%d long=%d\n", *minRunes, *maxRunes, shortZH, longZH)
-	fmt.Printf("en len out of [%d,%d]: short=%d long=%d\n", *minRunes, *maxRunes, shortEN, longEN)
+	fmt.Printf("en words out of [%d,%d]: short=%d long=%d\n", *minWords, *maxWords, shortEN, longEN)
 	if *dryRun {
 		fmt.Println("wrote: nothing (--dry-run)")
 	} else {
 		fmt.Printf("ledger: %s\n", *progress)
 	}
+}
+
+// wordCount counts whitespace-separated tokens (English body length). CJK
+// text is measured in runes instead, see min-runes/max-runes.
+func wordCount(s string) int {
+	return len(strings.Fields(strings.TrimSpace(s)))
 }
 
 func readCSV(path string) ([]row, error) {
