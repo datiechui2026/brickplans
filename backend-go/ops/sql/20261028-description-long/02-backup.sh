@@ -18,7 +18,7 @@ mysqldump --single-transaction --quick --skip-lock-tables \
 
 # 1) 压缩包完整性
 gzip -t "$OUT"
-# 2) 回读行数：必须等于 blueprints 的 COUNT(*)（2134）
+# 2) 回读行数：必须等于 blueprints 的 COUNT(*)（生产现值 2135，其中已发布 2134）
 ROWS_DUMP=$(zcat "$OUT" | grep -c '^INSERT INTO' || true)
 ROWS_DB=$(mysql -uroot -N -B -e "SELECT COUNT(*) FROM blueprints" brickplans)
 printf 'dump   : %s\n' "$OUT"

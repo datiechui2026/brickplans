@@ -1,6 +1,6 @@
 -- 工单 SEO-20261026-02 批2 —— blueprints 增加两个长描述列
 -- 目标库: brickplans (MySQL 8.0.45)
--- 表规模: 2134 行 / 数据 2.5MB + 索引 1.1MB
+-- 表规模: 2135 行（其中已发布 2134）/ 数据 2.5MB + 索引 1.1MB
 --
 -- 为什么是两列而不是复用 description:
 --   description 同时供卡片列表、API 摘要、meta description 使用，长度上限和语义都
