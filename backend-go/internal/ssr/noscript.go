@@ -188,7 +188,10 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 		b.WriteString(fmt.Sprintf(`<p>%s<a href="%s">%s</a></p>`, l.Author,
 			public+langPath(lang, "/user/"+bp.Author.ID), esc(bp.Author.Username)))
 	}
-	if desc := bp.DescriptionIn(lang); desc != nil && *desc != "" {
+	// 批2：长描述存在时，顶部仍保留短文当导语（阅读顺序：先一句话摘要，再进
+	// 规格表，再读长文）。长描述缺失时短文下移进「套装介绍」当正文，否则同一
+	// 段文字会在页面上出现两次。
+	if desc := bp.DescriptionIn(lang); desc != nil && *desc != "" && bp.DescriptionLongIn(lang) != nil {
 		b.WriteString(string(mdToHTML(*desc)))
 	}
 	if cover != "" {
@@ -198,17 +201,12 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 		}
 		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(coverAlt)))
 	}
-	// Batch 2 slot: the long editorial body, between the short description (and
-	// the cover) and the spec table. Renders only when the row carries one --
-	// no placeholder, no 暂无/未知, same empty-field rule as the spec table.
-	if long := bp.DescriptionLongIn(lang); long != nil {
-		b.WriteString(`<div class="desc-long">`)
-		b.WriteString(string(mdToHTML(*long)))
-		b.WriteString(`</div>`)
-	}
 	// A1: the spec table. Values come from columns that already exist; a missing
 	// column is an omitted row (see detailSpecTable).
 	b.WriteString(detailSpecTable(lang, bp, cover))
+	// 批2：H2 套装介绍 / About this set，位置在信息表下方。字段为 NULL 时回退
+	// 到同语言的 description；两者都空则整块不渲染（不允许空白标题下挂空正文）。
+	b.WriteString(detailSetIntro(lang, bp))
 	b.WriteString("<ul>")
 	if bp.Category != nil {
 		cat := *bp.Category
@@ -230,7 +228,12 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Dimensions, esc(*bp.Dimensions)))
 	}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
-		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Brand, esc(strings.TrimSpace(*bp.Brand))))
+		// 英文树的品牌显示名走 brandLabelEN（奇积 → KEEPPLEY）；库存值保持中文不动。
+		brand := strings.TrimSpace(*bp.Brand)
+		if lang == "en" {
+			brand = brandLabelEN(brand)
+		}
+		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.Brand, esc(brand)))
 	}
 	if bp.ProductCode != nil && strings.TrimSpace(*bp.ProductCode) != "" {
 		b.WriteString(fmt.Sprintf("<li>%s%s</li>", l.SetNumber, esc(strings.TrimSpace(*bp.ProductCode))))
@@ -262,6 +265,31 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 	b.WriteString(detailModules(lang, links, public))
 
 	return template.HTML(b.String())
+}
+
+// detailSetIntro renders the batch-2 editorial block: an H2 followed by the long
+// body, verbatim. The body is 250-500 characters of prose written by hand, so it
+// is emitted in full -- mdToHTML converts blank-line separated paragraphs into
+// <p> and never truncates. The only transformation applied is a surrounding
+// TrimSpace, which cannot shorten a paragraph.
+func detailSetIntro(lang string, bp *db.Blueprint) string {
+	body := bp.DescriptionBodyIn(lang)
+	if body == nil {
+		return ""
+	}
+	text := strings.TrimSpace(*body)
+	if text == "" {
+		return ""
+	}
+	h2 := "套装介绍"
+	if lang == "en" {
+		h2 = "About this set"
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`<section class="desc-long" id="set-intro"><h2>%s</h2>`, esc(h2)))
+	b.WriteString(string(mdToHTML(text)))
+	b.WriteString(`</section>`)
+	return b.String()
 }
 
 // listNoscript renders a simple list of blueprint cards for explore/tag/user pages.

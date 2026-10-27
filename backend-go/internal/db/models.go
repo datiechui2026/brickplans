@@ -70,9 +70,9 @@ type Blueprint struct {
 	// must never leak into list or search snippets.
 	DescriptionLong   *string `gorm:"column:description_long;type:text" json:"description_long"`
 	DescriptionLongEN *string `gorm:"column:description_long_en;type:text" json:"description_long_en"`
-	Difficulty    *int    `json:"difficulty"`
-	PieceCount    *int    `json:"piece_count"`
-	Category      *string `gorm:"type:varchar(30);index" json:"category"`
+	Difficulty        *int    `json:"difficulty"`
+	PieceCount        *int    `json:"piece_count"`
+	Category          *string `gorm:"type:varchar(30);index" json:"category"`
 	// Brand is the brick brand the design belongs to (乐高/森宝/双鹰/...). Stored as a
 	// plain string so the curated list can grow without a schema change; the frontend
 	// renders it as a dropdown, the backend only enforces the length.
@@ -121,6 +121,27 @@ func (b *Blueprint) DescriptionIn(lang string) *string {
 // rendered on /en/ is mixed-language content, which is worse for the reader and
 // for the index than an omitted block, so an untranslated row simply has no
 // long body on the English tree.
+// DescriptionBodyIn returns the body of the editorial block: the long field when
+// the row has one, otherwise the short description of the SAME language. It never
+// falls back across languages (see DescriptionLongIn) and it never returns an
+// empty string -- an all-empty row returns nil so the caller can omit the block
+// entirely instead of printing an empty heading.
+func (b *Blueprint) DescriptionBodyIn(lang string) *string {
+	if long := b.DescriptionLongIn(lang); long != nil {
+		return long
+	}
+	if lang == "en" {
+		if b.DescriptionEN != nil && strings.TrimSpace(*b.DescriptionEN) != "" {
+			return b.DescriptionEN
+		}
+		return nil
+	}
+	if b.Description != nil && strings.TrimSpace(*b.Description) != "" {
+		return b.Description
+	}
+	return nil
+}
+
 func (b *Blueprint) DescriptionLongIn(lang string) *string {
 	if lang == "en" {
 		if b.DescriptionLongEN != nil && strings.TrimSpace(*b.DescriptionLongEN) != "" {

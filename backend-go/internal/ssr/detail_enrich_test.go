@@ -187,7 +187,7 @@ func TestDetailBreadcrumbJSONLDENMatchesVisibleTrail(t *testing.T) {
 	public := "https://brickplan.test"
 	raw := string(detailBreadcrumbJSONLD("en", bp, public))
 	for _, want := range []string{
-		`"name":"Home"`, `"name":"Explore"`, `"name":"Scene"`, `"name":"Qiji"`, `"position":6`,
+		`"name":"Home"`, `"name":"Explore"`, `"name":"Scene"`, `"name":"KEEPPLEY"`, `"position":6`,
 		`"item":"https://brickplan.test/en/category/scene"`,
 		`"item":"https://brickplan.test/en/brand/qiji"`,
 	} {

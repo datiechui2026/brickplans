@@ -3,79 +3,124 @@ package ssr
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
-// Ticket SEO-20261026-02 batch 2: the long editorial body. These pin the slot
-// itself -- where it renders, that an empty field renders nothing at all, and
-// that the English tree never inherits the Chinese body.
+// Ticket 02 batch 2: the long editorial body. Position, heading, fallback and
+// no-truncation are all contractual, so each one gets its own pin. Empty rows
+// must not leave a heading hanging over nothing (the ticket bans blank blocks
+// and bans 暂无/未知 placeholders).
 
-func TestDescriptionLongRendersBetweenDescriptionAndSpecTable(t *testing.T) {
+func TestSetIntroRendersBelowSpecTableWithZHHeading(t *testing.T) {
 	bp := bpFixture()
-	bp.DescriptionLong = strPtr("## 这款钢铁侠为什么值得搭\n\n第一段正文内容。\n\n第二段正文内容。")
+	bp.DescriptionLong = strPtr("## 这款钢铁侠为什么值得搭\n\n第一段正文内容，讲的是分袋与拼装顺序。\n\n第二段正文内容，讲的是公差与替代件。")
 	html := string(detailNoscriptFor("zh", bp, "https://cdn.test/1.jpg", "https://brickplan.test", nil))
-	if !strings.Contains(html, `<div class="desc-long">`) {
-		t.Fatal("no <div class=\"desc-long\"> container for a row that has description_long")
-	}
-	if !strings.Contains(html, "这款钢铁侠为什么值得搭") {
-		t.Fatal("long body text missing from the rendered page")
-	}
-	// ordering: after the short description, before the spec table
-	iDesc := strings.Index(html, "奇积 官方套装 S0101 钢铁侠 搭建说明书。")
-	iLong := strings.Index(html, `<div class="desc-long">`)
 	iSpec := strings.Index(html, `<dl class="spec-table">`)
-	if iDesc < 0 || iLong < 0 || iSpec < 0 {
-		t.Fatalf("missing anchors: desc=%d long=%d spec=%d", iDesc, iLong, iSpec)
+	iSec := strings.Index(html, `<section class="desc-long" id="set-intro">`)
+	if iSpec < 0 || iSec < 0 {
+		t.Fatalf("missing anchors: spec=%d section=%d", iSpec, iSec)
 	}
-	if !(iDesc < iLong && iLong < iSpec) {
-		t.Fatalf("desc-long out of order: desc=%d long=%d spec=%d", iDesc, iLong, iSpec)
+	if iSec < iSpec {
+		t.Fatalf("套装介绍 must render BELOW the spec table: spec=%d section=%d", iSpec, iSec)
+	}
+	if !strings.Contains(html[iSec:], "<h2>套装介绍</h2>") {
+		t.Fatalf("missing <h2>套装介绍</h2> after the spec table:\n%s", html[iSec:])
+	}
+	for _, want := range []string{"这款钢铁侠为什么值得搭", "讲的是分袋与拼装顺序", "讲的是公差与替代件"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("long body fragment %q missing", want)
+		}
+	}
+	// Paragraphs, not one blob: the two blank-line separated blocks become two
+	// <p>, and the leading "## " line becomes the section's <h3>.
+	sec := html[iSec:]
+	sec = sec[:strings.Index(sec, "</section>")]
+	if n := strings.Count(sec, "<p>"); n != 2 {
+		t.Fatalf("body should render as 2 <p> paragraphs, got %d:\n%s", n, sec)
 	}
 }
 
-// An absent or whitespace-only field must not emit the container at all -- the
-// ticket bans 暂无 / 未知 / - placeholders.
-func TestDescriptionLongEmptyRendersNothing(t *testing.T) {
+func TestSetIntroEnglishHeading(t *testing.T) {
+	bp := bpFixture()
+	bp.DescriptionLongEN = strPtr("Why this Iron Man set is worth building.\n\nPart one.\n\nPart two.")
+	html := string(detailNoscriptFor("en", bp, "", "https://brickplan.test", nil))
+	if !strings.Contains(html, "<h2>About this set</h2>") {
+		t.Fatal("English page missing <h2>About this set</h2>")
+	}
+	if strings.Contains(html, "<h2>套装介绍</h2>") {
+		t.Fatal("Chinese heading leaked into the English page")
+	}
+	if !strings.Contains(html, "Why this Iron Man set is worth building.") {
+		t.Fatal("description_long_en body missing from the English page")
+	}
+}
+
+// A NULL long column falls back to the row's own short description, exactly once:
+// the lead paragraph at the top is suppressed in that case so the same sentence
+// cannot appear twice on one page.
+func TestSetIntroFallsBackToShortDescription(t *testing.T) {
+	bp := bpFixture()
+	bp.DescriptionLong = nil
+	short := *bp.Description
+	if short == "" {
+		t.Fatal("fixture lost its description")
+	}
+	html := string(detailNoscriptFor("zh", bp, "", "https://brickplan.test", nil))
+	if !strings.Contains(html, `<section class="desc-long" id="set-intro">`) {
+		t.Fatal("no editorial block for a row whose description_long is NULL")
+	}
+	if n := strings.Count(html, short); n != 1 {
+		t.Fatalf("short description rendered %d times, want exactly 1 (lead suppressed)", n)
+	}
+	if !strings.Contains(html, "<h2>套装介绍</h2>") {
+		t.Fatal("fallback block is missing its heading")
+	}
+}
+
+func TestSetIntroOmitsBlockWhenBothFieldsEmpty(t *testing.T) {
 	for _, v := range []*string{nil, strPtr(""), strPtr("   \n\t ")} {
 		bp := bpFixture()
-		bp.DescriptionLong = v
-		bp.DescriptionLongEN = v
-		html := string(detailNoscriptFor("zh", bp, "", "https://brickplan.test", nil))
-		if strings.Contains(html, "desc-long") {
-			t.Fatalf("empty long body still rendered a container (value=%v)", v)
-		}
-		if strings.Contains(html, "暂无") || strings.Contains(html, "未知") {
-			t.Fatal("placeholder text leaked into the page")
+		bp.DescriptionLong, bp.DescriptionLongEN = v, v
+		bp.Description, bp.DescriptionEN = v, v
+		for _, lang := range []string{"zh", "en"} {
+			html := string(detailNoscriptFor(lang, bp, "", "https://brickplan.test", nil))
+			if strings.Contains(html, "set-intro") || strings.Contains(html, "desc-long") {
+				t.Fatalf("%s: empty row still emitted the block (value=%v)", lang, v)
+			}
+			if strings.Contains(html, "暂无") || strings.Contains(html, "未知") {
+				t.Fatalf("%s: placeholder text leaked", lang)
+			}
 		}
 	}
 }
 
-// The English tree renders description_long_en only. Falling back to the Chinese
-// body would put 300-500 characters of Chinese prose inside an English page.
-func TestDescriptionLongNoCrossLanguageFallback(t *testing.T) {
+// 250-500 characters go out verbatim. A 480-character body must survive in full;
+// truncation at any boundary would silently cut the tail of the prose.
+func TestSetIntroDoesNotTruncate(t *testing.T) {
+	body := strings.Repeat("积木搭建的过程里，分袋与公差决定了手感。", 20) // 400 runes
+	if n := utf8.RuneCountInString(body); n != 400 {
+		t.Fatalf("fixture length = %d, want 400", n)
+	}
 	bp := bpFixture()
-	bp.DescriptionLong = strPtr("中文长描述正文。")
-	if html := string(detailNoscriptFor("en", bp, "", "https://brickplan.test", nil)); strings.Contains(html, "desc-long") {
-		t.Fatal("English page rendered desc-long from the Chinese column")
+	bp.DescriptionLong = strPtr(body)
+	html := string(detailNoscriptFor("zh", bp, "", "https://brickplan.test", nil))
+	if !strings.Contains(html, body) {
+		t.Fatal("long body was truncated or re-encoded")
 	}
-	bp.DescriptionLongEN = strPtr("English long body.")
-	html := string(detailNoscriptFor("en", bp, "", "https://brickplan.test", nil))
-	if !strings.Contains(html, `<div class="desc-long">`) || !strings.Contains(html, "English long body.") {
-		t.Fatal("English page did not render description_long_en")
-	}
-	if strings.Contains(html, "中文长描述正文") {
-		t.Fatal("Chinese long body leaked into the English page")
+	if strings.Contains(html, "…") || strings.Contains(html, "...") {
+		t.Fatal("ellipsis found in the rendered long body")
 	}
 }
 
-// DescriptionLongIn must trim-check, not nil-check, because empty strings are
-// what the upload form writes when the author submits nothing.
-func TestDescriptionLongInTrimsWhitespace(t *testing.T) {
+// The English tree never inherits Chinese prose: no description_en and no
+// description_long_en means no block at all, rather than 400 characters of
+// Chinese under an English heading.
+func TestSetIntroNoCrossLanguageFallback(t *testing.T) {
 	bp := bpFixture()
-	bp.DescriptionLong = strPtr("  \t ")
-	if got := bp.DescriptionLongIn("zh"); got != nil {
-		t.Fatalf("DescriptionLongIn(zh) = %q, want nil", *got)
-	}
-	bp.DescriptionLong = strPtr("有内容")
-	if got := bp.DescriptionLongIn("zh"); got == nil || *got != "有内容" {
-		t.Fatalf("DescriptionLongIn(zh) = %v, want 有内容", got)
+	bp.DescriptionLong, bp.DescriptionLongEN = nil, nil
+	bp.Description = strPtr("中文短文描述。")
+	bp.DescriptionEN = nil
+	if html := string(detailNoscriptFor("en", bp, "", "https://brickplan.test", nil)); strings.Contains(html, "set-intro") {
+		t.Fatal("English page rendered the block from the Chinese column")
 	}
 }

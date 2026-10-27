@@ -350,10 +350,12 @@ func plural(n int, unit string) string {
 // brandLabelEN is the display name of the two brands that make up 99.9% of the
 // library. The stored value stays Chinese in the API and in the filter URL — only
 // the English chrome is translated, the same way categoryLabelEN does it.
+// 奇积 renders as KEEPPLEY (the brand's own English name, also carried in the
+// Organization alternateName); "Qiji" was a pinyin guess and is wrong as an entity.
 func brandLabelEN(brand string) string {
 	switch brand {
 	case "奇积":
-		return "Qiji"
+		return "KEEPPLEY"
 	case "乐高":
 		return "LEGO"
 	}

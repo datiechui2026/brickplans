@@ -197,7 +197,7 @@ func aboutSectionsEN() []aboutSection {
 			Paras: []string{
 				"BrickPlan is a blueprint-sharing community for brick and MOC builders, served from brickplan.cn.",
 				"The problem it solves: building instructions are scattered across forums, cloud drives and social feeds, where they are hard to search, inconsistently formatted, and frequently dead links. BrickPlan collects them into one searchable, categorised site with real metadata — part count, difficulty, dimensions and recommended brands.",
-				"The library currently covers six categories (architecture, vehicles, mecha, fantasy, sci-fi, scenery) across LEGO and Chinese brick brands such as Double Eagle, Mould King, Gobricks, SEMBO and Qiji, plus articles on part knowledge, brand comparisons and building techniques.",
+				"The library currently covers six categories (architecture, vehicles, mecha, fantasy, sci-fi, scenery) across LEGO and Chinese brick brands such as Double Eagle, Mould King, Gobricks, SEMBO and KEEPPLEY, plus articles on part knowledge, brand comparisons and building techniques.",
 			},
 		},
 		{

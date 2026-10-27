@@ -194,7 +194,7 @@ func creativeWorkJSONLD(bp *db.Blueprint, cover, public, lang string) template.J
 		m["identifier"] = strings.TrimSpace(*bp.ProductCode)
 	}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
-		m["creator"] = map[string]interface{}{"@type": "Organization", "name": strings.TrimSpace(*bp.Brand)}
+		m["creator"] = brandOrganization(*bp.Brand, lang)
 	}
 	if props := blueprintProps(bp, lang); len(props) > 0 {
 		m["additionalProperty"] = props
@@ -215,6 +215,47 @@ func creativeWorkJSONLD(bp *db.Blueprint, cover, public, lang string) template.J
 		m["aggregateRating"] = r
 	}
 	return mustJSON(m)
+}
+
+// brandOrganization is the schema.org Organization used as CreativeWork.creator.
+// It is the same entity on every page that mentions the brand, so the display
+// name and the aliases cannot drift apart between the two language trees:
+//
+//   - 奇积 is the Chinese trade name. The brand itself uses 奇妙积木 in marketing
+//     and KEEPPLEY in English, so the Chinese tree keeps name=奇积 and carries
+//     both aliases, while the English tree promotes KEEPPLEY to name and keeps
+//     the Chinese forms as aliases. Machine readers then resolve all three
+//     spellings to one Organization instead of three unrelated brands.
+//   - 乐高 stays exactly as it was (name=乐高 / LEGO, no aliases): LEGO already
+//     has an unambiguous entity, adding aliases would only dilute it.
+//   - Unknown brands keep their stored value; the English tree applies the same
+//     display-name table the rest of the English chrome uses.
+func brandOrganization(brand, lang string) map[string]interface{} {
+	raw := strings.TrimSpace(brand)
+	name := raw
+	var aliases []string
+	switch raw {
+	case "奇积":
+		if lang == "en" {
+			name = "KEEPPLEY"
+			aliases = []string{"奇积", "奇妙积木"}
+		} else {
+			aliases = []string{"奇妙积木", "KEEPPLEY"}
+		}
+	case "乐高":
+		if lang == "en" {
+			name = "LEGO"
+		}
+	default:
+		if lang == "en" {
+			name = brandLabelEN(raw)
+		}
+	}
+	m := map[string]interface{}{"@type": "Organization", "name": name}
+	if len(aliases) > 0 {
+		m["alternateName"] = aliases
+	}
+	return m
 }
 
 // engagementStatistic builds the InteractionCounter array shared by detail and
@@ -263,7 +304,7 @@ func blueprintListItem(bp db.Blueprint, public, lang string) map[string]interfac
 		m["identifier"] = strings.TrimSpace(*bp.ProductCode)
 	}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
-		m["creator"] = map[string]interface{}{"@type": "Organization", "name": strings.TrimSpace(*bp.Brand)}
+		m["creator"] = brandOrganization(*bp.Brand, lang)
 	}
 	if props := blueprintProps(&bp, lang); len(props) > 0 {
 		m["additionalProperty"] = props

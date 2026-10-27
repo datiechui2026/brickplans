@@ -43,7 +43,8 @@ var AggregateEntries = []Entry{
 	{Category, "mecha", "机甲", "Mecha"},
 	{Category, "architecture", "建筑", "Architecture"},
 	{Category, "scifi", "科幻", "Sci-Fi"},
-	{Brand, "qiji", "奇积", "Qiji"},
+	// 奇积 的英文名是品牌自用的 KEEPPLEY；slug 保持 qiji 不动（已进 sitemap 与面包屑）。
+	{Brand, "qiji", "奇积", "KEEPPLEY"},
 	{Brand, "lego", "乐高", "LEGO"},
 	{Difficulty, "1", "1", "Difficulty 1"},
 	{Difficulty, "2", "2", "Difficulty 2"},
