@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"brickplans/internal/db"
+	"brickplans/internal/taxonomy"
 )
 
 // ── Detail page enrichment (SEO-20261026-02, batch 1) ───────────────────────
@@ -177,15 +178,31 @@ func detailCrumbs(lang string, bp *db.Blueprint, public string) []crumbItem {
 	homeHref := public + langPath(lang, "/")
 	exploreHref := public + langPath(lang, "/explore")
 	items := []crumbItem{{Name: home, Href: homeHref}, {Name: explore, Href: exploreHref}}
+	// 分类层（SEO-20261024）：只有真有落地页的分类才成一层。星战 / 其他 / 城市 这些
+	// 值没有 /category/{slug}，与其链到一个会折叠回 /explore 的 ?category= 参数页，
+	// 不如不出现在面包屑里 —— 面包屑是给爬虫看层级的，链到参数页等于自相矛盾。
+	if bp.Category != nil {
+		if e, ok := taxonomy.ForValue(taxonomy.Category, strings.TrimSpace(*bp.Category)); ok {
+			label := e.Value
+			if lang == "en" {
+				label = e.LabelEN
+			}
+			items = append(items, crumbItem{Name: label, Href: public + langPath(lang, taxonomy.Path(e))})
+		}
+	}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
 		brand := strings.TrimSpace(*bp.Brand)
 		label := brand
 		if lang == "en" {
 			label = brandLabelEN(brand)
 		}
-		// The brand filter lives on /explore until /brand/{slug} ships; the crumb
-		// href and the JSON-LD item URL are the same string by construction.
-		items = append(items, crumbItem{Name: label, Href: exploreHref + "?brand=" + urlQueryEscape(brand)})
+		// 品牌层同样只在有落地页时带 href；森宝/双鹰 等暂时只有筛选页，
+		// 可见端渲染 <span>，JSON-LD 该项不带 item，两边仍然同源。
+		href := ""
+		if e, ok := taxonomy.ForValue(taxonomy.Brand, brand); ok {
+			href = public + langPath(lang, taxonomy.Path(e))
+		}
+		items = append(items, crumbItem{Name: label, Href: href})
 	}
 	if s := seriesOf(bp); s != "" {
 		items = append(items, crumbItem{Name: s})

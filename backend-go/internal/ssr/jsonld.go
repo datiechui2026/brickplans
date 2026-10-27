@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"math"
-	"net/url"
 	"strings"
 
 	"brickplans/internal/db"
+	"brickplans/internal/taxonomy"
 )
 
 func mustJSON(v interface{}) template.JS {
@@ -234,6 +234,7 @@ func engagementStatistic(views, likes int) []map[string]interface{} {
 		},
 	}
 }
+
 // blueprintListItem maps one blueprint to the nested CreativeWork node used
 // inside ItemList（G-2：列表项同样不是商品 —— 没有 Offer、没有 price、没有
 // sku/mpn）。Image 仍然故意不带：列表 handler 不预加载图片，带上去就是每页
@@ -280,8 +281,12 @@ func breadcrumbJSONLD(category, title, public string) template.JS {
 	}
 	pos := 2
 	if category != "" {
-		items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": category, "item": public + "/explore?category=" + category})
-		pos++
+		// SEO-20261024：分类有落地页就指过去；没有落地页的分类（星战/其他…）
+		// 不再生成 ?category= 参数页 URL，与 detailCrumbs 的规则保持一致。
+		if e, ok := taxonomy.ForValue(taxonomy.Category, category); ok {
+			items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": category, "item": public + taxonomy.Path(e)})
+			pos++
+		}
 	}
 	items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": title})
 	return mustJSON(map[string]interface{}{
@@ -299,8 +304,11 @@ func breadcrumbJSONLDEN(category, title, public string) template.JS {
 	}
 	pos := 2
 	if category != "" {
-		items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": category, "item": public + "/en/explore?category=" + url.QueryEscape(category)})
-		pos++
+		if e, ok := taxonomy.ForValue(taxonomy.Category, category); ok {
+			items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos,
+				"name": e.LabelEN, "item": public + "/en" + taxonomy.Path(e)})
+			pos++
+		}
 	}
 	items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": title})
 	return mustJSON(map[string]interface{}{

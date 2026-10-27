@@ -151,7 +151,10 @@ func TestDetailBreadcrumbJSONLDMatchesVisibleTrail(t *testing.T) {
 	if doc.Type != "BreadcrumbList" {
 		t.Fatalf("@type = %q", doc.Type)
 	}
-	want := []string{"首页", "探索", "奇积", "宝可梦系列", bp.Title}
+	// SEO-20261024: the trail gained a category level between 探索 and 品牌,
+	// pointing at the new /category/{slug} landing page instead of the old
+	// /explore?category= parameter URL.
+	want := []string{"首页", "探索", "场景", "奇积", "宝可梦系列", bp.Title}
 	if len(doc.Items) != len(want) {
 		t.Fatalf("itemListElement = %d items, visible trail has %d (%s)", len(doc.Items), len(want), raw)
 	}
@@ -183,7 +186,11 @@ func TestDetailBreadcrumbJSONLDENMatchesVisibleTrail(t *testing.T) {
 	bp := bpFixture()
 	public := "https://brickplan.test"
 	raw := string(detailBreadcrumbJSONLD("en", bp, public))
-	for _, want := range []string{`"name":"Home"`, `"name":"Explore"`, `"name":"Qiji"`, `"position":5`} {
+	for _, want := range []string{
+		`"name":"Home"`, `"name":"Explore"`, `"name":"Scene"`, `"name":"Qiji"`, `"position":6`,
+		`"item":"https://brickplan.test/en/category/scene"`,
+		`"item":"https://brickplan.test/en/brand/qiji"`,
+	} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("EN breadcrumb JSON-LD missing %s: %s", want, raw)
 		}

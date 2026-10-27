@@ -68,6 +68,12 @@ type PageData struct {
 	// private/utility pages (upload, edit, notifications, admin) that should never
 	// enter the index but may still pass link equity.
 	Noindex bool
+	// PrevURL / NextURL emit <link rel="prev|next"> in <head>. Only paginated
+	// pages (aggregate landing pages, ?page=N) set them: the head is where a
+	// crawler looks for the pagination chain, and the visible pager in the body
+	// uses the same two URLs.
+	PrevURL string
+	NextURL string
 	// BodyWrap forces the .page/.main container skeleton even when BodyClass is
 	// empty. EN pages need it (they are seen before the SPA boots), while Chinese
 	// pages keep BodyClass="" so their SSR markup stays byte-identical.

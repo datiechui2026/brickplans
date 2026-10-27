@@ -2,13 +2,13 @@ package ssr
 
 import (
 	"html/template"
-	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"brickplans/internal/blog"
 	"brickplans/internal/db"
+	"brickplans/internal/taxonomy"
 )
 
 // categoryEN maps the stored Chinese category value to the English label the
@@ -57,9 +57,12 @@ func breadcrumbJSONLDFor(category, title, public, lang string) template.JS {
 	}
 	pos := 2
 	if category != "" {
-		items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos,
-			"name": categoryLabelEN(category), "item": public + "/en/explore?category=" + url.QueryEscape(category)})
-		pos++
+		// SEO-20261024：英文树同样指向英文聚合页；没有落地页的分类直接不进面包屑。
+		if e, ok := taxonomy.ForValue(taxonomy.Category, category); ok {
+			items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos,
+				"name": categoryLabelEN(category), "item": public + "/en" + taxonomy.Path(e)})
+			pos++
+		}
 	}
 	items = append(items, map[string]interface{}{"@type": "ListItem", "position": pos, "name": title})
 	return mustJSON(map[string]interface{}{

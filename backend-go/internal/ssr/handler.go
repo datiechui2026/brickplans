@@ -39,6 +39,14 @@ func (h *Handler) WithExposure(l *blog.ExposureLedger) *Handler {
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/", h.Home)
 	r.GET("/explore", h.Explore)
+	// Aggregate landing pages (SEO-20261024). These replace the
+	// /explore?category=X / ?brand=X filters as the crawlable, self-canonical
+	// entry points: 6 categories + 2 brands + 5 difficulty levels, each with an
+	// /en twin. The filter URLs still work for the SPA, they are just no longer
+	// what the sitemap advertises or what detail breadcrumbs point at.
+	r.GET("/category/:slug", h.Category)
+	r.GET("/brand/:slug", h.Brand)
+	r.GET("/difficulty/:n", h.Difficulty)
 	r.GET("/detail/:id", h.Detail)
 	r.GET("/tags/:name", h.Tag)
 	r.GET("/user/:id", h.User)
@@ -63,6 +71,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/en", h.HomeEN)
 	r.GET("/en/", h.HomeEN)
 	r.GET("/en/explore", h.ExploreEN)
+	r.GET("/en/category/:slug", h.CategoryEN)
+	r.GET("/en/brand/:slug", h.BrandEN)
+	r.GET("/en/difficulty/:n", h.DifficultyEN)
 	r.GET("/en/about", h.AboutEN)
 	r.GET("/en/faq", h.FAQEN)
 	r.GET("/en/privacy", h.PrivacyEN)

@@ -15,6 +15,7 @@ import (
 	"brickplans/internal/blog"
 	"brickplans/internal/config"
 	"brickplans/internal/db"
+	"brickplans/internal/taxonomy"
 )
 
 type SEOHandler struct {
@@ -329,6 +330,31 @@ func writeSitemapRef(b *strings.Builder, loc string, mod time.Time) {
 
 // ── Child: per-language site resources (pages + blueprint details) ──
 
+// writeAggregateURLs advertises the 13 aggregate landing pages of
+// SEO-20261024 — six categories, two brands, five difficulty levels — in one
+// language tree.
+//
+// Only page 1 is written. Every pagination page is self-canonical and linked
+// from its predecessor, so a crawler walks them on its own; listing 17 pages per
+// category here would spend the hub's crawl budget on list pages and bury the
+// URLs that are supposed to rank.
+func (h *SEOHandler) writeAggregateURLs(b *strings.Builder, lang string) {
+	base := h.cfg.PublicURL
+	contentDay := h.latestContentDay(lang)
+	prefix := ""
+	if lang == blog.LangEN {
+		prefix = "/en"
+	}
+	// No xhtml:link block here on purpose. The pair is already declared in the
+	// <head> of both pages (hreflang zh-CN / en / x-default), which is the form
+	// Google documents as sufficient; repeating it in the sitemap adds 3 lines
+	// per URL that then have to be kept in sync by hand, and it makes
+	// "count the /category/ locs in sitemap-zh.xml" a misleading measurement.
+	for _, e := range taxonomy.AggregateEntries {
+		writeURL(b, base+prefix+taxonomy.Path(e), contentDay, "0.8", "weekly")
+	}
+}
+
 // renderSitemapSite renders a language hub: static pages, taxonomy, that
 // language's blueprint details and its blog listing (with pagination).
 func (h *SEOHandler) renderSitemapSite(lang string) string {
@@ -347,18 +373,13 @@ func (h *SEOHandler) renderSitemapSite(lang string) string {
 		writeURL(&b, base+"/about", "", "0.6", "monthly")
 		writeURL(&b, base+"/privacy", "", "0.3", "yearly")
 
-		// Category pages. Derived from what authors actually used instead of a
-		// hardcoded taxonomy: the old list (车辆/机甲/奇幻/科幻 …) matched zero
-		// rows while the real values authors pick (星战/城市/朋友/图标/机械/创意/
-		// 赛车/其他) were never advertised, so those filters were reachable only
-		// through the UI.
-		var cats []string
-		h.gdb.Model(&db.Blueprint{}).
-			Where("is_published = ? AND category IS NOT NULL AND category <> ''", true).
-			Distinct().Order("category ASC").Pluck("category", &cats)
-		for _, cat := range cats {
-			writeURL(&b, base+"/explore?category="+url.QueryEscape(cat), contentDay, "0.7", "weekly")
-		}
+		// Aggregate landing pages (SEO-20261024). This block used to advertise
+		// every distinct category as /explore?category=<value> — 36 URLs that all
+		// canonicalised back to /explore, so they competed with the page they
+		// pointed at and could never rank. They are replaced by the 13 real
+		// landing pages; the parameter URLs still work for the SPA but are no
+		// longer advertised.
+		h.writeAggregateURLs(&b, blog.LangZH)
 
 		// Tag pages
 		var tags []db.Tag
@@ -411,6 +432,12 @@ func (h *SEOHandler) renderSitemapSite(lang string) string {
 		for _, sp := range staticLangPaths {
 			writeURL(&b, base+"/en"+sp.Path, contentDay, sp.Prio, sp.Freq, staticAlts(sp.Path, base)...)
 		}
+
+		// The English twins of the aggregate pages. Each one is a genuine
+		// translation of its Chinese counterpart (English chrome + English
+		// labels) and carries the same hreflang cluster, so it belongs in the
+		// English hub rather than being reachable only by crawling.
+		h.writeAggregateURLs(&b, blog.LangEN)
 	}
 
 	// Blog listing + every pagination page of THIS language. These are real

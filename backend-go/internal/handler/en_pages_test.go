@@ -128,9 +128,11 @@ func TestEnglishCategoryLabelsAreTranslated(t *testing.T) {
 		t.Error("category filter no longer matches the stored Chinese value")
 	}
 
-	// The EN detail trail is Home › Explore › title (no brand/series on this
-	// fixture). It must stay inside the /en tree and must not print the stored
-	// Chinese category value, which is what the old ?category= crumb did.
+	// The EN detail trail is Home › Explore › Architecture › title (no brand or
+	// series on this fixture). SEO-20261024 made the category a real crumb level:
+	// it must point at the /en/category/{slug} landing page inside the /en tree,
+	// carry the English label, and never fall back to the old ?category= form or
+	// to the stored Chinese value.
 	_, detail := getHTML(t, r, "/en/detail/"+bpID)
 	crumbs := headLines(detail, "BreadcrumbList")
 	if !strings.Contains(crumbs, `"name":"Home"`) || !strings.Contains(crumbs, `"name":"Explore"`) {
@@ -139,8 +141,16 @@ func TestEnglishCategoryLabelsAreTranslated(t *testing.T) {
 	if !strings.Contains(crumbs, `"item":"https://brickplans.test/en/explore"`) {
 		t.Errorf("explore crumb left the /en tree (broken trail):\n%s", crumbs)
 	}
-	if strings.Contains(crumbs, `"name":"建筑"`) || strings.Contains(crumbs, `"name":"Architecture"`) {
-		t.Errorf("category is no longer a crumb level; it must not appear:\n%s", crumbs)
+	// The category level now exists and must be the English label pointing at the
+	// English landing page — not the stored Chinese value, not the parameter URL.
+	if !strings.Contains(crumbs, `"name":"Architecture"`) {
+		t.Errorf("category crumb label is not translated:\n%s", crumbs)
+	}
+	if !strings.Contains(crumbs, `"item":"https://brickplans.test/en/category/architecture"`) {
+		t.Errorf("category crumb does not point at the /en/category landing page:\n%s", crumbs)
+	}
+	if strings.Contains(crumbs, `"name":"建筑"`) {
+		t.Errorf("category crumb printed the stored Chinese value:\n%s", crumbs)
 	}
 	if strings.Contains(crumbs, "?category=") {
 		t.Errorf("breadcrumb regressed to the parameter URL:\n%s", crumbs)
