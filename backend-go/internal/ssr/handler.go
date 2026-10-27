@@ -153,18 +153,13 @@ func (h *Handler) Detail(c *gin.Context) {
 	if bp.Description != nil && *bp.Description != "" {
 		desc = *bp.Description
 	}
-	category := ""
-	if bp.Category != nil {
-		category = *bp.Category
-	}
-
 	// B1/B2/B3 internal-link modules for the SSR body (SEO).
 	links := h.detailLinksData(&bp)
 
 	jsonld := h.siteJSONLD()
 	// G-2：详情页只有 CreativeWork 一个主实体，不再并列输出 Product/Offer。
 	jsonld = append(jsonld, creativeWorkJSONLD(&bp, cover, h.cfg.PublicURL, "zh"))
-	jsonld = append(jsonld, breadcrumbJSONLD(category, bp.Title, h.cfg.PublicURL))
+	jsonld = append(jsonld, detailBreadcrumbJSONLD("zh", &bp, h.cfg.PublicURL))
 
 	// The Chinese page is the original, but once the row has a real English
 	// translation the pair must point at each other. Leaving Alternates nil

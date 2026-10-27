@@ -128,16 +128,22 @@ func TestEnglishCategoryLabelsAreTranslated(t *testing.T) {
 		t.Error("category filter no longer matches the stored Chinese value")
 	}
 
+	// The EN detail trail is Home › Explore › title (no brand/series on this
+	// fixture). It must stay inside the /en tree and must not print the stored
+	// Chinese category value, which is what the old ?category= crumb did.
 	_, detail := getHTML(t, r, "/en/detail/"+bpID)
 	crumbs := headLines(detail, "BreadcrumbList")
-	if !strings.Contains(crumbs, `"name":"Home"`) || !strings.Contains(crumbs, `"name":"Architecture"`) {
+	if !strings.Contains(crumbs, `"name":"Home"`) || !strings.Contains(crumbs, `"name":"Explore"`) {
 		t.Errorf("EN breadcrumb is not translated:\n%s", crumbs)
 	}
-	if strings.Contains(crumbs, `"name":"建筑"`) {
-		t.Errorf("stored Chinese value leaked into the EN breadcrumb label:\n%s", crumbs)
+	if !strings.Contains(crumbs, `"item":"https://brickplans.test/en/explore"`) {
+		t.Errorf("explore crumb left the /en tree (broken trail):\n%s", crumbs)
 	}
-	if !strings.Contains(crumbs, `/en/explore?category=%E5%BB%BA%E7%AD%91`) {
-		t.Errorf("category crumb left the /en tree (broken trail):\n%s", crumbs)
+	if strings.Contains(crumbs, `"name":"建筑"`) || strings.Contains(crumbs, `"name":"Architecture"`) {
+		t.Errorf("category is no longer a crumb level; it must not appear:\n%s", crumbs)
+	}
+	if strings.Contains(crumbs, "?category=") {
+		t.Errorf("breadcrumb regressed to the parameter URL:\n%s", crumbs)
 	}
 }
 

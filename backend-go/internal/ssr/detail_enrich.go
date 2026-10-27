@@ -2,6 +2,7 @@ package ssr
 
 import (
 	"fmt"
+	"html/template"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ type DetailLinks struct {
 const (
 	moduleLimit    = 6  // 4–6 per module; 6 keeps a page above the 10-link floor
 	moduleMinRows  = 2  // B1 hides itself below this: one sibling is not a module
-	galleryCount   = 8  // ticket A3: first 8 instruction pages
+	galleryCount   = 10 // A3: cover + first 10 pages = 11 <img> per page
 	minDetailLinks = 10 // acceptance floor: unique /detail/ links per page
 )
 
@@ -152,44 +153,84 @@ func totalLinks(l *DetailLinks) int { return len(l.Series) + len(l.SameBrand) + 
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
-// detailCrumbLabels is the B4 trail in each language.
-type detailCrumbLabels struct {
-	Home, Explore, Aria, Sep string
+// crumbItem is one step of the B4 trail. Href is empty when the step has no
+// landing page of its own (the series and the current page); the visible trail
+// then renders a <span>, and the BreadcrumbList omits that item's URL — the two
+// representations are generated from this one slice so they cannot drift.
+type crumbItem struct {
+	Name string
+	Href string
 }
 
-func crumbsFor(lang string) detailCrumbLabels {
+func crumbsFor(lang string) (home, explore, aria string) {
 	if lang == "en" {
-		return detailCrumbLabels{Home: "Home", Explore: "Explore", Aria: "Breadcrumb", Sep: " › "}
+		return "Home", "Explore", "Breadcrumb"
 	}
-	return detailCrumbLabels{Home: "首页", Explore: "探索", Aria: "面包屑", Sep: " › "}
+	return "首页", "探索", "面包屑"
 }
 
-// detailBreadcrumb renders the visible trail (B4). It is plain HTML inside
-// <nav class="breadcrumb">, so `curl` sees it; the JSON-LD BreadcrumbList stays
-// as-is (regression: its shape is pinned by the sitemap/bilingual tests).
-func detailBreadcrumb(lang string, bp *db.Blueprint, public string) string {
-	l := crumbsFor(lang)
-	var parts []string
-	home := public + langPath(lang, "/")
-	explore := public + langPath(lang, "/explore")
-	parts = append(parts, fmt.Sprintf(`<a href="%s">%s</a>`, esc(home), esc(l.Home)))
-	parts = append(parts, fmt.Sprintf(`<a href="%s">%s</a>`, esc(explore), esc(l.Explore)))
+// detailCrumbs is the single source of truth for the trail: 首页 › 探索 › 品牌 ›
+// 系列 › 当前图纸. Both the visible <nav> and the BreadcrumbList JSON-LD render
+// from it (ticket B4 requires them to agree level by level).
+func detailCrumbs(lang string, bp *db.Blueprint, public string) []crumbItem {
+	home, explore, _ := crumbsFor(lang)
+	homeHref := public + langPath(lang, "/")
+	exploreHref := public + langPath(lang, "/explore")
+	items := []crumbItem{{Name: home, Href: homeHref}, {Name: explore, Href: exploreHref}}
 	if bp.Brand != nil && strings.TrimSpace(*bp.Brand) != "" {
 		brand := strings.TrimSpace(*bp.Brand)
-		// The brand filter lives on /explore until the /brand/{slug} landing pages
-		// ship; linking the parameter page keeps the crumb functional today.
-		href := explore + "?brand=" + urlQueryEscape(brand)
 		label := brand
 		if lang == "en" {
 			label = brandLabelEN(brand)
 		}
-		parts = append(parts, fmt.Sprintf(`<a href="%s">%s</a>`, esc(href), esc(label)))
+		// The brand filter lives on /explore until /brand/{slug} ships; the crumb
+		// href and the JSON-LD item URL are the same string by construction.
+		items = append(items, crumbItem{Name: label, Href: exploreHref + "?brand=" + urlQueryEscape(brand)})
 	}
 	if s := seriesOf(bp); s != "" {
-		parts = append(parts, fmt.Sprintf(`<span class="crumb-series">%s</span>`, esc(s)))
+		items = append(items, crumbItem{Name: s})
 	}
-	parts = append(parts, fmt.Sprintf(`<span class="crumb-current">%s</span>`, esc(bp.TitleIn(lang))))
-	return fmt.Sprintf(`<nav class="breadcrumb" aria-label="%s">%s</nav>`, esc(l.Aria), strings.Join(parts, l.Sep))
+	items = append(items, crumbItem{Name: bp.TitleIn(lang)})
+	return items
+}
+
+// detailBreadcrumb renders the visible trail (B4) as plain HTML inside
+// <nav class="breadcrumb">, so `curl` sees it.
+func detailBreadcrumb(lang string, bp *db.Blueprint, public string) string {
+	_, _, aria := crumbsFor(lang)
+	items := detailCrumbs(lang, bp, public)
+	parts := make([]string, 0, len(items))
+	for i, c := range items {
+		switch {
+		case c.Href != "":
+			parts = append(parts, fmt.Sprintf(`<a href="%s">%s</a>`, esc(c.Href), esc(c.Name)))
+		case i == len(items)-1:
+			parts = append(parts, fmt.Sprintf(`<span class="crumb-current">%s</span>`, esc(c.Name)))
+		default:
+			parts = append(parts, fmt.Sprintf(`<span class="crumb-series">%s</span>`, esc(c.Name)))
+		}
+	}
+	return fmt.Sprintf(`<nav class="breadcrumb" aria-label="%s">%s</nav>`, esc(aria), strings.Join(parts, " › "))
+}
+
+// detailBreadcrumbJSONLD mirrors detailCrumbs one-for-one: same names, same
+// order, contiguous positions, and item URLs identical to the visible href.
+// A step without a landing page (series) carries no item, exactly like its
+// <span> in the HTML.
+func detailBreadcrumbJSONLD(lang string, bp *db.Blueprint, public string) template.JS {
+	items := make([]map[string]interface{}, 0, 5)
+	for i, c := range detailCrumbs(lang, bp, public) {
+		e := map[string]interface{}{"@type": "ListItem", "position": i + 1, "name": c.Name}
+		if c.Href != "" {
+			e["item"] = c.Href
+		}
+		items = append(items, e)
+	}
+	return mustJSON(map[string]interface{}{
+		"@context":        "https://schema.org",
+		"@type":           "BreadcrumbList",
+		"itemListElement": items,
+	})
 }
 
 // urlQueryEscape is a tiny local helper so this file does not need net/url just
@@ -340,13 +381,6 @@ func detailGallery(lang string, bp *db.Blueprint, public string) string {
 	if len(bp.Images) == 0 {
 		return ""
 	}
-	brand, code := "", ""
-	if bp.Brand != nil {
-		brand = strings.TrimSpace(*bp.Brand)
-	}
-	if bp.ProductCode != nil {
-		code = strings.TrimSpace(*bp.ProductCode)
-	}
 	title := bp.TitleIn(lang)
 	heading := "图纸目录"
 	if lang == "en" {
@@ -363,11 +397,14 @@ func detailGallery(lang string, bp *db.Blueprint, public string) string {
 			continue
 		}
 		n := shown + 1
+		// Alt is the title alone: the title already carries the set number in
+		// parentheses ("机甲小队首领 (LEGO 77078)"), so prefixing brand+code again
+		// duplicated it on every one of the 2,134 pages.
 		var alt string
 		if lang == "en" {
-			alt = strings.TrimSpace(fmt.Sprintf("%s %s %s building instructions page %d", brand, code, title, n))
+			alt = fmt.Sprintf("%s building instructions page %d", title, n)
 		} else {
-			alt = strings.TrimSpace(fmt.Sprintf("%s%s %s 搭建说明书 第 %d 页", brand, code, title, n))
+			alt = fmt.Sprintf("%s 搭建说明书 第 %d 页", title, n)
 		}
 		if shown == 0 {
 			b.WriteString(fmt.Sprintf(`<a href="%s"><img src="%s" alt="%s" /></a>`, esc(img.URL), esc(img.URL), esc(alt)))

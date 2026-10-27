@@ -1,7 +1,9 @@
 package ssr
 
 import (
+	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -123,6 +125,120 @@ func TestDetailModulesDedupeAndReachFloor(t *testing.T) {
 	}
 	if len(seen) < 10 {
 		t.Fatalf("unique /detail/ links = %d, want >= 10", len(seen))
+	}
+}
+
+// B4 (defect 1, 2026-10-27): the BreadcrumbList must mirror the visible trail
+// level by level — 5 items, contiguous positions, and every item URL identical
+// to a visible href.
+func TestDetailBreadcrumbJSONLDMatchesVisibleTrail(t *testing.T) {
+	bp := bpFixture()
+	public := "https://brickplan.test"
+	visible := string(detailBreadcrumb("zh", bp, public))
+	raw := string(detailBreadcrumbJSONLD("zh", bp, public))
+
+	var doc struct {
+		Type  string `json:"@type"`
+		Items []struct {
+			Position int    `json:"position"`
+			Name     string `json:"name"`
+			Item     string `json:"item"`
+		} `json:"itemListElement"`
+	}
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		t.Fatalf("breadcrumb JSON-LD is not valid JSON: %v\n%s", err, raw)
+	}
+	if doc.Type != "BreadcrumbList" {
+		t.Fatalf("@type = %q", doc.Type)
+	}
+	want := []string{"首页", "探索", "奇积", "宝可梦系列", bp.Title}
+	if len(doc.Items) != len(want) {
+		t.Fatalf("itemListElement = %d items, visible trail has %d (%s)", len(doc.Items), len(want), raw)
+	}
+	for i, it := range doc.Items {
+		if it.Position != i+1 {
+			t.Fatalf("position %d at index %d, positions must be contiguous", it.Position, i)
+		}
+		if it.Name != want[i] {
+			t.Fatalf("item[%d].name = %q, want %q", i, it.Name, want[i])
+		}
+		if it.Item != "" && !strings.Contains(visible, `href="`+it.Item+`"`) {
+			t.Fatalf("item[%d] URL %q has no matching visible href\n%s", i, it.Item, visible)
+		}
+	}
+	// Every visible href must be in the JSON-LD too (no extra steps).
+	for _, m := range regexp.MustCompile(`href="([^"]+)"`).FindAllStringSubmatch(visible, -1) {
+		if !strings.Contains(raw, `"item":"`+m[1]+`"`) {
+			t.Fatalf("visible href %q missing from BreadcrumbList\n%s", m[1], raw)
+		}
+	}
+	// The old explore?category= step must not come back.
+	if strings.Contains(raw, "?category=") {
+		t.Fatalf("breadcrumb JSON-LD regressed to the parameter URL: %s", raw)
+	}
+}
+
+// B4 in English: same trail, English labels, /en tree.
+func TestDetailBreadcrumbJSONLDENMatchesVisibleTrail(t *testing.T) {
+	bp := bpFixture()
+	public := "https://brickplan.test"
+	raw := string(detailBreadcrumbJSONLD("en", bp, public))
+	for _, want := range []string{`"name":"Home"`, `"name":"Explore"`, `"name":"Qiji"`, `"position":5`} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("EN breadcrumb JSON-LD missing %s: %s", want, raw)
+		}
+	}
+	if strings.Contains(raw, "?category=") {
+		t.Fatalf("EN breadcrumb regressed to the parameter URL: %s", raw)
+	}
+}
+
+// Defect 2 (2026-10-27): alt text was 品牌+编号+标题, and the title already ends
+// with "(LEGO 77078)" — so the set number printed twice on all 2,134 pages.
+func TestDetailImageAltsAreTitleOnly(t *testing.T) {
+	bp := bpFixture()
+	bp.Title = "机甲小队首领 (LEGO 77078)"
+	html := string(detailNoscriptFor("zh", bp, "https://cdn.test/1.jpg", "https://brickplan.test", nil))
+	if !strings.Contains(html, `alt="`+bp.Title+` 封面"`) {
+		t.Fatalf("cover alt is not \"{title} 封面\"")
+	}
+	if !strings.Contains(html, `alt="`+bp.Title+` 搭建说明书 第 1 页"`) {
+		t.Fatalf("page alt is not \"{title} 搭建说明书 第 N 页\"")
+	}
+	if strings.Contains(html, "奇积S0101") {
+		t.Fatalf("alt still prefixes brand+code")
+	}
+
+	en := string(detailNoscriptFor("en", bp, "https://cdn.test/1.jpg", "https://brickplan.test", nil))
+	if !strings.Contains(en, `alt="`+bp.Title[:len(bp.Title)]+`"`) && !strings.Contains(en, "cover") {
+		t.Fatalf("EN cover alt missing")
+	}
+	if !strings.Contains(en, "building instructions page 1") {
+		t.Fatalf("EN page alt missing")
+	}
+}
+
+// Defect 3 (2026-10-27): the gallery must render cover + first 10 pages = 11
+// <img>, first one eager, the rest lazy.
+func TestDetailGalleryRendersElevenImages(t *testing.T) {
+	bp := bpFixture()
+	bp.Images = nil
+	for i := 0; i < 25; i++ {
+		bp.Images = append(bp.Images, db.BlueprintImage{
+			URL:       "https://cdn.test/p" + strconv.Itoa(i+1) + ".jpg",
+			FileType:  "image",
+			SortOrder: i,
+		})
+	}
+	html := string(detailNoscriptFor("zh", bp, "https://cdn.test/cover.jpg", "https://brickplan.test", nil))
+	if got := strings.Count(html, "<img"); got != 11 {
+		t.Fatalf("<img> count = %d, want 11 (cover + first 10 pages)", got)
+	}
+	if got := strings.Count(html, `loading="lazy"`); got != 9 {
+		t.Fatalf("lazy images = %d, want 9 (all but the first page image; the cover is a separate <img> without loading)", got)
+	}
+	if got := strings.Count(html, `alt="`+bp.Title); got != 11 {
+		t.Fatalf("alt count = %d, want 11", got)
 	}
 }
 

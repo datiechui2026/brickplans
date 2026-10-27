@@ -192,7 +192,11 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 		b.WriteString(string(mdToHTML(*desc)))
 	}
 	if cover != "" {
-		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(title)))
+		coverAlt := title + " 封面"
+		if lang == "en" {
+			coverAlt = title + " cover"
+		}
+		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(coverAlt)))
 	}
 	// A1: the spec table. Values come from columns that already exist; a missing
 	// column is an omitted row (see detailSpecTable).
