@@ -198,6 +198,14 @@ func detailNoscriptFor(lang string, bp *db.Blueprint, cover, public string, link
 		}
 		b.WriteString(fmt.Sprintf(`<p><img src="%s" alt="%s" /></p>`, esc(cover), esc(coverAlt)))
 	}
+	// Batch 2 slot: the long editorial body, between the short description (and
+	// the cover) and the spec table. Renders only when the row carries one --
+	// no placeholder, no 暂无/未知, same empty-field rule as the spec table.
+	if long := bp.DescriptionLongIn(lang); long != nil {
+		b.WriteString(`<div class="desc-long">`)
+		b.WriteString(string(mdToHTML(*long)))
+		b.WriteString(`</div>`)
+	}
 	// A1: the spec table. Values come from columns that already exist; a missing
 	// column is an omitted row (see detailSpecTable).
 	b.WriteString(detailSpecTable(lang, bp, cover))

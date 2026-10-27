@@ -63,6 +63,13 @@ type Blueprint struct {
 	Slug          string  `gorm:"type:varchar(120);index;not null" json:"slug"`
 	Description   *string `gorm:"type:text" json:"description"`
 	DescriptionEN *string `gorm:"type:text" json:"description_en"`
+	// DescriptionLong / DescriptionLongEN are the 300-500 character editorial
+	// bodies added for ticket 02 batch 2. They are separate columns on purpose:
+	// Description stays the short author blurb shared by the card, the API and
+	// the meta description, while the long body is per-page unique prose that
+	// must never leak into list or search snippets.
+	DescriptionLong   *string `gorm:"column:description_long;type:text" json:"description_long"`
+	DescriptionLongEN *string `gorm:"column:description_long_en;type:text" json:"description_long_en"`
 	Difficulty    *int    `json:"difficulty"`
 	PieceCount    *int    `json:"piece_count"`
 	Category      *string `gorm:"type:varchar(30);index" json:"category"`
@@ -107,6 +114,24 @@ func (b *Blueprint) DescriptionIn(lang string) *string {
 		return b.DescriptionEN
 	}
 	return b.Description
+}
+
+// DescriptionLongIn returns the long editorial body for one site language.
+// Unlike DescriptionIn it never falls back across languages: a Chinese body
+// rendered on /en/ is mixed-language content, which is worse for the reader and
+// for the index than an omitted block, so an untranslated row simply has no
+// long body on the English tree.
+func (b *Blueprint) DescriptionLongIn(lang string) *string {
+	if lang == "en" {
+		if b.DescriptionLongEN != nil && strings.TrimSpace(*b.DescriptionLongEN) != "" {
+			return b.DescriptionLongEN
+		}
+		return nil
+	}
+	if b.DescriptionLong != nil && strings.TrimSpace(*b.DescriptionLong) != "" {
+		return b.DescriptionLong
+	}
+	return nil
 }
 
 func (b *Blueprint) BeforeCreate(tx *gorm.DB) error {
