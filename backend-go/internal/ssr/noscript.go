@@ -308,7 +308,14 @@ func listNoscriptFor(lang string, bps []db.Blueprint, public string) template.HT
 		b.WriteString(fmt.Sprintf(`<li><a href="%s">%s</a>`,
 			public+langPath(lang, "/detail/"+bp.ID), esc(bp.TitleIn(lang))))
 		if bp.Category != nil {
-			b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(*bp.Category), l.CatClose))
+			// 英文树不混中文：列表条目里的类目名在 /en 上同样要过译表，否则 13 个
+			// 英文聚合页的每条结果后面都挂一个「(奇幻)」。未知值原样透出
+			// （categoryLabelEN 对无译名的入参返回其本身）。
+			cat := *bp.Category
+			if lang == "en" {
+				cat = categoryLabelEN(cat)
+			}
+			b.WriteString(fmt.Sprintf("%s%s%s", l.CatOpen, esc(cat), l.CatClose))
 		}
 		if bp.PieceCount != nil {
 			b.WriteString(fmt.Sprintf(" · %d%s", *bp.PieceCount, l.PartUnit))
