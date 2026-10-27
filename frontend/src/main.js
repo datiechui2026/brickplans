@@ -261,8 +261,18 @@ function navLabel(lang, path) {
 // blog, upload, edit, notifications, admin) and renders the same layout with
 // English UI strings.
 const STATIC_ENGLISH_PATHS = ['/en/about', '/en/faq', '/en/privacy'];
+
+// Aggregate landing pages (/category/{slug}, /brand/{slug}, /difficulty/{n} and
+// their /en twins) are final SSR documents too. Their body is written by Go and
+// the SPA has no route for them, so without this the boot pass wiped the
+// server-rendered list and fell through to renderErrorPage(404) — crawlers saw
+// the page, browsers saw a 404. They are now reached by 301 from /explore?…,
+// so they must survive hydration.
+const SSR_AGGREGATE_PREFIXES = ['/category/', '/brand/', '/difficulty/',
+  '/en/category/', '/en/brand/', '/en/difficulty/'];
 function isSsrOnlyPath(p) {
-  return STATIC_ENGLISH_PATHS.includes(p);
+  if (STATIC_ENGLISH_PATHS.includes(p)) return true;
+  return SSR_AGGREGATE_PREFIXES.some((pre) => p.startsWith(pre));
 }
 
 // stripLangPrefix maps "/en/explore" → "/explore" and "/en/" → "/".
