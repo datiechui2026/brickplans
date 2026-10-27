@@ -220,6 +220,9 @@ func (h *Handler) PrivacyEN(c *gin.Context) {
 // the Chinese /explore page does, with English labels (blueprint titles stay as
 // their authors wrote them).
 func (h *Handler) ExploreEN(c *gin.Context) {
+	if h.redirectExploreFilter(c, "en") {
+		return
+	}
 	cat := c.Query("category")
 	brand := strings.TrimSpace(c.Query("brand"))
 	var bps []db.Blueprint

@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -111,13 +112,26 @@ func TestEnglishCategoryLabelsAreTranslated(t *testing.T) {
 	}
 	bpID := parseJSON(t, w)["id"].(string)
 
-	// The filter query carries the stored value, exactly what the SPA sends.
-	code, body := getHTML(t, r, "/en/explore?category="+url.QueryEscape("建筑"))
-	if code != 200 {
-		t.Fatalf("/en/explore?category=建筑: %d", code)
+	// The filter query carries the stored value, exactly what the SPA sends, and
+	// now answers 301 onto the English landing page instead of a self-canonical
+	// duplicate of /en/explore (defect 2 of the SEO-20261024 follow-up).
+	w301 := doRequest(t, r, http.MethodGet, "/en/explore?category="+url.QueryEscape("建筑"))
+	if w301.Code != http.StatusMovedPermanently {
+		t.Fatalf("/en/explore?category=建筑: %d, want 301", w301.Code)
 	}
-	if !strings.Contains(body, "<title>Architecture blueprints — BrickPlan</title>") {
-		t.Errorf("EN category title is not translated:\n%s", headLines(body, "<title>"))
+	if loc := w301.Header().Get("Location"); loc != "/en/category/architecture" {
+		t.Fatalf("301 Location = %q, want the EN architecture landing page", loc)
+	}
+
+	code, body := getHTML(t, r, "/en/category/architecture")
+	if code != 200 {
+		t.Fatalf("/en/category/architecture: %d", code)
+	}
+	if !strings.Contains(body, "Architecture") {
+		t.Errorf("EN landing page title is not translated:\n%s", headLines(body, "<title>"))
+	}
+	if ttl := headLines(body, "<title>"); strings.Contains(ttl, "建筑") {
+		t.Errorf("EN landing page title kept the stored Chinese value: %s", ttl)
 	}
 	desc := headLines(body, `name="description"`)
 	if !strings.Contains(desc, "Architecture") || strings.Contains(desc, "建筑") {
@@ -126,6 +140,10 @@ func TestEnglishCategoryLabelsAreTranslated(t *testing.T) {
 	// The listing must still be filtered by the Chinese value.
 	if !strings.Contains(body, "/en/detail/"+bpID) {
 		t.Error("category filter no longer matches the stored Chinese value")
+	}
+	// Defect 1: the list item chrome must not print the stored Chinese category.
+	if strings.Contains(body, "(建筑)") {
+		t.Error("English landing page printed the stored Chinese category next to a list item")
 	}
 
 	// The EN detail trail is Home › Explore › Architecture › title (no brand or
@@ -258,9 +276,17 @@ func TestExploreBrandFilter(t *testing.T) {
 	legoID := create(map[string]any{"title": "乐高城堡", "brand": "乐高"})
 	semboID := create(map[string]any{"title": "森宝街景", "brand": "森宝"})
 
-	code, en := getHTML(t, r, "/en/explore?brand="+url.QueryEscape("乐高"))
+	// 乐高 has a landing page, so the parameter URL 301s onto it.
+	wBrand := doRequest(t, r, http.MethodGet, "/en/explore?brand="+url.QueryEscape("乐高"))
+	if wBrand.Code != http.StatusMovedPermanently {
+		t.Fatalf("/en/explore?brand=乐高: %d, want 301", wBrand.Code)
+	}
+	if loc := wBrand.Header().Get("Location"); loc != "/en/brand/lego" {
+		t.Fatalf("301 Location = %q, want the EN lego landing page", loc)
+	}
+	code, en := getHTML(t, r, "/en/brand/lego")
 	if code != 200 {
-		t.Fatalf("/en/explore: %d", code)
+		t.Fatalf("/en/brand/lego: %d", code)
 	}
 	if !strings.Contains(en, "/en/detail/"+legoID) {
 		t.Error("EN explore?brand=乐高 does not list the LEGO build")

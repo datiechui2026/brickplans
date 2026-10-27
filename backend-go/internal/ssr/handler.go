@@ -3,6 +3,7 @@ package ssr
 import (
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 	"brickplans/internal/blog"
 	"brickplans/internal/config"
 	"brickplans/internal/db"
+	"brickplans/internal/taxonomy"
 )
 
 type Handler struct {
@@ -193,7 +195,59 @@ func (h *Handler) Detail(c *gin.Context) {
 	})
 }
 
+// redirectExploreFilter turns the legacy /explore?category=X parameter URLs into
+// 301s to the aggregate landing page that replaced them (follow-up to
+// SEO-20261024).
+//
+// The parameter URL still answers 200 and renders the same rows as the landing
+// page, but since the landing pages shipped it is no longer in the sitemap and no
+// longer linked from detail breadcrumbs -- a duplicate with no crawl path. A 301
+// moves whatever weight those URLs already earned onto the canonical page and
+// removes the duplicate in one step; pointing canonical at /category/{slug} would
+// only ask crawlers to ignore them.
+//
+// Three rules keep the redirect honest:
+//   - exactly one of category/brand/difficulty may be set: combined filters have
+//     no landing page, so they keep the pre-existing 200 behaviour,
+//   - the stored value must resolve through taxonomy.ForValue; values without a
+//     landing page (星战 / 其他 / 森宝 ...) stay 200 instead of becoming a 404,
+//   - ?page=N is carried across, so deep-linked pages keep working.
+func (h *Handler) redirectExploreFilter(c *gin.Context, lang string) bool {
+	type filter struct {
+		family taxonomy.Family
+		value  string
+	}
+	var set []filter
+	for _, f := range []filter{
+		{taxonomy.Category, strings.TrimSpace(c.Query("category"))},
+		{taxonomy.Brand, strings.TrimSpace(c.Query("brand"))},
+		{taxonomy.Difficulty, strings.TrimSpace(c.Query("difficulty"))},
+	} {
+		if f.value != "" {
+			set = append(set, f)
+		}
+	}
+	if len(set) != 1 {
+		return false
+	}
+	entry, ok := taxonomy.ForValue(set[0].family, set[0].value)
+	if !ok {
+		return false
+	}
+	page := 1
+	if raw := strings.TrimSpace(c.Query("page")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 1 {
+			page = n
+		}
+	}
+	c.Redirect(http.StatusMovedPermanently, aggPath(lang, entry, page))
+	return true
+}
+
 func (h *Handler) Explore(c *gin.Context) {
+	if h.redirectExploreFilter(c, "zh") {
+		return
+	}
 	cat := c.Query("category")
 	brand := strings.TrimSpace(c.Query("brand"))
 	var bps []db.Blueprint
