@@ -158,15 +158,8 @@ func (h *Handler) Detail(c *gin.Context) {
 		category = *bp.Category
 	}
 
-	// Query related blueprints for SSR noscript internal links (SEO).
-	var relatedBps []db.Blueprint
-	rq := h.gdb.Where("is_published = ? AND id <> ?", true, id)
-	if category != "" {
-		rq = rq.Where("category = ?", category)
-	} else {
-		rq = rq.Where("author_id = ?", bp.AuthorID)
-	}
-	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
+	// B1/B2/B3 internal-link modules for the SSR body (SEO).
+	links := h.detailLinksData(&bp)
 
 	jsonld := h.siteJSONLD()
 	// G-2：详情页只有 CreativeWork 一个主实体，不再并列输出 Product/Offer。
@@ -190,7 +183,7 @@ func (h *Handler) Detail(c *gin.Context) {
 		OGImage:     cover,
 		JSONLD:      jsonld,
 		Alternates:  alts,
-		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL, relatedBps),
+		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL, links),
 	})
 }
 

@@ -307,14 +307,8 @@ func (h *Handler) DetailEN(c *gin.Context) {
 		category = *bp.Category
 	}
 
-	var relatedBps []db.Blueprint
-	rq := h.gdb.Where("is_published = ? AND id <> ?", true, id)
-	if category != "" {
-		rq = rq.Where("category = ?", category)
-	} else {
-		rq = rq.Where("author_id = ?", bp.AuthorID)
-	}
-	rq.Preload("Images", db.OrderImages).Order("view_count DESC").Limit(4).Find(&relatedBps)
+	// B1/B2/B3 internal-link modules for the SSR body (SEO).
+	links := h.detailLinksData(&bp)
 
 	jsonld := h.siteJSONLD()
 	// G-2：详情页只有 CreativeWork 一个主实体（原先这里还并列一个 Product + Offer）。
@@ -345,7 +339,7 @@ func (h *Handler) DetailEN(c *gin.Context) {
 		Alternates:  alts,
 		NoHreflang:  noHreflang,
 		BodyWrap:    true,
-		Noscript:    detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, relatedBps),
+		Noscript:    detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, links),
 	})
 }
 
