@@ -324,6 +324,10 @@ body {
   transform: translateY(-6px);
   box-shadow: var(--shadow-hv);
 }
+/* A card rendered as <a href> (crawler-visible link) must not carry the UA
+   link styling: no underline, and text keeps the surrounding colour instead
+   of the default blue. Card children with their own colour are unaffected. */
+a.card { text-decoration: none; color: inherit; }
 .card-img-wrap {
   position: relative;
   width: 100%;
@@ -1303,9 +1307,9 @@ section.detail-links li > a {
   text-decoration: none;
   font-size: 0.92rem;
   line-height: 1.45;
-  border-bottom: 1px dashed transparent;
+  border-bottom: none;
 }
-section.detail-links li > a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+section.detail-links li > a:hover { color: var(--accent); }
 
 section.instruction-pages { display: block; }
 section.instruction-pages a {
