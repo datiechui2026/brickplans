@@ -1,29 +1,38 @@
 # BrickPlan
 
-> BrickPlan 是一个积木 / MOC 图纸分享社区：用户可上传、浏览、收藏、评论乐高 MOC 创意作品，支持图片与 PDF 图纸，按建筑 / 车辆 / 机甲 / 奇幻 / 科幻 / 场景分类，提供标签、搜索、点赞、收藏、通知与管理员审核。所有用户可见文案为中文。
+> BrickPlan 是一个双语积木 / MOC 图纸分享社区：收录乐高（LEGO）与奇积（KEEPPLEY）等品牌的套装搭建说明书与玩家原创作品，提供封面、逐页图纸、颗粒数、难度、分类与品牌信息。中文站为默认语言（https://brickplan.cn/），英文站为 https://brickplan.cn/en/ 。
 
-## 核心页面
-- [首页](https://brickplan.cn/)
-- [发现 / 搜索图纸](https://brickplan.cn/explore)
-- [博客](https://brickplan.cn/blog)：MOC 搭建教程、零件知识、品牌评测与选购建议，每篇正文均为服务端渲染 HTML，可直接抓取。
-- [关于我们](https://brickplan.cn/about)：项目背景、作者团队、联系方式与内容收录说明。
-- [常见问题](https://brickplan.cn/faq)
-- [隐私策略](https://brickplan.cn/privacy)
-- [站点地图](https://brickplan.cn/sitemap.xml)
+## 站点结构
+
+- 中文首页：https://brickplan.cn/
+- 英文首页：https://brickplan.cn/en/
+- 图纸详情（中文）：https://brickplan.cn/detail/{id}
+- 图纸详情（英文）：https://brickplan.cn/en/detail/{id}
+- 发现 / 搜索：https://brickplan.cn/explore
+- 分类聚合页：https://brickplan.cn/category/{slug}（scene / vehicle / mecha / architecture / fantasy / scifi）
+- 品牌聚合页：https://brickplan.cn/brand/{slug}（lego / qiji）
+- 难度聚合页：https://brickplan.cn/difficulty/{1-5}
+- 英文聚合页：在上述路径前加 /en/，如 https://brickplan.cn/en/category/scene
+- 博客（中文）：https://brickplan.cn/blog；英文：https://brickplan.cn/en/blog
+- 站点地图：https://brickplan.cn/sitemap.xml（索引，含 21 个子 sitemap）
+
+## 内容说明
+
+- 已发布图纸 2134 条，每条包含：标题（中 / 英）、套装介绍（中文约 300 字 / 英文约 160 词）、颗粒数、难度（1-5）、分类、品牌、编号、封面与逐页图纸图片。
+- 颗粒数仅收录可确认的数据（盒面印刷或官方公布），无法确认的条目留空，不做估算——因此部分条目没有颗粒数，属正常情况。
+- 品牌口径：中文显示「奇积」，英文为 KEEPPLEY；「奇妙积木」是同一品牌的中文别名。
+- 博客文章为服务端渲染 HTML，可直接抓取；含 BlogPosting / FAQPage / HowTo 结构化数据。
 
 ## 公开数据 API
-- 作品列表（分页/搜索/分类/标签）：GET https://brickplan.cn/api/blueprints
-- 作品详情：GET https://brickplan.cn/api/blueprints/{id}
-- 全部标签：GET https://brickplan.cn/api/tags
+
+- 图纸列表（分页 / 搜索 / 分类 / 标签）：GET https://brickplan.cn/api/blueprints
+- 图纸详情：GET https://brickplan.cn/api/blueprints/{id}
+- 标签：GET https://brickplan.cn/api/tags
 - 平台统计：GET https://brickplan.cn/api/stats
-- 作品评论：GET https://brickplan.cn/api/blueprints/{id}/comments
+- 评论：GET https://brickplan.cn/api/blueprints/{id}/comments
 
-## 作品数据结构
-每件作品（Blueprint）包含：标题、描述、分类（建筑/车辆/机甲/奇幻/科幻/场景）、难度（1-5）、零件数、尺寸、图片与 PDF 图纸、标签。封面图取自第一张非 PDF 图片或作者指定封面。
+## 抓取与引用
 
-## 内容与版权
-作品版权归创作者所有；社区禁止上传他人受版权保护的图纸，举报入口位于每个作品详情页底部。管理员可对被举报作品进行下架处理。
-
-## 联系
-- 举报：作品详情页底部「举报」链接
-- 邮箱：ghostjeky@hotmail.com
+- 欢迎 GPTBot、ClaudeBot、PerplexityBot、Google-Extended、CCBot 抓取全站内容（见 https://brickplan.cn/robots.txt）。
+- 引用本站内容时请标注来源为 BrickPlan 并附对应页面链接。
+- 内容为玩家与官方说明书的整理，套装版权归原品牌（LEGO / KEEPPLEY 等）所有。

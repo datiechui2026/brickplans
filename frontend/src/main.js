@@ -840,9 +840,11 @@ async function handleRegister() {
 }
 
 // ── Lightbox ──
-function openLightbox(images, curIdx) {
+function openLightbox(images, curIdx, altFor) {
   const overlay = h('div', { className: 'lightbox-overlay' });
-  const imgEl = h('img', { className: 'lightbox-img', src: images[curIdx].url });
+  // altFor keeps the zoomed view on the same alt text as the thumbnail it was
+  // opened from (SSR rule: "{title} 封面" / "{title} 搭建说明书 第 N 页").
+  const imgEl = h('img', { className: 'lightbox-img', src: images[curIdx].url, alt: altFor ? altFor(curIdx) : '' });
   const wrap = h('div', { className: 'lightbox-img-wrap' });
   wrap.appendChild(imgEl);
   overlay.appendChild(wrap);
@@ -877,7 +879,7 @@ function openLightbox(images, curIdx) {
   const changeImage = (delta) => {
     const newIdx = (curIdx + delta + images.length) % images.length;
     closeLightbox();
-    openLightbox(images, newIdx);
+    openLightbox(images, newIdx, altFor);
   };
 
   // Click: toggle 1x / fit
@@ -1767,6 +1769,25 @@ async function loadRelated(id) {
   }
 }
 
+/* ── B2: detail image alt text ─────────────────────────────────────────────
+   The SSR page writes "{title} 封面" for the cover and "{title} 搭建说明书 第 N 页"
+   for every instruction page ("{title} cover" / "{title} building instructions
+   page N" on /en/). The SPA gallery used to rebuild these <img> nodes with the
+   bare title, or with no alt at all, so after hydration half of the content
+   images lost their alt text and Googlebot saw a different page than the
+   crawler did. Indices are 0-based over bp.images. */
+function detailImageAlt(title, index) {
+  const n = index + 1;
+  if (isEnglishPath()) {
+    return index === 0 ? `${title} cover` : `${title} building instructions page ${n}`;
+  }
+  return index === 0 ? `${title} 封面` : `${title} 搭建说明书 第 ${n} 页`;
+}
+/* Avatars next to a visible username are decorative: empty alt plus
+   aria-hidden stops screen readers from reading the name twice, and keeps the
+   image out of the alt-text audit. */
+const DECORATIVE_IMG = { alt: '', 'aria-hidden': 'true' };
+
 async function loadDetail(id) {
   const contentEl = $id('detail-content');
   if (!contentEl) return;
@@ -1883,11 +1904,11 @@ async function loadDetail(id) {
               } else {
                 mainContentEl = h('img', {
                   src: currentItem.url,
-                  alt: blueprintTitle(bp),
+                  alt: detailImageAlt(blueprintTitle(bp), carouselIdx),
                   loading: 'lazy',
                   onclick: () => {
                     if (nonPdfImages.length === 0) return;
-                    openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
+                    openLightbox(nonPdfImages, getLightboxIdx(carouselIdx), (i) => detailImageAlt(blueprintTitle(bp), i));
                   },
                 });
               }
@@ -1915,6 +1936,7 @@ async function loadDetail(id) {
                 }
                 return h('img', {
                   src: img.url,
+                  alt: detailImageAlt(blueprintTitle(bp), i),
                   loading: 'lazy',
                   className: `gallery-thumb${i === carouselIdx ? ' active' : ''}`,
                   onclick: (e) => {
@@ -1940,11 +1962,11 @@ async function loadDetail(id) {
                 } else {
                   const newImg = h('img', {
                     src: item.url,
-                    alt: blueprintTitle(bp),
+                    alt: detailImageAlt(blueprintTitle(bp), carouselIdx),
                     loading: 'lazy',
                     onclick: () => {
                       if (nonPdfImages.length > 0) {
-                        openLightbox(nonPdfImages, getLightboxIdx(carouselIdx));
+                        openLightbox(nonPdfImages, getLightboxIdx(carouselIdx), (i) => detailImageAlt(blueprintTitle(bp), i));
                       }
                     },
                   });
@@ -2019,7 +2041,7 @@ async function loadDetail(id) {
             bp.author ? h('div', { className: 'author-row',
               onclick: () => navigate('user', { id: bp.author.id }),
             },
-              h('img', { src: bp.author.avatar_url || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author.username || 'anon')}`, alt: '' }),
+              h('img', Object.assign({ src: bp.author.avatar_url || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author.username || 'anon')}` }, DECORATIVE_IMG)),
               h('div', {},
                 h('div', { className: 'author-name' }, bp.author.username),
                 bp.created_at ? h('div', { className: 'author-date' }, tr(
@@ -2913,7 +2935,7 @@ function renderBlueprintCard(bp, isOwnProfile = false, opts = {}) {
     h('div', { className: 'card-body' },
       h('div', { className: 'card-title' }, blueprintTitle(bp)),
       h('div', { className: 'card-author' },
-        h('img', { src: authorAvatar, alt: '', loading: 'lazy', decoding: 'async' }),
+        h('img', Object.assign({ src: authorAvatar, loading: 'lazy', decoding: 'async' }, DECORATIVE_IMG)),
         h('span', {}, bp.author?.username || tr('匿名', 'Anonymous')),
       ),
       h('div', { className: 'card-stats' },

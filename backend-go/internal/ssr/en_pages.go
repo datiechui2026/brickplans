@@ -304,10 +304,8 @@ func (h *Handler) DetailEN(c *gin.Context) {
 	}
 	cover := coverURL(bp.Images, h.cfg.PublicURL)
 	titleEN := bp.TitleIn("en")
-	desc := "BrickPlan MOC blueprint: " + titleEN
-	if d := bp.DescriptionIn("en"); d != nil && *d != "" {
-		desc = *d
-	}
+	// B1: meta description comes from description_long_en, clipped to a whole
+	// sentence; rows without an English body fall back to the short one.
 	// B1/B2/B3 internal-link modules for the SSR body (SEO).
 	links := h.detailLinksData(&bp)
 
@@ -329,18 +327,19 @@ func (h *Handler) DetailEN(c *gin.Context) {
 	}
 
 	h.r.Render(c, PageData{
-		Lang:        "en",
-		Title:       titleEN + " — BrickPlan MOC blueprint",
-		Description: truncate(desc, 160),
-		Canonical:   canonical,
-		OGUrl:       h.cfg.PublicURL + "/en/detail/" + bp.ID,
-		OGType:      "article",
-		OGImage:     cover,
-		JSONLD:      jsonld,
-		Alternates:  alts,
-		NoHreflang:  noHreflang,
-		BodyWrap:    true,
-		Noscript:    detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, links),
+		Lang:          "en",
+		Title:         titleEN + " — BrickPlan MOC blueprint",
+		Description:   detailMetaDescription(&bp, "en"),
+		OGDescription: detailOGDescription(&bp, "en"),
+		Canonical:     canonical,
+		OGUrl:         h.cfg.PublicURL + "/en/detail/" + bp.ID,
+		OGType:        "article",
+		OGImage:       cover,
+		JSONLD:        jsonld,
+		Alternates:    alts,
+		NoHreflang:    noHreflang,
+		BodyWrap:      true,
+		Noscript:      detailNoscriptFor("en", &bp, cover, h.cfg.PublicURL, links),
 	})
 }
 

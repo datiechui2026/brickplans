@@ -162,10 +162,8 @@ func (h *Handler) Detail(c *gin.Context) {
 		return
 	}
 	cover := coverURL(bp.Images, h.cfg.PublicURL)
-	desc := "BrickPlan 积木图纸：" + bp.Title
-	if bp.Description != nil && *bp.Description != "" {
-		desc = *bp.Description
-	}
+	// B1: the meta description is derived from the editorial body (long
+	// description) and clipped to a whole sentence — see metadesc.go.
 	// B1/B2/B3 internal-link modules for the SSR body (SEO).
 	links := h.detailLinksData(&bp)
 
@@ -184,14 +182,15 @@ func (h *Handler) Detail(c *gin.Context) {
 	}
 
 	h.r.Render(c, PageData{
-		Title:       bp.Title + " - BrickPlan 积木图纸",
-		Description: truncate(desc, 160),
-		Canonical:   h.cfg.PublicURL + "/detail/" + bp.ID,
-		OGType:      "article",
-		OGImage:     cover,
-		JSONLD:      jsonld,
-		Alternates:  alts,
-		Noscript:    detailNoscript(&bp, cover, h.cfg.PublicURL, links),
+		Title:         bp.Title + " - BrickPlan 积木图纸",
+		Description:   detailMetaDescription(&bp, "zh"),
+		OGDescription: detailOGDescription(&bp, "zh"),
+		Canonical:     h.cfg.PublicURL + "/detail/" + bp.ID,
+		OGType:        "article",
+		OGImage:       cover,
+		JSONLD:        jsonld,
+		Alternates:    alts,
+		Noscript:      detailNoscript(&bp, cover, h.cfg.PublicURL, links),
 	})
 }
 
