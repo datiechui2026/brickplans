@@ -26,17 +26,17 @@ func TestDetailMetaDescriptionFromLongBody(t *testing.T) {
 		ends  string
 		notIn []string
 	}{
-		{name: "zh long", bp: db.Blueprint{DescriptionLong: strPtr(zh)}, lang: "zh", min: 75, max: 160, ends: "。"},
+		{name: "zh long", bp: db.Blueprint{DescriptionLong: strPtr(zh)}, lang: "zh", min: 20, max: 81, ends: "。"},
 		{name: "en long", bp: db.Blueprint{DescriptionLongEN: strPtr(en)}, lang: "en", min: 150, max: 160, ends: "."},
 		{name: "zh markdown heading skipped",
 			bp:   db.Blueprint{DescriptionLong: strPtr("## 这款套装值得搭\n\n" + zh)},
-			lang: "zh", min: 75, max: 160, ends: "。", notIn: []string{"##"}},
+			lang: "zh", min: 20, max: 81, ends: "。", notIn: []string{"##"}},
 		{name: "en no punctuation hard cut",
 			bp:   db.Blueprint{DescriptionLongEN: strPtr(strings.Repeat("brick building ", 40))},
 			lang: "en", min: 150, max: 160, ends: "…"},
 		{name: "zh no punctuation hard cut",
 			bp:   db.Blueprint{DescriptionLong: strPtr(strings.Repeat("积木", 200))},
-			lang: "zh", min: 75, max: 160, ends: "…"},
+			lang: "zh", min: 20, max: 81, ends: "…"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -53,8 +53,12 @@ func TestDetailMetaDescriptionFromLongBody(t *testing.T) {
 					t.Fatalf("meta description still contains %q: %q", bad, got)
 				}
 			}
-			if n > 160 {
-				t.Fatalf("hard cap 160 broken: %d", n)
+			cap := 160
+			if c.lang == "zh" {
+				cap = 81
+			}
+			if n > cap {
+				t.Fatalf("hard cap %d broken: %d (%q)", cap, n, got)
 			}
 		})
 	}

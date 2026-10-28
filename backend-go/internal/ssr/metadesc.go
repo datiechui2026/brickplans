@@ -91,15 +91,17 @@ func metaPlainText(body, lang string) string {
 	return strings.TrimSpace(strings.Join(kept, sep))
 }
 
+// clipMetaZH keeps the snippet inside one SERP line. Google renders roughly
+// 78–81 Chinese characters before it truncates, so a 116–155 character snippet
+// is cut by the engine anyway and the reader never sees the second half —
+// stopping at the first sentence end inside 80 runes beats that. Only when the
+// whole window carries no 。！？ do we hard-cut at 80 and append "…".
 func clipMetaZH(s string) string {
 	r := []rune(strings.TrimSpace(s))
-	if len(r) <= metaZhMin {
+	if len(r) <= metaZhTarget {
 		return string(r)
 	}
-	if i := lastSentenceEnd(r, metaZhTarget, ""); i >= 0 && i+1 >= metaZhMin {
-		return string(r[:i+1])
-	}
-	if i := lastSentenceEnd(r, metaHardLimit, ""); i >= 0 && i+1 >= metaZhMin {
+	if i := lastSentenceEnd(r, metaZhTarget, ""); i >= 0 {
 		return string(r[:i+1])
 	}
 	return string(r[:metaZhTarget]) + "…"
