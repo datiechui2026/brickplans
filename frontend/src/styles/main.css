@@ -1251,3 +1251,80 @@ tr:hover td { background: #fafafa; }
 .home-blog-card:hover { border-color: var(--primary, #2563eb); }
 .home-blog-title { font-weight: 600; font-size: 0.95rem; line-height: 1.35; }
 .home-blog-meta { margin-top: 4px; font-size: 0.78rem; color: var(--text-sec, #6b7280); }
+
+/* ── SSR detail modules, reused by the SPA ────────────────────────────────
+   The server writes these five blocks into the detail HTML (breadcrumb,
+   instruction pages, and the three internal-link modules). The SPA keeps that
+   markup instead of rebuilding it, so the classes below style both renders. */
+nav.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-sec);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+nav.breadcrumb a { color: var(--text-sec); text-decoration: none; border-bottom: 1px solid transparent; }
+nav.breadcrumb a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+nav.breadcrumb .crumb-series { color: var(--text-sec); }
+nav.breadcrumb .crumb-current { color: var(--text-main, #1d1d1f); font-weight: 600; }
+
+section.instruction-pages,
+section.detail-links {
+  margin: 32px 0 0;
+  padding: 20px 22px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+}
+section.instruction-pages > h2,
+section.detail-links > h2 {
+  font-size: 1.05rem;
+  margin: 0 0 14px;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+  line-height: 1.3;
+}
+section.detail-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 20px;
+}
+section.detail-links li { margin: 0; }
+section.detail-links li > a {
+  display: block;
+  padding: 6px 0;
+  color: var(--text-main, #1d1d1f);
+  text-decoration: none;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  border-bottom: 1px dashed transparent;
+}
+section.detail-links li > a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+section.instruction-pages { display: block; }
+section.instruction-pages a {
+  display: inline-block;
+  margin: 0 10px 10px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border, #e5e7eb);
+  line-height: 0;
+}
+section.instruction-pages img {
+  width: 150px;
+  height: auto;
+  display: block;
+  transition: transform 0.15s ease;
+}
+section.instruction-pages a:hover img { transform: scale(1.03); }
+
+@media (max-width: 640px) {
+  section.detail-links ul { grid-template-columns: 1fr; }
+  section.instruction-pages img { width: 110px; }
+}

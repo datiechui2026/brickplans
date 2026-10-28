@@ -937,7 +937,12 @@ func toBlueprintOut(bp *db.Blueprint, favCount, likeCount int, isLiked, isFav bo
 
 func toBlueprintDetail(bp *db.Blueprint, isFav bool, favCount int) *dto.BlueprintDetail {
 	out := toBlueprintOut(bp, favCount, 0, false, false)
-	return &dto.BlueprintDetail{BlueprintOut: *out, IsFavorited: isFav}
+	return &dto.BlueprintDetail{
+		BlueprintOut:      *out,
+		DescriptionLong:   bp.DescriptionLong,
+		DescriptionLongEN: bp.DescriptionLongEN,
+		IsFavorited:       isFav,
+	}
 }
 
 func toImageOut(img db.BlueprintImage) dto.ImageOut {

@@ -1,7 +1,7 @@
 import * as api from './api.js';
 import './styles/main.css';
 import { marked } from 'marked';
-import { tr, CATEGORIES, categoryLabel, categoryOptions, difficultyLabel, errorMessage, isEnglishPath, brandLabel, blueprintTitle, blueprintDescription } from './i18n.js';
+import { tr, CATEGORIES, categoryLabel, categoryOptions, difficultyLabel, errorMessage, isEnglishPath, brandLabel, blueprintTitle, blueprintDescription, blueprintLongDescription } from './i18n.js';
 
 // Configure marked: disable mangle/email autolink for safety
 marked.setOptions({ breaks: true, gfm: true });
@@ -1541,6 +1541,176 @@ async function loadExploreTags() {
 }
 
 // ── Detail ──
+// ═══════════════════════════════════════════
+// SSR detail blocks — 图纸目录 / 同系列 / 同品牌 / 同类别 / 面包屑
+// ═══════════════════════════════════════════
+// The server already renders these five modules into the detail HTML (see
+// backend-go/internal/ssr/detail_enrich.go). The SPA used to throw that markup
+// away and rebuild the page with client-side cards, so after hydration every
+// detail page kept exactly one internal /detail/ link — 2,134 pages with no
+// entry points between them. Instead of re-implementing the queries in JS we
+// keep the server markup: capture it from #app before render() wipes the DOM,
+// and on client-side navigation re-fetch the same URL and parse it.
+const SSR_BLOCK_DETAIL_RE = /^\/(en\/)?detail\//;
+
+let ssrDetailBlocks = null;
+let ssrCaptureDone = false;
+
+function readSsrBlocks(root) {
+  const breadcrumb = root.querySelector('nav.breadcrumb');
+  const instruction = root.querySelector('section.instruction-pages');
+  const modules = Array.from(root.querySelectorAll('section.detail-links'));
+  if (!breadcrumb && !instruction && !modules.length) return null;
+  return {
+    path: location.pathname,
+    breadcrumb: breadcrumb ? breadcrumb.outerHTML : '',
+    instruction: instruction ? instruction.outerHTML : '',
+    modules: modules.map((m) => m.outerHTML),
+  };
+}
+
+// Runs once, before the first render() clears #app. Only meaningful on a hard
+// load of a detail URL — anywhere else the capture is a no-op.
+function captureSsrDetailBlocks() {
+  if (ssrCaptureDone) return;
+  ssrCaptureDone = true;
+  if (!SSR_BLOCK_DETAIL_RE.test(location.pathname)) return;
+  const app = document.getElementById('app');
+  if (!app) return;
+  ssrDetailBlocks = readSsrBlocks(app);
+}
+
+async function fetchSsrDetailBlocks() {
+  try {
+    const res = await fetch(location.pathname, { headers: { Accept: 'text/html' }, credentials: 'omit' });
+    if (!res.ok) return null;
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    return readSsrBlocks(doc);
+  } catch {
+    return null;
+  }
+}
+
+// A few detail pages are genuinely link-poor on the server: the series module is
+// dropped when the set has fewer than two siblings, and a thin category leaves
+// the modules at 13. The floor we promise is 15 unique /detail/ links, so top up
+// from the category list — same category, popularity order, deduped against what
+// is already on the page.
+async function topUpDetailLinks(bp) {
+  const main = document.querySelector('#page-detail .main');
+  if (!main || !bp) return;
+  const current = () => [...new Set(Array.from(main.querySelectorAll('a[href*="/detail/"]'))
+    .map((a) => new URL(a.href, location.origin).pathname.replace(/^\/en/, '')))];
+  if (current().length >= 15) return;
+  try {
+    const data = await api.listBlueprints({ category: bp.category || undefined, size: 24, sort: 'popular' });
+    const seen = new Set(current());
+    seen.add(`/detail/${bp.id}`);
+    // Just enough to reach the floor — a thin page should not sprout a wall of
+    // links, but it must not stay under 15 either.
+    const need = Math.max(15 - current().length, 3);
+    const extra = (data.items || []).filter((b) => !seen.has(`/detail/${b.id}`)).slice(0, need);
+    if (!extra.length) return;
+    if (document.getElementById('detail-topup')) return;
+    const section = document.createElement('section');
+    section.className = 'detail-links';
+    section.id = 'detail-topup';
+    const h2 = document.createElement('h2');
+    h2.textContent = tr('同类图纸', 'More in this category');
+    const ul = document.createElement('ul');
+    extra.forEach((b) => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = buildPath('detail', { id: b.id });
+      a.textContent = blueprintTitle(b);
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    section.appendChild(h2);
+    section.appendChild(ul);
+    const related = main.querySelector('#detail-related');
+    if (related) main.insertBefore(section, related);
+    else main.appendChild(section);
+  } catch { /* the page is still valid without the top-up */ }
+}
+
+// Puts the breadcrumb above the content and the four link modules after it,
+// keeping the SSR order. Links stay real <a href> — nothing is delegated.
+// The visible breadcrumb comes from the server; the structured copy must say
+// exactly the same thing (same levels, same names, same order). Build it from
+// the DOM the user sees instead of re-deriving it from the blueprint, so the two
+// can never drift.
+function breadcrumbJsonLd() {
+  const crumb = document.querySelector('#page-detail nav.breadcrumb');
+  if (!crumb) return null;
+  const items = [];
+  Array.from(crumb.childNodes).forEach((node) => {
+    if (node.nodeType !== 1) return;
+    const name = (node.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!name) return;
+    const entry = { '@type': 'ListItem', position: items.length + 1, name };
+    if (node.tagName === 'A' && node.getAttribute('href')) entry.item = node.href;
+    items.push(entry);
+  });
+  if (items.length < 2) return null;
+  return { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items };
+}
+
+// Keeps exactly one BreadcrumbList in the head, matching the rendered crumb.
+// Called after the crumb is mounted and after the SPA rewrites the head, since
+// both paths can wipe it.
+function ensureBreadcrumbJsonLd() {
+  const ld = breadcrumbJsonLd();
+  if (!ld) return;
+  document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
+    try {
+      const parsed = JSON.parse(el.textContent);
+      if (parsed && parsed['@type'] === 'BreadcrumbList') el.remove();
+    } catch { /* not ours to judge */ }
+  });
+  const s = document.createElement('script');
+  s.type = 'application/ld+json';
+  s.setAttribute('data-spa-ld', '1');
+  s.textContent = JSON.stringify(ld, null, 2);
+  document.head.appendChild(s);
+}
+
+async function mountSsrDetailBlocks() {
+  const main = document.querySelector('#page-detail .main');
+  if (!main) return;
+
+  let blocks = (ssrDetailBlocks && ssrDetailBlocks.path === location.pathname) ? ssrDetailBlocks : null;
+  if (!blocks) {
+    blocks = await fetchSsrDetailBlocks();
+    if (blocks) ssrDetailBlocks = blocks;
+  }
+  if (!blocks) return;
+
+  if (blocks.breadcrumb && !main.querySelector('nav.breadcrumb')) {
+    const holder = document.createElement('div');
+    holder.innerHTML = blocks.breadcrumb;
+    const crumb = holder.firstElementChild;
+    if (crumb) {
+      const back = main.querySelector('.back-link');
+      if (back) back.insertAdjacentElement('afterend', crumb);
+      else main.insertAdjacentElement('afterbegin', crumb);
+    }
+  }
+  // Runs even when the crumb was already there: the SPA's head rewrite drops the
+  // server BreadcrumbList, and the two must not disagree.
+  ensureBreadcrumbJsonLd();
+
+  if (!main.querySelector('#detail-seo-blocks')) {
+    const wrap = document.createElement('div');
+    wrap.id = 'detail-seo-blocks';
+    wrap.innerHTML = blocks.instruction + blocks.modules.join('');
+    if (!wrap.childNodes.length) return;
+    const related = main.querySelector('#detail-related');
+    if (related) main.insertBefore(wrap, related);
+    else main.appendChild(wrap);
+  }
+}
+
 function renderDetail() {
   const container = $id('page-detail');
   container.innerHTML = '';
@@ -1576,6 +1746,7 @@ function renderDetail() {
   if (state.detailId) {
     loadDetail(state.detailId);
     loadRelated(state.detailId);
+    mountSsrDetailBlocks();
   }
 }
 
@@ -1588,7 +1759,7 @@ async function loadRelated(id) {
     if (!data.items || data.items.length === 0) { el.style.display = 'none'; return; }
     el.appendChild(h('h2', { style: { marginBottom: '16px' } }, tr('相关作品', 'Related blueprints')));
     const grid = h('div', { className: 'card-grid' });
-    data.items.forEach(bp => grid.appendChild(renderBlueprintCard(bp)));
+    data.items.forEach(bp => grid.appendChild(renderBlueprintCard(bp, false, { asLink: true })));
     el.appendChild(grid);
   } catch {
     const el = $id('detail-related');
@@ -1629,36 +1800,14 @@ async function loadDetail(id) {
           author: bp.author ? { '@type': 'Person', name: bp.author.username } : undefined,
           datePublished: bp.created_at || undefined,
         },
-        {
-          '@context': 'https://schema.org',
-          '@type': 'Product',
-          name: blueprintTitle(bp),
-          description: blueprintDescription(bp) || '',
-          image: coverImg,
-          brand: { '@type': 'Brand', name: brandLabel(bp.brand) || 'BrickPlan' },
-          offers: {
-            '@type': 'Offer',
-            price: '0',
-            priceCurrency: 'CNY',
-            availability: 'https://schema.org/InStock',
-            url: isEnglishPath() ? `${window.location.origin}${location.pathname}` : `${window.location.origin}/detail/${bp.id}`,
-          },
-        },
       ];
-      if (bp.category) {
-        ldScripts[1].category = bp.category;
-      }
-      if (bp.product_code) {
-        // mpn = the manufacturer's set/model number people actually search for.
-        ldScripts[1].mpn = bp.product_code;
-      }
-      if (bp.piece_count != null) {
-        ldScripts[1].additionalProperty = { '@type': 'PropertyValue', name: tr('零件数', 'Piece count'), value: bp.piece_count };
-      }
-      if (bp.difficulty != null) {
-        ldScripts[1].aggregateRating = { '@type': 'AggregateRating', ratingValue: bp.difficulty, bestRating: 5, worstRating: 1, ratingCount: 1 };
-      }
+      // Product / Offer / AggregateRating are deliberately absent: the SSR page
+      // stopped emitting them (a blueprint is not something we sell, and we do
+      // not collect ratings), and this client-side path used to re-add them on
+      // every in-app navigation — Googlebot then saw a different graph than the
+      // server sent. Keep the two renders identical.
       injectJsonLd(ldScripts);
+      ensureBreadcrumbJsonLd();
     }
 
     const stars = [];
@@ -1886,7 +2035,7 @@ async function loadDetail(id) {
                   h('span', { className: 'meta-value', style: { color: diff.color } }, `${diff.stars} ${diff.label}`),
                 ),
                 bp.piece_count ? h('div', { className: 'meta-item' },
-                  h('span', { className: 'meta-label' }, tr('零件数', 'Pieces')),
+                  h('span', { className: 'meta-label' }, tr('颗粒数', 'Pieces')),
                   h('span', { className: 'meta-value' }, String(bp.piece_count)),
                 ) : null,
                 bp.dimensions ? h('div', { className: 'meta-item' },
@@ -1990,10 +2139,13 @@ async function loadDetail(id) {
             })(),
           ] : []),
           // ── Description inside sidebar (markdown rendered) ──
-          ...(blueprintDescription(bp) ? [
+          // Uses the long editorial body when the row has one (falls back to the
+          // short description of the same language), so the React-side block
+          // matches what SSR already renders.
+          ...(blueprintLongDescription(bp) ? [
             h('div', { className: 'desc-card' },
-              h('h3', {}, tr('📝 图纸介绍', '📝 About this blueprint')),
-              h('div', { className: 'markdown-body', innerHTML: marked.parse(blueprintDescription(bp)) }),
+              h('h3', {}, tr('📝 套装介绍', '📝 About this set')),
+              h('div', { className: 'markdown-body', innerHTML: marked.parse(blueprintLongDescription(bp)) }),
             ),
           ] : []),
           // ── Tags inside sidebar ──
@@ -2015,6 +2167,10 @@ async function loadDetail(id) {
     );
 
     // Load comments
+    // The server modules land asynchronously; the top-up only matters when the
+    // server gave this page fewer than 15 unique links.
+    topUpDetailLinks(bp);
+
     const renderComment = (c) => h('div', { className: `comment${c.parent_id ? ' comment-reply' : ''}` },
       h('div', { className: 'comment-header' },
         h('div', { className: 'comment-avatar' }, (c.user?.username || '?')[0].toUpperCase()),
@@ -2712,7 +2868,7 @@ async function handleUpload() {
 }
 
 // ── Blueprint Card Component ──
-function renderBlueprintCard(bp, isOwnProfile = false) {
+function renderBlueprintCard(bp, isOwnProfile = false, opts = {}) {
   const diff = formatDifficulty(bp.difficulty || 0);
   const coverUrl = getCoverImage(bp.images);
   const emojis = { '建筑': '🏰', '车辆': '🚗', '机甲': '🤖', '奇幻': '🐉', '科幻': '🛸', '场景': '🎨' };
@@ -2724,7 +2880,19 @@ function renderBlueprintCard(bp, isOwnProfile = false) {
   const authorAvatar = bp.author?.avatar_url
     || `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(bp.author?.username || bp.id || 'anon')}`;
 
-  const card = h('article', { className: `card${isOwnProfile ? ' card-own' : ''}`, onclick: isOwnProfile ? () => navigate('edit', { id: bp.id }) : () => navigate('detail', { id: bp.id }) },
+  // asLink renders the card as a real <a href> so crawlers see an internal link
+  // instead of a click-handled <article>. The click is still intercepted so
+  // in-app navigation stays instant.
+  const cardTarget = { page: isOwnProfile ? 'edit' : 'detail', params: { id: bp.id } };
+  const cardProps = {
+    className: `card${isOwnProfile ? ' card-own' : ''}`,
+    onclick: (e) => {
+      if (opts.asLink) e.preventDefault();
+      navigate(cardTarget.page, cardTarget.params);
+    },
+  };
+  if (opts.asLink) cardProps.href = buildPath(cardTarget.page, cardTarget.params);
+  const card = h(opts.asLink ? 'a' : 'article', cardProps,
     h('div', { className: 'card-img-wrap' },
       coverUrl
         ? h('img', {
@@ -5189,6 +5357,7 @@ function render() {
   // about/faq/privacy in English are final SSR documents (see isSsrOnlyPath);
   // every other page — CN or EN — is rendered by the SPA.
   if (isSsrOnlyPath(location.pathname)) return;
+  captureSsrDetailBlocks();
   const app = document.getElementById('app');
 
   // Ensure page containers exist

@@ -107,6 +107,19 @@ export function blueprintDescription(bp) {
   return isEnglishPath() && bp.description_en ? bp.description_en : bp.description;
 }
 
+// Long editorial body for the detail page's 「套装介绍」 block. Unlike
+// blueprintDescription (which also feeds meta description / og:description and
+// must stay short), this prefers the per-page prose and falls back to the short
+// description of the SAME language so the block is never empty and never mixes
+// languages.
+export function blueprintLongDescription(bp) {
+  if (!bp) return '';
+  const long = isEnglishPath() ? bp.description_long_en : bp.description_long;
+  if (long && String(long).trim()) return long;
+  const short = isEnglishPath() ? bp.description_en : bp.description;
+  return short || '';
+}
+
 // ── Difficulty ─────────────────────────────────────────────────────────────
 const DIFFICULTY_EN = { 1: 'Easy', 2: 'Beginner', 3: 'Medium', 4: 'Hard', 5: 'Expert' };
 const DIFFICULTY_ZH = { 1: '简单', 2: '初级', 3: '中等', 4: '困难', 5: '专家' };

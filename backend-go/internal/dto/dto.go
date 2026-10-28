@@ -131,9 +131,13 @@ type BlueprintOut struct {
 }
 
 // BlueprintDetail adds the viewer's favorite state on top of BlueprintOut.
+// The long editorial body is detail-only: it must never leak into list cards or
+// search snippets, so the two fields live here and not on BlueprintOut.
 type BlueprintDetail struct {
 	BlueprintOut
-	IsFavorited bool `json:"is_favorited"`
+	DescriptionLong   *string `json:"description_long"`
+	DescriptionLongEN *string `json:"description_long_en"`
+	IsFavorited       bool    `json:"is_favorited"`
 }
 
 // BlueprintLookupOut is the response of the strict brand + product-code lookup.
