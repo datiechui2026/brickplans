@@ -19,6 +19,13 @@
   --shadow:    0 1px 4px rgba(0,0,0,.04);
   --shadow-hv: 0 8px 32px rgba(0,0,0,.08);
   --input-bg:  #f5f5f7;
+  /* Aliases补齐（2026-10-30）：以下 5 个变量此前被引用却从未定义，
+     导致 --border/--bg-alt/--card 引用的样式静默失效。取值与站内既有兜底/视觉口径对齐。 */
+  --border:    #e5e7eb;
+  --bg-alt:    #f5f5f7;
+  --card:      #ffffff;
+  --bg-card:   #ffffff;
+  --primary:   #ff6b35;
 }
 
 /* ── Reset & Base ── */
